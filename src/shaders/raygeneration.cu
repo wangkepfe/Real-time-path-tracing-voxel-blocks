@@ -74,7 +74,7 @@ __device__ __inline__ bool TraceNextPath(PerRayData& prd, float4* absorptionStac
                 prd.pos, prd.wi,                               // origin, direction
                 sysParameter.sceneEpsilon, prd.distance, 0.0f, // tmin, tmax, time
                 OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                RAYTYPE_RADIANCE, NUM_RAYTYPES, RAYTYPE_RADIANCE,
+                0, 1, 0,
                 payload.x, payload.y);
 
     // This renderer supports nested volumes.

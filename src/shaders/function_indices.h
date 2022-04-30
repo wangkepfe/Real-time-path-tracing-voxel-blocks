@@ -31,14 +31,6 @@
 #ifndef FUNCTION_INDICES_H
 #define FUNCTION_INDICES_H
 
-enum RayType
-{
-  RAYTYPE_RADIANCE = 0,
-  RAYTYPE_SHADOW   = 1,
-
-  NUM_RAYTYPES     = 2
-};
-
 enum FunctionIndex
 {
   INDEX_BSDF_DIFFUSE_REFLECTION               = 0,

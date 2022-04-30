@@ -1540,7 +1540,7 @@ void Application::initPipeline()
     memcpy(instance.transform, trafoPlane, sizeof(float) * 12);
     instance.instanceId = id;
     instance.visibilityMask = 255;
-    instance.sbtOffset = id * NUM_RAYTYPES; // This controls the SBT instance offset!
+    instance.sbtOffset = id;
     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
     instance.traversableHandle = geoPlane;
 
@@ -1559,7 +1559,7 @@ void Application::initPipeline()
     memcpy(instance.transform, trafoBox, sizeof(float) * 12);
     instance.instanceId = id;
     instance.visibilityMask = 255;
-    instance.sbtOffset = id * NUM_RAYTYPES;
+    instance.sbtOffset = id;
     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
     instance.traversableHandle = geoBox;
 
@@ -1590,7 +1590,7 @@ void Application::initPipeline()
     memcpy(instance.transform, trafoNested, sizeof(float) * 12);
     instance.instanceId = id;
     instance.visibilityMask = 255;
-    instance.sbtOffset = id * NUM_RAYTYPES;
+    instance.sbtOffset = id;
     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
     instance.traversableHandle = geoNested;
 
@@ -1610,7 +1610,7 @@ void Application::initPipeline()
     memcpy(instance.transform, trafoSphere, sizeof(float) * 12);
     instance.instanceId = id;
     instance.visibilityMask = 255;
-    instance.sbtOffset = id * NUM_RAYTYPES;
+    instance.sbtOffset = id;
     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
     instance.traversableHandle = geoSphere;
 
@@ -1629,7 +1629,7 @@ void Application::initPipeline()
     memcpy(instance.transform, trafoTorus, sizeof(float) * 12);
     instance.instanceId = id;
     instance.visibilityMask = 255;
-    instance.sbtOffset = id * NUM_RAYTYPES;
+    instance.sbtOffset = id;
     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
     instance.traversableHandle = geoTorus;
 
@@ -1764,27 +1764,6 @@ void Application::initPipeline()
 
     OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadiance));
 
-    // SHADOW RAY TYPE
-    OptixProgramGroupDesc programGroupDescMissShadow = {};
-
-    programGroupDescMissShadow.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
-    programGroupDescMissShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    programGroupDescMissShadow.miss.module = nullptr;
-    programGroupDescMissShadow.miss.entryFunctionName = nullptr; // No miss program for shadow rays.
-
-    OptixProgramGroup programGroupMissShadow;
-
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow));
-
-    OptixProgramGroupDesc programGroupDescHitShadow = {};
-
-    programGroupDescHitShadow.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-    programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-
-    OptixProgramGroup programGroupHitShadow;
-
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadow));
-
     // DIRECT CALLABLES
     std::string ptxLightSample = readPTX("ptx/light_sample.ptx");
     std::string ptxDiffuseReflection = readPTX("ptx/bsdf_diffuse_reflection.ptx");
@@ -1810,22 +1789,8 @@ void Application::initPipeline()
 
     // Two light sampling functions, one for the environment and one for the parallelogram.
     pgd.callables.moduleDC = moduleLightSample;
-    switch (m_missID)
-    {
-    case 0: // Black environment.
-            // This is not a light and doesn't appear in the sysParameter.lightDefinitions and therefore is never called.
-            // Put a valid direct callable into this SBT record anyway to have the correct number of callables. Use the light_env_constant function.
-            // Fall through.
-    case 1: // White environment.
-    default:
-        pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_constant";
-        programGroupDescCallables.push_back(pgd);
-        break;
-    case 2:
-        pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
-        programGroupDescCallables.push_back(pgd);
-        break;
-    }
+    pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
+    programGroupDescCallables.push_back(pgd);
     pgd.callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
     programGroupDescCallables.push_back(pgd);
 
@@ -1858,9 +1823,7 @@ void Application::initPipeline()
 
     programGroups.push_back(programGroupRaygeneration);
     programGroups.push_back(programGroupMissRadiance);
-    programGroups.push_back(programGroupMissShadow);
     programGroups.push_back(programGroupHitRadiance);
-    programGroups.push_back(programGroupHitShadow);
     for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
     {
         programGroups.push_back(programGroupCallables[i]);
@@ -1932,56 +1895,45 @@ void Application::initPipeline()
     CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
 
     // Miss group
-    std::vector<SbtRecordHeader> sbtRecordMiss(NUM_RAYTYPES);
+    std::vector<SbtRecordHeader> sbtRecordMiss(1);
 
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupMissRadiance, &sbtRecordMiss[RAYTYPE_RADIANCE]));
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupMissShadow, &sbtRecordMiss[RAYTYPE_SHADOW]));
+    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupMissRadiance, &sbtRecordMiss[0]));
 
-    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader) * NUM_RAYTYPES));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * NUM_RAYTYPES, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader)));
+    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
 
     // Hit groups for radiance and shadow rays per instance.
-
-    MY_ASSERT(NUM_RAYTYPES == 2); // The following code only works for two raytypes.
-
     // Note that the SBT record data field is uninitialized after these!
     OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitRadiance, &m_sbtRecordHitRadiance));
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitShadow, &m_sbtRecordHitShadow));
 
     // The real content.
     const int numInstances = static_cast<int>(m_instances.size());
 
-    m_sbtRecordGeometryInstanceData.resize(NUM_RAYTYPES * numInstances);
+    m_sbtRecordGeometryInstanceData.resize(numInstances);
 
     for (int i = 0; i < numInstances; ++i)
     {
-        const int idx = i * NUM_RAYTYPES; // idx == radiance ray, idx + 1 == shadow ray
+        const int idx = i; // idx == radiance ray, idx + 1 == shadow ray
 
         // Only update the header to switch the program hit group. The SBT record data field doesn't change.
         memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-        memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
 
         m_sbtRecordGeometryInstanceData[idx].data.indices = (int3 *)m_geometries[i].indices;
         m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes *)m_geometries[i].attributes;
         m_sbtRecordGeometryInstanceData[idx].data.materialIndex = i;
         m_sbtRecordGeometryInstanceData[idx].data.lightIndex = -1;
-
-        m_sbtRecordGeometryInstanceData[idx + 1].data.indices = (int3 *)m_geometries[i].indices;
-        m_sbtRecordGeometryInstanceData[idx + 1].data.attributes = (VertexAttributes *)m_geometries[i].attributes;
-        m_sbtRecordGeometryInstanceData[idx + 1].data.materialIndex = i;
-        m_sbtRecordGeometryInstanceData[idx + 1].data.lightIndex = -1;
     }
 
     if (m_lightID)
     {
-        const int idx = (numInstances - 1) * NUM_RAYTYPES; // HACK The last instance is the parallelogram light.
+        const int idx = (numInstances - 1); // HACK The last instance is the parallelogram light.
         const int lightIndex = (m_missID != 0) ? 1 : 0;    // HACK If there is any environment light that is in sysParameter.lightDefinitions[0] and the area light in index [1] then.
         m_sbtRecordGeometryInstanceData[idx].data.lightIndex = lightIndex;
         m_sbtRecordGeometryInstanceData[idx + 1].data.lightIndex = lightIndex;
     }
 
-    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * NUM_RAYTYPES * numInstances));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * NUM_RAYTYPES * numInstances, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
+    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice));
 
     // CALLABLES
     std::vector<SbtRecordHeader> sbtRecordCallables(programGroupDescCallables.size());
@@ -2001,11 +1953,11 @@ void Application::initPipeline()
 
     m_sbt.missRecordBase = m_d_sbtRecordMiss;
     m_sbt.missRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
-    m_sbt.missRecordCount = NUM_RAYTYPES;
+    m_sbt.missRecordCount = 1;
 
     m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
     m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
-    m_sbt.hitgroupRecordCount = NUM_RAYTYPES * numInstances;
+    m_sbt.hitgroupRecordCount = numInstances;
 
     m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
     m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
@@ -2074,7 +2026,7 @@ void Application::updateShaderBindingTable(const int instance)
 {
     if (instance < m_instances.size()) // Make sure to only touch existing SBT records.
     {
-        const int idx = instance * NUM_RAYTYPES; // idx == radiance ray, idx + 1 == shadow ray
+        const int idx = instance; // idx == radiance ray, idx + 1 == shadow ray
 
         // Only update the header to switch the program hit group. The SBT record data field doesn't change.
         memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
@@ -2083,7 +2035,7 @@ void Application::updateShaderBindingTable(const int instance)
         // Make sure the SBT isn't changed while the renderer is active.
         CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
         // Only copy the two SBT entries which changed.
-        CUDA_CHECK(cudaMemcpy((void *)&m_d_sbtRecordGeometryInstanceData[idx], &m_sbtRecordGeometryInstanceData[idx], sizeof(SbtRecordGeometryInstanceData) * NUM_RAYTYPES, cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy((void *)&m_d_sbtRecordGeometryInstanceData[idx], &m_sbtRecordGeometryInstanceData[idx], sizeof(SbtRecordGeometryInstanceData), cudaMemcpyHostToDevice));
     }
 }
 
@@ -2186,7 +2138,7 @@ void Application::createLights()
         memcpy(instance.transform, trafoLight, sizeof(float) * 12);
         instance.instanceId = id;
         instance.visibilityMask = 255;
-        instance.sbtOffset = id * NUM_RAYTYPES;
+        instance.sbtOffset = id;
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = geoLight;
 
