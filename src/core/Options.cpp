@@ -12,7 +12,8 @@ Options::Options()
 , m_heightClient(1080)
 , m_interop(true)
 , m_light(0)
-, m_miss(1)
+, m_miss(2)
+, m_environment("data/NV_Default_HDR_3000x1500.hdr")
 {
 }
 

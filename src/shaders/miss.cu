@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,35 +36,6 @@
 #include "system_parameter.h"
 
 extern "C" __constant__ SystemParameter sysParameter;
- 
-// Not actually a light. Never appears inside the sysLightDefinitions.
-extern "C" __global__ void __miss__env_null()
-{
-  // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
-  PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
-
-  thePrd->radiance = make_float3(0.0f);
-  thePrd->flags |= FLAG_TERMINATE;
-}
-
-
-extern "C" __global__ void __miss__env_constant()
-{
-  // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
-  PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
-
-#if USE_NEXT_EVENT_ESTIMATION
-  // If the last surface intersection was a diffuse which was directly lit with multiple importance sampling,
-  // then calculate light emission with multiple importance sampling as well.
-  const float weightMIS = (thePrd->flags & FLAG_DIFFUSE) ? powerHeuristic(thePrd->pdf, 0.25f * M_1_PIf) : 1.0f;
-  thePrd->radiance = make_float3(weightMIS); // Constant white emission multiplied by MIS weight.
-#else
-  thePrd->radiance = make_float3(1.0f); // Constant white emission.
-#endif
-
-  thePrd->flags |= FLAG_TERMINATE;
-}
-
 
 extern "C" __global__ void __miss__env_sphere()
 {

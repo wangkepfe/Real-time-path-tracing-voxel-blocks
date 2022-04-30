@@ -60,7 +60,6 @@ set( SHADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/raygeneration.cu
 
   # Direct callables
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lens_shader.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_sample.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_diffuse_reflection.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_specular_reflection.cu

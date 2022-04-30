@@ -231,7 +231,7 @@ extern "C" __global__ void __closesthit__radiance()
     // Only the last diffuse hit is tracked for multiple importance sampling of implicit light hits.
     thePrd->flags = (thePrd->flags & ~FLAG_DIFFUSE) | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 
-    const int indexBSDF = NUM_LENS_SHADERS + NUM_LIGHT_TYPES + parameters.indexBSDF * 2;
+    const int indexBSDF = NUM_LIGHT_TYPES + parameters.indexBSDF * 2;
 
     optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *>(indexBSDF, parameters, state, thePrd);
 
@@ -248,7 +248,7 @@ extern "C" __global__ void __closesthit__radiance()
 
         LightDefinition const &light = sysParameter.lightDefinitions[indexLight];
 
-        const int indexCallable = NUM_LENS_SHADERS + light.type;
+        const int indexCallable = Nlight.type;
 
         LightSample lightSample = optixDirectCall<LightSample, LightDefinition const &, const float3, const float2>(indexCallable, light, thePrd->pos, sample);
 

@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,17 +35,8 @@ enum RayType
 {
   RAYTYPE_RADIANCE = 0,
   RAYTYPE_SHADOW   = 1,
-  
+
   NUM_RAYTYPES     = 2
-};
-
-enum LensShader
-{
-  LENS_SHADER_PINHOLE = 0,
-  LENS_SHADER_FISHEYE = 1,
-  LENS_SHADER_SPHERE  = 2,
-
-  NUM_LENS_SHADERS    = 3
 };
 
 enum FunctionIndex

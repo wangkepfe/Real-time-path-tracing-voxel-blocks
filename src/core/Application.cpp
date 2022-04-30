@@ -1738,19 +1738,9 @@ void Application::initPipeline()
     programGroupDescMissRadiance.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
     programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
     programGroupDescMissRadiance.miss.module = moduleMiss;
-    switch (m_missID)
-    {
-    case 0: // Black, not a light.
-        programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_null";
-        break;
-    case 1: // Constant white environment.
-    default:
-        programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_constant";
-        break;
-    case 2: // Spherical HDR environment light.
-        programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_sphere";
-        break;
-    }
+
+    // Spherical HDR environment light.
+    programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_sphere";
 
     OptixProgramGroup programGroupMissRadiance;
 
@@ -1812,20 +1802,16 @@ void Application::initPipeline()
     OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadowCutout, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadowCutout));
 
     // DIRECT CALLABLES
-
-    std::string ptxLensShader = readPTX("ptx/lens_shader.ptx");
     std::string ptxLightSample = readPTX("ptx/light_sample.ptx");
     std::string ptxDiffuseReflection = readPTX("ptx/bsdf_diffuse_reflection.ptx");
     std::string ptxSpecularReflection = readPTX("ptx/bsdf_specular_reflection.ptx");
     std::string ptxSpecularReflectionTransmission = readPTX("ptx/bsdf_specular_reflection_transmission.ptx");
 
-    OptixModule moduleLensShader;
     OptixModule moduleLightSample;
     OptixModule moduleDiffuseReflection;
     OptixModule moduleSpecularReflection;
     OptixModule moduleSpecularReflectionTransmission;
 
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLensShader.c_str(), ptxLensShader.size(), nullptr, nullptr, &moduleLensShader));
     OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLightSample.c_str(), ptxLightSample.size(), nullptr, nullptr, &moduleLightSample));
     OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxDiffuseReflection.c_str(), ptxDiffuseReflection.size(), nullptr, nullptr, &moduleDiffuseReflection));
     OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflection.c_str(), ptxSpecularReflection.size(), nullptr, nullptr, &moduleSpecularReflection));
@@ -1837,14 +1823,6 @@ void Application::initPipeline()
 
     pgd.kind = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
     pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-
-    pgd.callables.moduleDC = moduleLensShader;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__pinhole";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.entryFunctionNameDC = "__direct_callable__fisheye";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.entryFunctionNameDC = "__direct_callable__sphere";
-    programGroupDescCallables.push_back(pgd);
 
     // Two light sampling functions, one for the environment and one for the parallelogram.
     pgd.callables.moduleDC = moduleLightSample;
@@ -2032,8 +2010,6 @@ void Application::initPipeline()
     CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * NUM_RAYTYPES * numInstances, cudaMemcpyHostToDevice));
 
     // CALLABLES
-
-    // Lens shaders
     std::vector<SbtRecordHeader> sbtRecordCallables(programGroupDescCallables.size());
 
     for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
@@ -2100,7 +2076,7 @@ void Application::initPipeline()
     m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
     m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
     m_systemParameter.iterationIndex = 0;
-    m_systemParameter.cameraType = LENS_SHADER_PINHOLE;
+    m_systemParameter.cameraType = 0; // @TODO: remove this
 
     m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
                                m_systemParameter.cameraU,
@@ -2113,7 +2089,6 @@ void Application::initPipeline()
     OPTIX_CHECK(m_api.optixModuleDestroy(moduleRaygeneration));
     OPTIX_CHECK(m_api.optixModuleDestroy(moduleMiss));
     OPTIX_CHECK(m_api.optixModuleDestroy(moduleClosesthit));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleLensShader));
     OPTIX_CHECK(m_api.optixModuleDestroy(moduleLightSample));
     OPTIX_CHECK(m_api.optixModuleDestroy(moduleDiffuseReflection));
     OPTIX_CHECK(m_api.optixModuleDestroy(moduleSpecularReflection));
