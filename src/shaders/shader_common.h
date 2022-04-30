@@ -39,154 +39,148 @@ static constexpr int BounceLimit = 6;
 static constexpr int RussionRouletteStartBounce = 2;
 
 /**
-*  Calculates refraction direction
-*  r   : refraction vector
-*  i   : incident vector
-*  n   : surface normal
-*  ior : index of refraction ( n2 / n1 )
-*  returns false in case of total internal reflection, in that case r is initialized to (0,0,0).
-*/
-__forceinline__ __host__ __device__ bool refract(float3& r, float3 const& i, float3 const& n, const float ior)
+ *  Calculates refraction direction
+ *  r   : refraction vector
+ *  i   : incident vector
+ *  n   : surface normal
+ *  ior : index of refraction ( n2 / n1 )
+ *  returns false in case of total internal reflection, in that case r is initialized to (0,0,0).
+ */
+__forceinline__ __host__ __device__ bool refract(float3 &r, float3 const &i, float3 const &n, const float ior)
 {
-  float3 nn = n;
-  float negNdotV = dot(i, nn);
-  float eta;
+    float3 nn = n;
+    float negNdotV = dot(i, nn);
+    float eta;
 
-  if (negNdotV > 0.0f)
-  {
-    eta = ior;
-    nn = -n;
-    negNdotV = -negNdotV;
-  }
-  else
-  {
-    eta = 1.f / ior;
-  }
+    if (negNdotV > 0.0f)
+    {
+        eta = ior;
+        nn = -n;
+        negNdotV = -negNdotV;
+    }
+    else
+    {
+        eta = 1.f / ior;
+    }
 
-  const float k = 1.f - eta * eta * (1.f - negNdotV * negNdotV);
+    const float k = 1.f - eta * eta * (1.f - negNdotV * negNdotV);
 
-  if (k < 0.0f)
-  {
-    // Initialize this value, so that r always leaves this function initialized.
-    r = make_float3(0.f);
-    return false;
-  }
-  else
-  {
-    r = normalize(eta * i - (eta * negNdotV + sqrtf(k)) * nn);
-    return true;
-  }
+    if (k < 0.0f)
+    {
+        // Initialize this value, so that r always leaves this function initialized.
+        r = make_float3(0.f);
+        return false;
+    }
+    else
+    {
+        r = normalize(eta * i - (eta * negNdotV + sqrtf(k)) * nn);
+        return true;
+    }
 }
-
-
 
 // Tangent-Bitangent-Normal orthonormal space.
 struct TBN
 {
-  // Default constructor to be able to include it into other structures when needed.
-  __forceinline__ __host__ __device__ TBN()
-  {
-  }
-
-  __forceinline__ __host__ __device__ TBN(const float3& n)
-  : normal(n)
-  {
-    if (fabsf(normal.z) < fabsf(normal.x))
+    // Default constructor to be able to include it into other structures when needed.
+    __forceinline__ __host__ __device__ TBN()
     {
-      tangent.x =  normal.z;
-      tangent.y =  0.0f;
-      tangent.z = -normal.x;
     }
-    else
+
+    __forceinline__ __host__ __device__ TBN(const float3 &n)
+        : normal(n)
     {
-      tangent.x =  0.0f;
-      tangent.y =  normal.z;
-      tangent.z = -normal.y;
+        if (fabsf(normal.z) < fabsf(normal.x))
+        {
+            tangent.x = normal.z;
+            tangent.y = 0.0f;
+            tangent.z = -normal.x;
+        }
+        else
+        {
+            tangent.x = 0.0f;
+            tangent.y = normal.z;
+            tangent.z = -normal.y;
+        }
+        tangent = normalize(tangent);
+        bitangent = cross(normal, tangent);
     }
-    tangent   = normalize(tangent);
-    bitangent = cross(normal, tangent);
-  }
 
-  // Constructor for cases where tangent, bitangent, and normal are given as ortho-normal basis.
-  __forceinline__ __host__ __device__ TBN(const float3& t, const float3& b, const float3& n)
-  : tangent(t)
-  , bitangent(b)
-  , normal(n)
-  {
-  }
+    // Constructor for cases where tangent, bitangent, and normal are given as ortho-normal basis.
+    __forceinline__ __host__ __device__ TBN(const float3 &t, const float3 &b, const float3 &n)
+        : tangent(t), bitangent(b), normal(n)
+    {
+    }
 
-  // Normal is kept, tangent and bitangent are calculated.
-  // Normal must be normalized.
-  // Must not be used with degenerated vectors!
-  __forceinline__ __host__ __device__ TBN(const float3& tangent_reference, const float3& n)
-  : normal(n)
-  {
-    bitangent = normalize(cross(normal, tangent_reference));
-    tangent   = cross(bitangent, normal);
-  }
+    // Normal is kept, tangent and bitangent are calculated.
+    // Normal must be normalized.
+    // Must not be used with degenerated vectors!
+    __forceinline__ __host__ __device__ TBN(const float3 &tangent_reference, const float3 &n)
+        : normal(n)
+    {
+        bitangent = normalize(cross(normal, tangent_reference));
+        tangent = cross(bitangent, normal);
+    }
 
-  __forceinline__ __host__ __device__ void negate()
-  {
-    tangent   = -tangent;
-    bitangent = -bitangent;
-    normal    = -normal;
-  }
+    __forceinline__ __host__ __device__ void negate()
+    {
+        tangent = -tangent;
+        bitangent = -bitangent;
+        normal = -normal;
+    }
 
-  __forceinline__ __host__ __device__ float3 transformToLocal(const float3& p) const
-  {
-    return make_float3(dot(p, tangent),
-                       dot(p, bitangent),
-                       dot(p, normal));
-  }
+    __forceinline__ __host__ __device__ float3 transformToLocal(const float3 &p) const
+    {
+        return make_float3(dot(p, tangent),
+                           dot(p, bitangent),
+                           dot(p, normal));
+    }
 
-  __forceinline__ __host__ __device__ float3 transformToWorld(const float3& p) const
-  {
-    return p.x * tangent + p.y * bitangent + p.z * normal;
-  }
+    __forceinline__ __host__ __device__ float3 transformToWorld(const float3 &p) const
+    {
+        return p.x * tangent + p.y * bitangent + p.z * normal;
+    }
 
-  float3 tangent;
-  float3 bitangent;
-  float3 normal;
+    float3 tangent;
+    float3 bitangent;
+    float3 normal;
 };
 
-
-__forceinline__ __host__ __device__ float luminance(const float3& rgb)
+__forceinline__ __host__ __device__ float luminance(const float3 &rgb)
 {
-  const float3 ntsc_luminance = { 0.30f, 0.59f, 0.11f };
-  return dot(rgb, ntsc_luminance);
+    const float3 ntsc_luminance = {0.30f, 0.59f, 0.11f};
+    return dot(rgb, ntsc_luminance);
 }
 
-__forceinline__ __host__ __device__ float intensity(const float3& rgb)
+__forceinline__ __host__ __device__ float intensity(const float3 &rgb)
 {
-  return (rgb.x + rgb.y + rgb.z) * 0.3333333333f;
+    return (rgb.x + rgb.y + rgb.z) * 0.3333333333f;
 }
 
 __forceinline__ __host__ __device__ float cube(const float x)
 {
-  return x * x * x;
+    return x * x * x;
 }
 
-__forceinline__ __host__ __device__ bool isNull(const float3& v)
+__forceinline__ __host__ __device__ bool isNull(const float3 &v)
 {
-  return (v.x == 0.0f && v.y == 0.0f && v.z == 0.0f);
+    return (v.x == 0.0f && v.y == 0.0f && v.z == 0.0f);
 }
 
-__forceinline__ __host__ __device__ bool isNotNull(const float3& v)
+__forceinline__ __host__ __device__ bool isNotNull(const float3 &v)
 {
-  return (v.x != 0.0f || v.y != 0.0f || v.z != 0.0f);
+    return (v.x != 0.0f || v.y != 0.0f || v.z != 0.0f);
 }
 
 // Used for Multiple Importance Sampling.
 __forceinline__ __host__ __device__ float powerHeuristic(const float a, const float b)
 {
-  const float t = a * a;
-  return t / (t + b * b);
+    const float t = a * a;
+    return t / (t + b * b);
 }
 
 __forceinline__ __host__ __device__ float balanceHeuristic(const float a, const float b)
 {
-  return a / (a + b);
+    return a / (a + b);
 }
-
 
 #endif // SHADER_COMMON_H
