@@ -1488,7 +1488,7 @@ void Application::initMaterials()
     parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
     parameters.albedo = make_float3(0.75f);
     parameters.useAlbedoTexture = false;
-    parameters.useCutoutTexture = true;
+    parameters.useCutoutTexture = false;
     parameters.thinwalled = true; // Materials with cutout opacity should always be thinwalled.
     parameters.absorptionColor = make_float3(0.980392f, 0.729412f, 0.470588f);
     parameters.volumeDistanceScale = 1.0f;
@@ -1760,18 +1760,9 @@ void Application::initPipeline()
     programGroupDescHitRadiance.hitgroup.moduleCH = moduleClosesthit;
     programGroupDescHitRadiance.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
 
-    OptixProgramGroupDesc programGroupDescHitRadianceCutout = {};
-
-    programGroupDescHitRadianceCutout.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-    programGroupDescHitRadianceCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    programGroupDescHitRadianceCutout.hitgroup.moduleCH = moduleClosesthit;
-    programGroupDescHitRadianceCutout.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
-
     OptixProgramGroup programGroupHitRadiance;
-    OptixProgramGroup programGroupHitRadianceCutout;
 
     OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadiance));
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadianceCutout, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadianceCutout));
 
     // SHADOW RAY TYPE
     OptixProgramGroupDesc programGroupDescMissShadow = {};
@@ -1790,16 +1781,9 @@ void Application::initPipeline()
     programGroupDescHitShadow.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
     programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
 
-    OptixProgramGroupDesc programGroupDescHitShadowCutout = {};
-
-    programGroupDescHitShadowCutout.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-    programGroupDescHitShadowCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-
     OptixProgramGroup programGroupHitShadow;
-    OptixProgramGroup programGroupHitShadowCutout;
 
     OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadow));
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadowCutout, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadowCutout));
 
     // DIRECT CALLABLES
     std::string ptxLightSample = readPTX("ptx/light_sample.ptx");
@@ -1963,8 +1947,6 @@ void Application::initPipeline()
     // Note that the SBT record data field is uninitialized after these!
     OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitRadiance, &m_sbtRecordHitRadiance));
     OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitShadow, &m_sbtRecordHitShadow));
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitRadianceCutout, &m_sbtRecordHitRadianceCutout));
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitShadowCutout, &m_sbtRecordHitShadowCutout));
 
     // The real content.
     const int numInstances = static_cast<int>(m_instances.size());
@@ -1975,17 +1957,9 @@ void Application::initPipeline()
     {
         const int idx = i * NUM_RAYTYPES; // idx == radiance ray, idx + 1 == shadow ray
 
-        if (!m_guiMaterialParameters[i].useCutoutTexture)
-        {
-            // Only update the header to switch the program hit group. The SBT record data field doesn't change.
-            memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-            memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-        }
-        else
-        {
-            memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadianceCutout.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-            memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadowCutout.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-        }
+        // Only update the header to switch the program hit group. The SBT record data field doesn't change.
+        memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+        memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
 
         m_sbtRecordGeometryInstanceData[idx].data.indices = (int3 *)m_geometries[i].indices;
         m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes *)m_geometries[i].attributes;
@@ -2102,17 +2076,9 @@ void Application::updateShaderBindingTable(const int instance)
     {
         const int idx = instance * NUM_RAYTYPES; // idx == radiance ray, idx + 1 == shadow ray
 
-        if (!m_guiMaterialParameters[instance].useCutoutTexture)
-        {
-            // Only update the header to switch the program hit group. The SBT record data field doesn't change.
-            memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-            memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-        }
-        else
-        {
-            memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadianceCutout.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-            memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadowCutout.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-        }
+        // Only update the header to switch the program hit group. The SBT record data field doesn't change.
+        memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+        memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
 
         // Make sure the SBT isn't changed while the renderer is active.
         CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
