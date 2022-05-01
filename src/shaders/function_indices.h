@@ -31,13 +31,17 @@
 #ifndef FUNCTION_INDICES_H
 #define FUNCTION_INDICES_H
 
-enum FunctionIndex
+enum FunctionIndexSpecular
 {
-  INDEX_BSDF_DIFFUSE_REFLECTION               = 0,
-  INDEX_BSDF_SPECULAR_REFLECTION              = 1,
-  INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 2,
-
-  NUM_BSDF_INDICES                            = 3
+    INDEX_BSDF_SPECULAR_REFLECTION              = 0,
+    INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 1,
+    NUM_SPECULAR_BSDF                           = 2,
 };
+
+enum FunctionIndexDiffuse
+{
+    INDEX_BSDF_DIFFUSE_REFLECTION = 2,
+};
+
 
 #endif // FUNCTION_INDICES_H

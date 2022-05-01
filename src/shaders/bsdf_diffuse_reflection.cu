@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,59 +35,50 @@
 #include "shader_common.h"
 #include "random_number_generators.h"
 
-
-__forceinline__ __device__ void alignVector(float3 const& axis, float3& w)
+__forceinline__ __device__ void alignVector(float3 const &axis, float3 &w)
 {
-  // Align w with axis.
-  const float s = copysignf(1.0f, axis.z);
-  w.z *= s;
-  const float3 h = make_float3(axis.x, axis.y, axis.z + s);
-  const float  k = dot(w, h) / (1.0f + fabsf(axis.z));
-  w = k * h - w;
+    // Align w with axis.
+    const float s = copysignf(1.0f, axis.z);
+    w.z *= s;
+    const float3 h = make_float3(axis.x, axis.y, axis.z + s);
+    const float k = dot(w, h) / (1.0f + fabsf(axis.z));
+    w = k * h - w;
 }
 
-__forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample, float3 const& axis, float3& w, float& pdf)
+__forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample, float3 const &axis, float3 &w, float &pdf)
 {
-  // Choose a point on the local hemisphere coordinates about +z.
-  const float theta = 2.0f * M_PIf * sample.x;
-  const float r = sqrtf(sample.y);
-  w.x = r * cosf(theta);
-  w.y = r * sinf(theta);
-  w.z = 1.0f - w.x * w.x - w.y * w.y;
-  w.z = (0.0f < w.z) ? sqrtf(w.z) : 0.0f;
- 
-  pdf = w.z * M_1_PIf;
+    // Choose a point on the local hemisphere coordinates about +z.
+    const float theta = 2.0f * M_PIf * sample.x;
+    const float r = sqrtf(sample.y);
+    w.x = r * cosf(theta);
+    w.y = r * sinf(theta);
+    w.z = 1.0f - w.x * w.x - w.y * w.y;
+    w.z = (0.0f < w.z) ? sqrtf(w.z) : 0.0f;
 
-  // Align with axis.
-  alignVector(axis, w);
+    pdf = w.z * M_1_PIf;
+
+    // Align with axis.
+    alignVector(axis, w);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* prd)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const &parameters, State const &state, PerRayData *prd, float3 &wi, float3 &f_over_pdf, float &pdf)
 {
-  // Cosine weighted hemisphere sampling for Lambert material.
-  unitSquareToCosineHemisphere(rng2(prd->seed), state.normal, prd->wi, prd->pdf);
+    unitSquareToCosineHemisphere(rng2(prd->seed), state.normal, wi, pdf);
 
-  if (prd->pdf <= 0.0f || dot(prd->wi, state.normalGeo) <= 0.0f)
-  {
-    prd->flags |= FLAG_TERMINATE;
-    return;
-  }
+    if (pdf <= 0.0f || dot(wi, state.normalGeo) <= 0.0f)
+    {
+        prd->flags |= FLAG_TERMINATE;
+        return;
+    }
 
-  // This would be the universal implementation for an arbitrary sampling of a diffuse surface.
-  // prd->f_over_pdf = state.albedo * (M_1_PIf * fabsf(dot(prd->wi, state.normal)) / prd->pdf); 
-  
-  // PERF Since the cosine-weighted hemisphere distribution is a perfect importance-sampling of the Lambert material,
-  // the whole term ((M_1_PIf * fabsf(dot(prd->wi, state.normal)) / prd->pdf) is always 1.0f here!
-  prd->f_over_pdf = state.albedo;
-
-  prd->flags |= FLAG_DIFFUSE; // Direct lighting will be done with multiple importance sampling.
+    f_over_pdf = state.albedo;
 }
 
 // The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction prd.wi (indirect lighting).
-extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)
+extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, State const &state, PerRayData *const prd, const float3 wiL)
 {
-  const float3 f   = state.albedo * M_1_PIf;
-  const float  pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);
+    const float3 f = state.albedo * M_1_PIf;
+    const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);
 
-  return make_float4(f, pdf);
+    return make_float4(f, pdf);
 }

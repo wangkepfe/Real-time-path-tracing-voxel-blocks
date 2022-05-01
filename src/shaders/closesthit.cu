@@ -181,34 +181,34 @@ extern "C" __global__ void __closesthit__radiance()
     thePrd->radiance = make_float3(0.0f);
 
     // When hitting a geometric light, evaluate the emission first, because this needs the previous diffuse hit's pdf.
-    if (0 <= theData->lightIndex &&       // This material is emissive and
-        (thePrd->flags & FLAG_FRONTFACE)) // we're looking at the front face.
-    {
-        const float cosTheta = dot(thePrd->wo, state.normalGeo);
-        if (DENOMINATOR_EPSILON < cosTheta)
-        {
-            LightDefinition const &light = sysParameter.lightDefinitions[theData->lightIndex];
+//     if (0 <= theData->lightIndex &&       // This material is emissive and
+//         (thePrd->flags & FLAG_FRONTFACE)) // we're looking at the front face.
+//     {
+//         const float cosTheta = dot(thePrd->wo, state.normalGeo);
+//         if (DENOMINATOR_EPSILON < cosTheta)
+//         {
+//             LightDefinition const &light = sysParameter.lightDefinitions[theData->lightIndex];
 
-            float3 emission = light.emission;
+//             float3 emission = light.emission;
 
-#if USE_NEXT_EVENT_ESTIMATION
-            const float lightPdf = (thePrd->distance * thePrd->distance) / (light.area * cosTheta); // This assumes the light.area is greater than zero.
+// #if USE_NEXT_EVENT_ESTIMATION
+//             const float lightPdf = (thePrd->distance * thePrd->distance) / (light.area * cosTheta); // This assumes the light.area is greater than zero.
 
-            // If it's an implicit light hit from a diffuse scattering event and the light emission was not returning a zero pdf (e.g. backface or edge on).
-            if ((thePrd->flags & FLAG_DIFFUSE) && DENOMINATOR_EPSILON < lightPdf)
-            {
-                // Scale the emission with the power heuristic between the initial BSDF sample pdf and this implicit light sample pdf.
-                emission *= powerHeuristic(thePrd->pdf, lightPdf);
-            }
-#endif // USE_NEXT_EVENT_ESTIMATION
+//             // If it's an implicit light hit from a diffuse scattering event and the light emission was not returning a zero pdf (e.g. backface or edge on).
+//             if ((thePrd->flags & FLAG_DIFFUSE) && DENOMINATOR_EPSILON < lightPdf)
+//             {
+//                 // Scale the emission with the power heuristic between the initial BSDF sample pdf and this implicit light sample pdf.
+//                 emission *= powerHeuristic(thePrd->pdf, lightPdf);
+//             }
+// #endif // USE_NEXT_EVENT_ESTIMATION
 
-            thePrd->radiance = emission;
+//             thePrd->radiance = emission;
 
-            // PERF End the path when hitting a light. Emissive materials with a non-black BSDF would normally just continue.
-            thePrd->flags |= FLAG_TERMINATE;
-            return;
-        }
-    }
+//             // PERF End the path when hitting a light. Emissive materials with a non-black BSDF would normally just continue.
+//             thePrd->flags |= FLAG_TERMINATE;
+//             return;
+//         }
+//     }
 
     // Start fresh with the next BSDF sample. (Either of these values remaining zero is an end-of-path condition.)
     // The pdf of the previous evene was needed for the emission calculation above.
@@ -228,12 +228,34 @@ extern "C" __global__ void __closesthit__radiance()
                                   // state.albedo *= powf(texColor, 2.2f); // sRGB gamma correction done manually.
     }
 
-    // Only the last diffuse hit is tracked for multiple importance sampling of implicit light hits.
-    thePrd->flags = (thePrd->flags & ~FLAG_DIFFUSE) | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
+    thePrd->flags = (thePrd->flags & ~FLAG_DIFFUSE); // Only the last diffuse hit is tracked for multiple importance sampling of implicit light hits.
+    thePrd->flags = thePrd->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 
-    const int indexBSDF = NUM_LIGHT_TYPES + parameters.indexBSDF * 2;
+    const int indexBsdfSample = NUM_LIGHT_TYPES + parameters.indexBSDF;
+    // const int indexBsdfEval = indexBsdfSample + 1;
 
-    optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *>(indexBSDF, parameters, state, thePrd);
+    const bool isDiffuse = parameters.indexBSDF >= NUM_SPECULAR_BSDF;
+
+    float3 surf_wi;
+    float3 surf_f_over_pdf;
+    float surf_pdf;
+
+    optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *, float3&, float3&, float&>(indexBsdfSample, parameters, state, thePrd, surf_wi, surf_f_over_pdf, surf_pdf);
+
+    if (isDiffuse)
+    {
+        thePrd->flags |= FLAG_DIFFUSE;
+
+        thePrd->wi = surf_wi;
+        thePrd->f_over_pdf = surf_f_over_pdf;
+        thePrd->pdf = surf_pdf;
+    }
+    else
+    {
+        thePrd->wi = surf_wi;
+        thePrd->f_over_pdf = surf_f_over_pdf;
+        thePrd->pdf = surf_pdf;
+    }
 
 #if USE_NEXT_EVENT_ESTIMATION
     // Direct lighting if the sampled BSDF was diffuse and any light is in the scene.

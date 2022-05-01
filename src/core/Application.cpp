@@ -1138,12 +1138,6 @@ void Application::guiWindow()
                 {
                     changed = true;
                 }
-                if (ImGui::Checkbox("Use Cutout Texture", &parameters.useCutoutTexture))
-                {
-                    // This chnages the hit group in the Shader Binding Table between opaque and cutout. (Opaque renders faster.)
-                    updateShaderBindingTable(i);
-                    changed = true; // This triggers the sysParameter.textureCutout object ID update.
-                }
                 if (ImGui::Checkbox("Thin-Walled", &parameters.thinwalled)) // Set this to true when using cutout opacity. Refracting materials won't look right with cutouts otherwise.
                 {
                     changed = true;
@@ -1405,7 +1399,6 @@ void Application::updateMaterialParameters()
         dst.indexBSDF = src.indexBSDF;
         dst.albedo = src.albedo;
         dst.textureAlbedo = (src.useAlbedoTexture) ? m_textureAlbedo->getTextureObject() : 0;
-        dst.textureCutout = (src.useCutoutTexture) ? m_textureCutout->getTextureObject() : 0;
         dst.flags = (src.thinwalled) ? FLAG_THINWALLED : 0;
         // Calculate the effective absorption coefficient from the GUI parameters. This is one reason why there are two structures.
         // Prevent logf(0.0f) which results in infinity.
@@ -1455,7 +1448,6 @@ void Application::initMaterials()
     parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
     parameters.albedo = make_float3(0.5f);                // Grey. Modulates the albedo texture.
     parameters.useAlbedoTexture = true;
-    parameters.useCutoutTexture = false;
     parameters.thinwalled = false;
     parameters.absorptionColor = make_float3(1.0f);
     parameters.volumeDistanceScale = 1.0f;
@@ -1463,21 +1455,19 @@ void Application::initMaterials()
     m_guiMaterialParameters.push_back(parameters); // 0
 
     // Water material for the box.
-    parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-    parameters.albedo = make_float3(1.0f);
-    parameters.useAlbedoTexture = false;
-    parameters.useCutoutTexture = false;
-    parameters.thinwalled = false;
-    parameters.absorptionColor = make_float3(0.75f, 0.75f, 0.95f); // Blue
-    parameters.volumeDistanceScale = 1.0f;
-    parameters.ior = 1.33f;                        // Water
-    m_guiMaterialParameters.push_back(parameters); // 1
+    // parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
+    // parameters.albedo = make_float3(1.0f);
+    // parameters.useAlbedoTexture = false;
+    // parameters.thinwalled = false;
+    // parameters.absorptionColor = make_float3(0.75f, 0.75f, 0.95f); // Blue
+    // parameters.volumeDistanceScale = 1.0f;
+    // parameters.ior = 1.33f;                        // Water
+    // m_guiMaterialParameters.push_back(parameters); // 1
 
     // Glass material for the sphere inside that box to show nested materials!
     parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
     parameters.albedo = make_float3(1.0f);
     parameters.useAlbedoTexture = false;
-    parameters.useCutoutTexture = false;
     parameters.thinwalled = false;
     parameters.absorptionColor = make_float3(0.5f, 0.75f, 0.5f); // Green
     parameters.volumeDistanceScale = 1.0f;
@@ -1488,7 +1478,6 @@ void Application::initMaterials()
     parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
     parameters.albedo = make_float3(0.75f);
     parameters.useAlbedoTexture = false;
-    parameters.useCutoutTexture = false;
     parameters.thinwalled = true; // Materials with cutout opacity should always be thinwalled.
     parameters.absorptionColor = make_float3(0.980392f, 0.729412f, 0.470588f);
     parameters.volumeDistanceScale = 1.0f;
@@ -1497,11 +1486,10 @@ void Application::initMaterials()
 
     // Tinted mirror material.
     parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-    parameters.albedo = make_float3(0.462745f, 0.72549f, 0.0f);
+    parameters.albedo = make_float3(0.9f, 0.9f, 0.9f);
     parameters.useAlbedoTexture = false;
-    parameters.useCutoutTexture = false;
     parameters.thinwalled = false;
-    parameters.absorptionColor = make_float3(0.9f, 0.8f, 0.8f); // Light red.
+    parameters.absorptionColor = make_float3(0.9f, 0.9f, 0.9f); // Light red.
     parameters.volumeDistanceScale = 1.0f;
     parameters.ior = 1.33f;                        // Water
     m_guiMaterialParameters.push_back(parameters); // 4
@@ -1510,7 +1498,6 @@ void Application::initMaterials()
     parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
     parameters.albedo = make_float3(0.0f);
     parameters.useAlbedoTexture = false;
-    parameters.useCutoutTexture = false;
     parameters.thinwalled = false;
     parameters.absorptionColor = make_float3(1.0f);
     parameters.volumeDistanceScale = 1.0f;
@@ -1565,7 +1552,7 @@ void Application::initPipeline()
 
     m_instances.push_back(instance); // Box
 
-#if 1
+#if 0
     // This is not instanced to match the original optixIntro_07 example for exact performance comparisons.
     OptixTraversableHandle geoNested = createSphere(180, 90, 1.0f, M_PIf);
 
@@ -1794,24 +1781,20 @@ void Application::initPipeline()
     pgd.callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
     programGroupDescCallables.push_back(pgd);
 
+    pgd.callables.moduleDC = moduleSpecularReflection;
+    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
+    programGroupDescCallables.push_back(pgd);
+    pgd.callables.moduleDC = moduleSpecularReflectionTransmission;
+    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
+    programGroupDescCallables.push_back(pgd);
+
     pgd.callables.moduleDC = moduleDiffuseReflection;
     pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection";
     programGroupDescCallables.push_back(pgd);
     pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection";
     programGroupDescCallables.push_back(pgd);
 
-    pgd.callables.moduleDC = moduleSpecularReflection;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_specular_reflection"; // black
-    programGroupDescCallables.push_back(pgd);
 
-    pgd.callables.moduleDC = moduleSpecularReflectionTransmission;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.moduleDC = moduleSpecularReflection;                                      // No implementation for __direct_callable__eval_bsdf_specular_reflection_transmission needed.
-    pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_specular_reflection"; // black
-    programGroupDescCallables.push_back(pgd);
 
     std::vector<OptixProgramGroup> programGroupCallables(programGroupDescCallables.size());
 

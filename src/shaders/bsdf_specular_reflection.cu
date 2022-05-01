@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,22 +34,16 @@
 #include "material_parameter.h"
 #include "shader_common.h"
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData* prd)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const &parameters, State const &state, PerRayData *prd, float3 &wi, float3 &f_over_pdf, float &pdf)
 {
-  prd->wi = reflect(-prd->wo, state.normal);
+    wi = reflect(-prd->wo, state.normal);
 
-  if (dot(prd->wi, state.normalGeo) <= 0.0f) // Do not sample opaque materials below the geometric surface.
-  {
-    prd->flags |= FLAG_TERMINATE;
-    return;
-  }
+    if (dot(wi, state.normalGeo) <= 0.0f) // Do not sample opaque materials below the geometric surface.
+    {
+        prd->flags |= FLAG_TERMINATE;
+        return;
+    }
 
-  prd->f_over_pdf = state.albedo;
-  prd->pdf        = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
-}
-
-// This is actually never reached, because the FLAG_DIFFUSE flag is not set when a specular BSDF is has been sampled.
-extern "C" __device__ float4 __direct_callable__eval_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)
-{
-  return make_float4(0.0f);
+    f_over_pdf = state.albedo;
+    pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
 }

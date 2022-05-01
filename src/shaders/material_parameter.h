@@ -42,7 +42,7 @@ struct MaterialParameter
   cudaTextureObject_t textureCutout; 
 
   // 4 byte alignment.
-  FunctionIndex indexBSDF;  // BSDF index to use in the closest hit program
+  int           indexBSDF;  // BSDF index to use in the closest hit program
   float3        albedo;     // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
   float3        absorption; // Absorption coefficient
   float         ior;        // Index of refraction
