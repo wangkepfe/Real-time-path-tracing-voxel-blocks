@@ -752,8 +752,6 @@ void Application::restartAccumulation()
 
 bool Application::render()
 {
-    bool repaint = false;
-
     bool cameraChanged = m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
                                                     m_systemParameter.cameraU,
                                                     m_systemParameter.cameraV,
@@ -764,7 +762,7 @@ bool Application::render()
     }
 
     // Continue manual accumulation rendering if there is no limit (m_frames == 0) or the number of frames has not been reached.
-    if (0 == m_frames || m_iterationIndex < m_frames)
+    // if (0 == m_frames || m_iterationIndex < m_frames)
     {
         // Update only the sysParameter.iterationIndex.
         m_systemParameter.iterationIndex = m_iterationIndex++;
@@ -789,8 +787,6 @@ bool Application::render()
         }
     }
 
-    // Only update the texture when a restart happened or one second passed to reduce required bandwidth.
-    // if (m_presentNext)
     {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_hdrTexture); // Manual accumulation always renders into the m_hdrTexture.
@@ -805,38 +801,9 @@ bool Application::render()
             CUDA_CHECK(cudaMemcpy((void *)m_outputBuffer, m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height, cudaMemcpyDeviceToHost));
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, m_outputBuffer); // RGBA32F
         }
-
-        repaint = true; // Indicate that there is a new image.
-
-        m_presentNext = m_present;
     }
 
-//     double seconds = m_timer.getTime();
-// #if 1
-//     // Show the accumulation of the first half second to get some refinement after interaction.
-//     if (seconds < 0.5)
-//     {
-//         m_presentAtSecond = 1.0;
-//         m_presentNext = true;
-//     }
-//     else
-// #endif
-//         if (m_presentAtSecond < seconds)
-//     {
-//         m_presentAtSecond = ceil(seconds);
-
-//         const double fps = double(m_iterationIndex) / seconds;
-
-//         std::ostringstream stream;
-//         stream.precision(3); // Precision is # digits in fraction part.
-//         // m_iterationIndex has already been incremented for the last rendered frame, so it is the actual framecount here.
-//         stream << std::fixed << m_iterationIndex << " / " << seconds << " = " << fps << " fps";
-//         std::cout << stream.str() << '\n';
-
-//         m_presentNext = true; // Present at least every second.
-//     }
-
-    return repaint;
+    return true;
 }
 
 void Application::display()
