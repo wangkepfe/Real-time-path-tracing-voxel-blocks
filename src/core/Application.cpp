@@ -790,7 +790,7 @@ bool Application::render()
     }
 
     // Only update the texture when a restart happened or one second passed to reduce required bandwidth.
-    if (m_presentNext)
+    // if (m_presentNext)
     {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_hdrTexture); // Manual accumulation always renders into the m_hdrTexture.
@@ -811,30 +811,30 @@ bool Application::render()
         m_presentNext = m_present;
     }
 
-    double seconds = m_timer.getTime();
-#if 1
-    // Show the accumulation of the first half second to get some refinement after interaction.
-    if (seconds < 0.5)
-    {
-        m_presentAtSecond = 1.0;
-        m_presentNext = true;
-    }
-    else
-#endif
-        if (m_presentAtSecond < seconds)
-    {
-        m_presentAtSecond = ceil(seconds);
+//     double seconds = m_timer.getTime();
+// #if 1
+//     // Show the accumulation of the first half second to get some refinement after interaction.
+//     if (seconds < 0.5)
+//     {
+//         m_presentAtSecond = 1.0;
+//         m_presentNext = true;
+//     }
+//     else
+// #endif
+//         if (m_presentAtSecond < seconds)
+//     {
+//         m_presentAtSecond = ceil(seconds);
 
-        const double fps = double(m_iterationIndex) / seconds;
+//         const double fps = double(m_iterationIndex) / seconds;
 
-        std::ostringstream stream;
-        stream.precision(3); // Precision is # digits in fraction part.
-        // m_iterationIndex has already been incremented for the last rendered frame, so it is the actual framecount here.
-        stream << std::fixed << m_iterationIndex << " / " << seconds << " = " << fps << " fps";
-        std::cout << stream.str() << '\n';
+//         std::ostringstream stream;
+//         stream.precision(3); // Precision is # digits in fraction part.
+//         // m_iterationIndex has already been incremented for the last rendered frame, so it is the actual framecount here.
+//         stream << std::fixed << m_iterationIndex << " / " << seconds << " = " << fps << " fps";
+//         std::cout << stream.str() << '\n';
 
-        m_presentNext = true; // Present at least every second.
-    }
+//         m_presentNext = true; // Present at least every second.
+//     }
 
     return repaint;
 }
