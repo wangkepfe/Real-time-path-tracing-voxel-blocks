@@ -99,15 +99,15 @@ __device__ __inline__ bool TraceNextPath(PerRayData& prd, float4* absorptionStac
     throughput *= prd.f_over_pdf;
 
     // Unbiased Russian Roulette path termination.
-    if (RussionRouletteStartBounce <= depth) // Start termination after a minimum number of bounces.
-    {
-        const float probability = fmaxf(throughput); // Other options: // intensity(throughput); // fminf(0.5f, intensity(throughput));
-        if (probability < rng(prd.seed))             // Paths with lower probability to continue are terminated earlier.
-        {
-            return false;
-        }
-        throughput /= probability; // Path isn't terminated. Adjust the throughput so that the average is right again.
-    }
+    // if (RussionRouletteStartBounce <= depth) // Start termination after a minimum number of bounces.
+    // {
+    //     const float probability = fmaxf(throughput); // Other options: // intensity(throughput); // fminf(0.5f, intensity(throughput));
+    //     if (probability < rng(prd.seed))             // Paths with lower probability to continue are terminated earlier.
+    //     {
+    //         return false;
+    //     }
+    //     throughput /= probability; // Path isn't terminated. Adjust the throughput so that the average is right again.
+    // }
 
     // Adjust the material volume stack if the geometry is not thin-walled but a border between two volumes
     // and the outgoing ray direction was a transmission.

@@ -122,6 +122,14 @@ __forceinline__ __device__ float3 transformNormal(const float4 *m, float3 const 
 
 extern "C" __global__ void __closesthit__radiance()
 {
+    PerRayData *thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+
+    if (thePrd->flags & FLAG_SHADOW)
+    {
+        thePrd->flags |= FLAG_TERMINATE;
+        return;
+    }
+
     GeometryInstanceData *theData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
 
     const unsigned int thePrimtiveIndex = optixGetPrimitiveIndex();
@@ -154,8 +162,6 @@ extern "C" __global__ void __closesthit__radiance()
     state.normalGeo = normalize(transformNormal(worldToObject, ng));
     // state.tangent   = normalize(transformVector(objectToWorld, tg));
     state.normal = normalize(transformNormal(worldToObject, ns));
-
-    PerRayData *thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
     thePrd->distance = optixGetRayTmax(); // Return the current path segment distance, needed for absorption calculations in the integrator.
 
@@ -232,29 +238,60 @@ extern "C" __global__ void __closesthit__radiance()
     thePrd->flags = thePrd->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 
     const int indexBsdfSample = NUM_LIGHT_TYPES + parameters.indexBSDF;
-    // const int indexBsdfEval = indexBsdfSample + 1;
 
     const bool isDiffuse = parameters.indexBSDF >= NUM_SPECULAR_BSDF;
 
-    float3 surf_wi;
-    float3 surf_f_over_pdf;
-    float surf_pdf;
+    float3 surfWi;
+    float3 surfBsdfOverPdf;
+    float surfPdf;
 
-    optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *, float3&, float3&, float&>(indexBsdfSample, parameters, state, thePrd, surf_wi, surf_f_over_pdf, surf_pdf);
+    optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *, float3&, float3&, float&>(indexBsdfSample, parameters, state, thePrd, surfWi, surfBsdfOverPdf, surfPdf);
 
     if (isDiffuse)
     {
         thePrd->flags |= FLAG_DIFFUSE;
 
-        thePrd->wi = surf_wi;
-        thePrd->f_over_pdf = surf_f_over_pdf;
-        thePrd->pdf = surf_pdf;
+        const int numLights = sysParameter.numLights;
+        const float2 randNum = rng2(thePrd->seed);
+        const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+        LightDefinition const &light = sysParameter.lightDefinitions[indexLight];
+        const int indexCallable = light.type;
+        LightSample lightSample = optixDirectCall<LightSample, LightDefinition const &, const float3, const float2>(indexCallable, light, thePrd->pos, randNum);
+
+        float misLightSurf = powerHeuristic(lightSample.pdf, surfPdf);
+        if (0.0f < lightSample.pdf && rng(thePrd->seed) < misLightSurf) // Useful light sample?
+        {
+            // Evaluate the BSDF in the light sample direction. Normally cheaper than shooting rays.
+            // Returns BSDF f in .xyz and the BSDF pdf in .w
+            // BSDF eval function is one index after the sample fucntion.
+            const int indexBsdfEval = indexBsdfSample + 1;
+            const float4 lightBsdfAndPdf = optixDirectCall<float4, MaterialParameter const &, State const &, PerRayData const *, const float3>(indexBsdfEval, parameters, state, thePrd, lightSample.direction);
+            float3 lightBsdf = make_float3(lightBsdfAndPdf);
+            float lightPdf = lightBsdfAndPdf.w;
+
+            if (0.0f < lightPdf && isNotNull(lightBsdf))
+            {
+                thePrd->flags |= FLAG_SHADOW;
+
+                const float misWeight = powerHeuristic(lightSample.pdf, lightPdf);
+
+                thePrd->wi = lightSample.direction;
+                thePrd->f_over_pdf = misWeight * lightBsdf / lightSample.pdf;
+                thePrd->pdf = lightSample.pdf;
+            }
+        }
+        else
+        {
+            thePrd->wi = surfWi;
+            thePrd->f_over_pdf = surfBsdfOverPdf;
+            thePrd->pdf = surfPdf;
+        }
     }
     else
     {
-        thePrd->wi = surf_wi;
-        thePrd->f_over_pdf = surf_f_over_pdf;
-        thePrd->pdf = surf_pdf;
+        thePrd->wi = surfWi;
+        thePrd->f_over_pdf = surfBsdfOverPdf;
+        thePrd->pdf = surfPdf;
     }
 
 #if USE_NEXT_EVENT_ESTIMATION
@@ -270,7 +307,7 @@ extern "C" __global__ void __closesthit__radiance()
 
         LightDefinition const &light = sysParameter.lightDefinitions[indexLight];
 
-        const int indexCallable = Nlight.type;
+        const int indexCallable = light.type;
 
         LightSample lightSample = optixDirectCall<LightSample, LightDefinition const &, const float3, const float2>(indexCallable, light, thePrd->pos, sample);
 
