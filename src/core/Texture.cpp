@@ -5,13 +5,13 @@
 #include "shaders/vector_math.h"
 
 #include "core/Texture.h"
-#include "core/CheckMacros.h"
+#include "core/DebugUtils.h"
 
 #include <algorithm>
 #include <cstring>
 #include <iostream>
 
-#include "core/MyAssert.h"
+#include "cassert"
 
 
 
@@ -46,7 +46,7 @@ static unsigned int determineHostEncoding(int format, int type) // format and ty
       encoding = ENC_RED_0 | ENC_GREEN_0 | ENC_BLUE_0 | ENC_ALPHA_1 | ENC_LUM_NONE | ENC_CHANNELS_2; // Source RGB from L to expand to (L, L, L, A).
       break;
     default:
-      MY_ASSERT(!"Unsupported user pixel format.");
+      assert(!"Unsupported user pixel format.");
       encoding = ENC_RED_NONE | ENC_GREEN_NONE | ENC_BLUE_NONE | ENC_ALPHA_NONE | ENC_LUM_NONE | ENC_INVALID; // Error! Invalid encoding.
       break;
   }
@@ -75,7 +75,7 @@ static unsigned int determineHostEncoding(int format, int type) // format and ty
       encoding |= ENC_TYPE_FLOAT;
       break;
     default:
-      MY_ASSERT(!"Unsupported user data format.");
+      assert(!"Unsupported user data format.");
       encoding |= ENC_INVALID; // Error! Invalid encoding.
       break;
   }
@@ -121,7 +121,7 @@ static unsigned int determineDeviceEncoding(int format, int type) // format and 
       encoding = ENC_RED_0 | ENC_GREEN_1 | ENC_BLUE_2 | ENC_ALPHA_3 | ENC_LUM_NONE | ENC_CHANNELS_4; // Expands to (L, L, L, A)
       break;
     default:
-      MY_ASSERT(!"Unsupported user pixel format.");
+      assert(!"Unsupported user pixel format.");
       encoding = ENC_RED_NONE | ENC_GREEN_NONE | ENC_BLUE_NONE | ENC_ALPHA_NONE | ENC_LUM_NONE | ENC_INVALID; // Error! Invalid encoding.
       break;
   }
@@ -151,7 +151,7 @@ static unsigned int determineDeviceEncoding(int format, int type) // format and 
       break;
     // DAR FIXME Add IL_HALF for EXR images. Why are they loaded as IL_FLOAT?
     default:
-      MY_ASSERT(!"Unsupported user data format.");
+      assert(!"Unsupported user data format.");
       encoding |= ENC_INVALID; // Error! Invalid encoding.
       break;
   }
@@ -200,7 +200,7 @@ static cudaChannelFormatDesc determineChannelFormat(const unsigned int deviceEnc
       kind = cudaChannelFormatKindFloat;
       break;
     default:
-      MY_ASSERT(!"determineChannelFormat() Unexpected data type.");
+      assert(!"determineChannelFormat() Unexpected data type.");
       break;
   }
 
@@ -352,7 +352,7 @@ D adjust(S value)
           shifts -= srcBits;
         }
         // Both bit sizes are even multiples of 8, there are no trailing bits here.
-        MY_ASSERT(shifts == -srcBits);
+        assert(shifts == -srcBits);
       }
     }
   }
@@ -467,7 +467,7 @@ void remapFromFloat(void *dst, unsigned int dstEncoding, const void *src, unsign
             float value = psrc[s];
             if (fixedPoint)
             {
-              MY_ASSERT(std::numeric_limits<D>::is_integer); // Destination with float format cannot be fixed point.
+              assert(std::numeric_limits<D>::is_integer); // Destination with float format cannot be fixed point.
 
               float minimum = (std::numeric_limits<D>::is_signed) ? -1.0f : 0.0f;
               value = std::min(std::max(minimum, value), 1.0f);
@@ -614,7 +614,7 @@ static void convert(void *dst, unsigned int deviceEncoding, const void *src, uns
   {
     unsigned int dstType = (deviceEncoding >> ENC_TYPE_SHIFT) & ENC_MASK;
     unsigned int srcType = (hostEncoding   >> ENC_TYPE_SHIFT) & ENC_MASK;
-    MY_ASSERT(dstType < 7 && srcType < 7);
+    assert(dstType < 7 && srcType < 7);
 
     PFNREMAP pfn = remappers[dstType][srcType];
 
@@ -705,7 +705,7 @@ Texture::~Texture()
 // cudaAddressModeWrap or cudaAddressModeClamp
 void Texture::setAddressMode(cudaTextureAddressMode s, cudaTextureAddressMode t, cudaTextureAddressMode r)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.addressMode[0] = s;
   m_textureDescription.addressMode[1] = t;
@@ -715,7 +715,7 @@ void Texture::setAddressMode(cudaTextureAddressMode s, cudaTextureAddressMode t,
 // cudaFilterModePoint or cudaFilterModeLinear
 void Texture::setFilterMode(cudaTextureFilterMode filter, cudaTextureFilterMode filterMipmap)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.filterMode = filter;
   m_textureDescription.filterMode = filterMipmap;
@@ -724,21 +724,21 @@ void Texture::setFilterMode(cudaTextureFilterMode filter, cudaTextureFilterMode 
 // cudaReadModeElementType or cudaReadModeNormalizedFloat
 void Texture::setReadMode(cudaTextureReadMode mode)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.readMode = mode;
 }
 
 void Texture::setSRGB(bool srgb)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.sRGB = (srgb) ? 1 : 0;
 }
 
 void Texture::setBorderColor(float r, float g, float b, float a)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.borderColor[0] = r;
   m_textureDescription.borderColor[1] = g;
@@ -748,21 +748,21 @@ void Texture::setBorderColor(float r, float g, float b, float a)
 
 void Texture::setNormalizedCoords(bool normalized)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.normalizedCoords = (normalized) ? 1 : 0;
 }
 
 void Texture::setMaxAnisotropy(unsigned int aniso)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.maxAnisotropy = aniso;
 }
 
 void Texture::setMipmapLevelBiasMinMax(float bias, float minimum, float maximum)
 {
-  MY_ASSERT(m_textureObject == 0);
+  assert(m_textureObject == 0);
 
   m_textureDescription.mipmapLevelBias     = bias;
   m_textureDescription.minMipmapLevelClamp = minimum;
@@ -965,7 +965,7 @@ bool Texture::create2D(const Picture* picture, const unsigned int flags)
 
 bool Texture::create3D(const Picture* picture, const unsigned int flags)
 {
-  MY_ASSERT((flags & IMAGE_FLAG_LAYER) == 0); // There are no layered 3D textures. The flag is ignored.
+  assert((flags & IMAGE_FLAG_LAYER) == 0); // There are no layered 3D textures. The flag is ignored.
 
   cudaResourceDesc resourceDescription = {}; // For the final texture object creation.
 
@@ -1336,7 +1336,7 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
     success = createEnv(picture, flags);
   }
 
-  MY_ASSERT(success);
+  assert(success);
   return success;
 }
 

@@ -1,7 +1,7 @@
 #include "shaders/app_config.h"
 
 #include "core/Application.h"
-#include "core/CheckMacros.h"
+#include "core/DebugUtils.h"
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -29,7 +29,7 @@
 // Only needed for the FLAG_THINWALLED
 #include "shaders/per_ray_data.h"
 
-#include <core/MyAssert.h>
+#include <cassert>
 
 #include "core/Backend.h"
 
@@ -330,7 +330,7 @@ void Application::init(GLFWwindow *window)
     style.Colors[ImGuiCol_NavWindowingHighlight] = ImVec4(r * 1.0f, g * 1.0f, b * 1.0f, 1.0f);
 #endif
 
-    initOpenGL();
+    // initOpenGL();
 
     m_isValid = initOptiX();
 }
@@ -421,7 +421,7 @@ void Application::reshape(int width, int height)
             CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource)); // DAR Redundant. Must be done on each map anyway.
             CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
 
-            MY_ASSERT(m_width * m_height * sizeof(float) * 4 <= size);
+            assert(m_width * m_height * sizeof(float) * 4 <= size);
         }
         else
         {
@@ -591,7 +591,7 @@ void Application::initOpenGL()
     {
         // PBO for CUDA-OpenGL interop.
         glGenBuffers(1, &m_pbo);
-        MY_ASSERT(m_pbo != 0);
+        assert(m_pbo != 0);
 
         // Buffer size must be > 0 or OptiX can't create a buffer from it.
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
@@ -600,7 +600,7 @@ void Application::initOpenGL()
     }
 
     glGenTextures(1, &m_hdrTexture);
-    MY_ASSERT(m_hdrTexture != 0);
+    assert(m_hdrTexture != 0);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
@@ -639,10 +639,10 @@ void Application::initOpenGL()
             2, 3, 0};
 
     glGenBuffers(1, &m_vboAttributes);
-    MY_ASSERT(m_vboAttributes != 0);
+    assert(m_vboAttributes != 0);
 
     glGenBuffers(1, &m_vboIndices);
-    MY_ASSERT(m_vboIndices != 0);
+    assert(m_vboIndices != 0);
 
     // Setup the vertex arrays from the interleaved vertex attributes.
     glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
@@ -766,45 +766,43 @@ bool Application::render()
 
     // Continue manual accumulation rendering if there is no limit (m_frames == 0) or the number of frames has not been reached.
     // if (0 == m_frames || m_iterationIndex < m_frames)
-    {
-        // Update only the sysParameter.iterationIndex.
-        m_systemParameter.iterationIndex = m_iterationIndex++;
 
-        CUDA_CHECK(cudaMemcpy((void *)&m_d_systemParameter->iterationIndex, &m_systemParameter.iterationIndex, sizeof(int), cudaMemcpyHostToDevice));
+    // Update only the sysParameter.iterationIndex.
+    m_systemParameter.iterationIndex = m_iterationIndex++;
 
-        if (m_interop)
-        {
-            size_t size;
+    CUDA_CHECK(cudaMemcpy((void *)&m_d_systemParameter->iterationIndex, &m_systemParameter.iterationIndex, sizeof(int), cudaMemcpyHostToDevice));
 
-            CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-            CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource)); // The pointer can change on every map!
-            CUDA_CHECK(cudaMemcpy((void *)&m_d_systemParameter->outputBuffer, &m_systemParameter.outputBuffer, sizeof(void *), cudaMemcpyHostToDevice));
+    // size_t size;
 
-            OPTIX_CHECK(m_api.optixLaunch(m_pipeline, m_cudaStream, (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+    // CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
+    // CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource));
 
-            CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-        }
-        else
-        {
-            OPTIX_CHECK(m_api.optixLaunch(m_pipeline, m_cudaStream, (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
-        }
-    }
 
-    {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, m_hdrTexture); // Manual accumulation always renders into the m_hdrTexture.
+    CUDA_CHECK(cudaMemcpy((void *)&m_d_systemParameter->outputBuffer, &m_systemParameter.outputBuffer, sizeof(void *), cudaMemcpyHostToDevice));
 
-        if (m_interop)
-        {
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, (void *)0); // RGBA32F from byte offset 0 in the pixel unpack buffer.
-        }
-        else
-        {
-            CUDA_CHECK(cudaMemcpy((void *)m_outputBuffer, m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height, cudaMemcpyDeviceToHost));
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, m_outputBuffer); // RGBA32F
-        }
-    }
+    OPTIX_CHECK(m_api.optixLaunch(m_pipeline, m_cudaStream, (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+
+
+
+    // CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
+
+
+
+    // {
+    //     glActiveTexture(GL_TEXTURE0);
+    //     glBindTexture(GL_TEXTURE_2D, m_hdrTexture); // Manual accumulation always renders into the m_hdrTexture.
+
+    //     if (m_interop)
+    //     {
+    //         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
+    //         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, (void *)0); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+    //     }
+    //     else
+    //     {
+    //         CUDA_CHECK(cudaMemcpy((void *)m_outputBuffer, m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height, cudaMemcpyDeviceToHost));
+    //         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, m_outputBuffer); // RGBA32F
+    //     }
+    // }
 
     return true;
 }
@@ -921,7 +919,7 @@ void Application::initGLSL()
         checkInfoLog(vs, m_glslVS);
 
         glGetShaderiv(m_glslVS, GL_COMPILE_STATUS, &vsCompiled);
-        MY_ASSERT(vsCompiled);
+        assert(vsCompiled);
     }
 
     m_glslFS = glCreateShader(GL_FRAGMENT_SHADER);
@@ -934,7 +932,7 @@ void Application::initGLSL()
         checkInfoLog(fs, m_glslFS);
 
         glGetShaderiv(m_glslFS, GL_COMPILE_STATUS, &fsCompiled);
-        MY_ASSERT(fsCompiled);
+        assert(fsCompiled);
     }
 
     m_glslProgram = glCreateProgram();
@@ -955,17 +953,17 @@ void Application::initGLSL()
         checkInfoLog("m_glslProgram", m_glslProgram);
 
         glGetProgramiv(m_glslProgram, GL_LINK_STATUS, &programLinked);
-        MY_ASSERT(programLinked);
+        assert(programLinked);
 
         if (programLinked)
         {
             glUseProgram(m_glslProgram);
 
             m_positionLocation = glGetAttribLocation(m_glslProgram, "attrPosition");
-            MY_ASSERT(m_positionLocation != -1);
+            assert(m_positionLocation != -1);
 
             m_texCoordLocation = glGetAttribLocation(m_glslProgram, "attrTexCoord");
-            MY_ASSERT(m_texCoordLocation != -1);
+            assert(m_texCoordLocation != -1);
 
             glUniform1i(glGetUniformLocation(m_glslProgram, "samplerHDR"), 0); // Always using texture image unit 0 for the display texture.
             glUniform1f(glGetUniformLocation(m_glslProgram, "invGamma"), 1.0f / m_gamma);
@@ -1356,7 +1354,7 @@ std::string Application::readPTX(std::string const &filename)
 // Convert the GUI material parameters to the device side structure and upload them into the m_systemParameter.materialParameters device pointer.
 void Application::updateMaterialParameters()
 {
-    MY_ASSERT((sizeof(MaterialParameter) & 15) == 0); // Verify float4 alignment.
+    assert((sizeof(MaterialParameter) & 15) == 0); // Verify float4 alignment.
 
     std::vector<MaterialParameter> materialParameters(m_guiMaterialParameters.size());
 
@@ -1477,8 +1475,8 @@ void Application::initMaterials()
 
 void Application::initPipeline()
 {
-    MY_ASSERT((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
-    MY_ASSERT((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
+    assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
+    assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
     // INSTANCES
 
@@ -1919,24 +1917,24 @@ void Application::initPipeline()
     // Setup "sysParameter" data.
     m_systemParameter.topObject = m_root;
 
-    if (m_interop)
-    {
-        CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&m_cudaGraphicsResource, m_pbo, cudaGraphicsRegisterFlagsNone)); // No flags for read-write access during accumulation.
+    // if (m_interop)
+    // {
+    //     CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&m_cudaGraphicsResource, m_pbo, cudaGraphicsRegisterFlagsNone)); // No flags for read-write access during accumulation.
 
-        size_t size;
+    //     size_t size;
 
-        CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-        CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource));
-        CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
+    //     CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
+    //     CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource));
+    //     CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
 
-        MY_ASSERT(m_width * m_height * sizeof(float) * 4 <= size);
-    }
-    else
-    {
-        CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height)); // No data initialization, that is done at iterationIndex == 0.
-    }
+    //     assert(m_width * m_height * sizeof(float) * 4 <= size);
+    // }
+    // else
+    // {
+    //     CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height)); // No data initialization, that is done at iterationIndex == 0.
+    // }
 
-    MY_ASSERT((sizeof(LightDefinition) & 15) == 0); // Check alignment to float4
+    assert((sizeof(LightDefinition) & 15) == 0); // Check alignment to float4
     CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
     CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
 

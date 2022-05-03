@@ -11,7 +11,7 @@
 #include <cstring>
 #include <iostream>
 
-#include "core/MyAssert.h"
+#include "cassert"
 
 
 static unsigned int numberOfComponents(int format)
@@ -34,7 +34,7 @@ static unsigned int numberOfComponents(int format)
       return 2;
 
     default:
-      MY_ASSERT(!"Unsupported image data format.");
+      assert(!"Unsupported image data format.");
       return 0;
   }
 }
@@ -57,7 +57,7 @@ static unsigned int sizeOfComponents(int type)
       return 4;
 
     default:
-      MY_ASSERT(!"Unsupported image data type.");
+      assert(!"Unsupported image data type.");
       return 0;
   }
 }
@@ -127,7 +127,7 @@ unsigned int Picture::getNumberOfImages() const
 
 unsigned int Picture::getNumberOfLevels(unsigned int index) const
 {
-  MY_ASSERT(index < m_images.size());
+  assert(index < m_images.size());
   return static_cast<unsigned int>(m_images[index].size());
 }
 
@@ -212,7 +212,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
   if (foundFile.empty())
   {
     std::cerr << "ERROR Picture::load(): " << filename << " not found\n";
-    MY_ASSERT(!"Picture not found");
+    assert(!"Picture not found");
     return success;
   }
 
@@ -251,7 +251,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
 
     ilBindImage(imageID);
     ilActiveImage(0); // Get the frst image, potential LOD 0.
-    MY_ASSERT(IL_NO_ERROR == ilGetError());
+    assert(IL_NO_ERROR == ilGetError());
 
     // Get the size of the LOD 0 image.
     unsigned int w = ilGetInteger(IL_IMAGE_WIDTH);
@@ -276,7 +276,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
         {
           ilBindImage(imageID);
           ilActiveImage(i);
-          MY_ASSERT(IL_NO_ERROR == ilGetError());
+          assert(IL_NO_ERROR == ilGetError());
 
           // Next image extents.
           const unsigned int ww = ilGetInteger(IL_IMAGE_WIDTH);
@@ -325,7 +325,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
       {
         ilBindImage(imageID);
         ilActiveImage(image);
-        MY_ASSERT(IL_NO_ERROR == ilGetError());
+        assert(IL_NO_ERROR == ilGetError());
 
         if (image == 0)
         {
@@ -333,7 +333,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
           h0 = ilGetInteger(IL_IMAGE_HEIGHT);
           d0 = ilGetInteger(IL_IMAGE_DEPTH);
 
-          MY_ASSERT(0 < d0); // This case of no image data is handled later.
+          assert(0 < d0); // This case of no image data is handled later.
 
           if (w0 != h0)
           {
@@ -380,7 +380,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
         ilBindImage(imageID);
         ilActiveImage(image);
         ilActiveFace(face);
-        MY_ASSERT(IL_NO_ERROR == ilGetError());
+        assert(IL_NO_ERROR == ilGetError());
 
         // pixel format
         int format = ilGetInteger(IL_IMAGE_FORMAT);
@@ -392,7 +392,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
           {
             // Free all resources associated with the DevIL image.
             ilDeleteImages(1, &imageID);
-            MY_ASSERT(IL_NO_ERROR == ilGetError());
+            assert(IL_NO_ERROR == ilGetError());
             return false;
           }
           // Now query format of the converted image.
@@ -409,11 +409,11 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
         if (width == 0 || height == 0 || depth == 0) // There must be at least a single pixel.
         {
           std::cerr << "ERROR Picture::load(): " << filename << ": image " << image << " face " << f << " extents (" << width << ", " << height << ", " << depth << ")\n";
-          MY_ASSERT(!"Picture::load() Image with zero extents.");
+          assert(!"Picture::load() Image with zero extents.");
 
           // Free all resources associated with the DevIL image.
           ilDeleteImages(1, &imageID);
-          MY_ASSERT(IL_NO_ERROR == ilGetError());
+          assert(IL_NO_ERROR == ilGetError());
           return false;
         }
 
@@ -486,7 +486,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
 
   // Free all resources associated with the DevIL image
   ilDeleteImages(1, &imageID);
-  MY_ASSERT(IL_NO_ERROR == ilGetError());
+  assert(IL_NO_ERROR == ilGetError());
 
   return success;
 }
@@ -529,7 +529,7 @@ unsigned int Picture::addImages(const void* pixels,
 
   for (size_t i = 0; i < mipmaps.size(); ++i)
   {
-    MY_ASSERT(mipmaps[i]); // No nullptr expected.
+    assert(mipmaps[i]); // No nullptr expected.
 
     calculateNextExtents(w, h, d, flags); // Mind that the flags let this work for layered mipmap chains!
 
@@ -549,9 +549,9 @@ unsigned int Picture::addLevel(const unsigned int index, const void* pixels,
                                const unsigned int width, const unsigned int height, const unsigned int depth,
                                const int format, const int type)
 {
-  MY_ASSERT(index < m_images.size());
-  MY_ASSERT(pixels != nullptr);
-  MY_ASSERT((0 < width) && (0 < height) && (0 < depth));
+  assert(index < m_images.size());
+  assert(pixels != nullptr);
+  assert((0 < width) && (0 < height) && (0 < depth));
 
   Image* image = new Image(width, height, depth, format, type);
 
@@ -568,7 +568,7 @@ unsigned int Picture::addLevel(const unsigned int index, const void* pixels,
 
 void Picture::mirrorX(unsigned int index)
 {
-  MY_ASSERT(index < m_images.size());
+  assert(index < m_images.size());
 
   // Flip all images upside down.
   for (size_t i = 0; i < m_images[index].size(); ++i)
@@ -595,7 +595,7 @@ void Picture::mirrorX(unsigned int index)
 
 void Picture::mirrorY(unsigned int index)
 {
-  MY_ASSERT(index < m_images.size());
+  assert(index < m_images.size());
 
   // Mirror all images left to right.
   for (size_t i = 0; i < m_images[index].size(); ++i)
@@ -661,7 +661,7 @@ void Picture::generateRGBA8(unsigned int width, unsigned int height, unsigned in
   for (unsigned int face = 0; face < numFaces; ++face)
   {
     const unsigned int index = addImages(); // New mipmap chain.
-    MY_ASSERT(index == face);
+    assert(index == face);
 
     // calculateNextExtents() changes the w, h, d values. Restore them for each face.
     unsigned int w = width;
@@ -719,7 +719,7 @@ void Picture::generateEnvironment(unsigned int width, unsigned int height)
   float* rgba = new float[width * height * 4]; // Enough to hold the LOD 0.
 
   const unsigned int index = addImages(); // New mipmap chain.
-  MY_ASSERT(index == 0);
+  assert(index == 0);
 
   float* p = rgba;
 

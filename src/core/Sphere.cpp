@@ -10,12 +10,12 @@
 
 #include "shaders/vector_math.h"
 
-#include "core/MyAssert.h"
+#include "cassert"
 
 
 OptixTraversableHandle Application::createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta)
 {
-  MY_ASSERT(3 <= tessU && 3 <= tessV);
+  assert(3 <= tessU && 3 <= tessV);
 
   std::vector<VertexAttributes> attributes;
   attributes.reserve((tessU + 1) * tessV);

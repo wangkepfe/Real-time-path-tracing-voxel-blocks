@@ -8,29 +8,29 @@
 
 #include <IL/il.h>
 
-#include <algorithm>
-#include <cstdlib>
-#include <cstring>
-
-static void error_callback(int error, const char* description)
-{
-    std::cerr << "Error: "<< error << ": " << description << '\n';
-}
-
 int main(int argc, char *argv[])
 {
-    glfwSetErrorCallback(error_callback);
-
-    if (!glfwInit())
-    {
-        std::cerr << "Error: GLFW failed to initialize.\n";
-        return -1;
-    }
-
     auto& backend = jazzfusion::Backend::Get();
-    backend.run();
+    auto& app = Application::Get();
 
-    glfwTerminate();
+    try
+    {
+        backend.init();
+
+        app.init(backend.getWindow());
+
+        if (!app.isValid())
+        {
+            throw std::runtime_error("Application failed to initialize successfully.");
+        }
+
+        backend.mainloop();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
 
     return 0;
 }

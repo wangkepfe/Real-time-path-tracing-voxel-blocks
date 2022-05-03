@@ -10,12 +10,12 @@
 #include <iostream>
 #include <sstream>
 
-#include "core/MyAssert.h"
+#include "cassert"
 
 
 OptixTraversableHandle Application::createTorus(const unsigned int tessU, const unsigned int tessV, const float innerRadius, const float outerRadius)
 {
-  MY_ASSERT(3 <= tessU && 3 <= tessV);
+  assert(3 <= tessU && 3 <= tessV);
 
   // The torus is a ring with radius outerRadius rotated around the y-axis along the circle with innerRadius.
   /*           +y

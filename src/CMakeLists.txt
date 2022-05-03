@@ -27,9 +27,8 @@ set( IMGUI
 
 set( HEADERS
   core/Application.h
-  core/CheckMacros.h
+  core/DebugUtils.h
   core/Logger.h
-  core/MyAssert.h
   core/Options.h
   core/Picture.h
   core/PinholeCamera.h

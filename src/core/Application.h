@@ -142,6 +142,7 @@ public:
 private:
     Application() {}
 
+public:
     void getSystemInformation();
 
     void initOpenGL();
@@ -175,7 +176,6 @@ private:
 
     void updateShaderBindingTable(const int instance);
 
-private:
     GLFWwindow *m_window;
 
     int m_width;

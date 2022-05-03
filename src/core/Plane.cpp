@@ -8,11 +8,11 @@
 
 #include "shaders/vector_math.h"
 
-#include "core/MyAssert.h"
+#include "cassert"
 
 OptixTraversableHandle Application::createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis)
 {
-  MY_ASSERT(1 <= tessU && 1 <= tessV);
+  assert(1 <= tessU && 1 <= tessV);
 
   const float uTile = 2.0f / float(tessU);
   const float vTile = 2.0f / float(tessV);
