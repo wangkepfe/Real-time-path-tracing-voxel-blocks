@@ -31,6 +31,8 @@
 
 #include <core/MyAssert.h>
 
+#include "core/Backend.h"
+
 #ifdef _WIN32
 // Code based on helper function in optix_stubs.h
 static void *optixLoadWindowsDll(void)
@@ -154,10 +156,11 @@ static void *optixLoadWindowsDll(void)
 }
 #endif
 
-Application::Application(GLFWwindow *window,
-                         Options const &options)
-    : m_window(window), m_logger(std::cerr)
+void Application::init(GLFWwindow *window)
 {
+    // auto& backend = Backend::Get();
+    Options options = {};
+
     m_width = std::max(1, options.getClientWidth());
     m_height = std::max(1, options.getClientHeight());
     m_interop = options.getInterop();
@@ -1993,13 +1996,13 @@ void Application::initRenderer()
 {
     m_timer.restart();
 
-    const double timeRenderer = m_timer.getTime();
+    const float timeRenderer = m_timer.getTime();
 
     initMaterials();
-    const double timeMaterials = m_timer.getTime();
+    const float timeMaterials = m_timer.getTime();
 
     initPipeline();
-    const double timePipeline = m_timer.getTime();
+    const float timePipeline = m_timer.getTime();
 
     std::cout << "initRenderer(): " << timePipeline - timeRenderer << " seconds overall\n";
     std::cout << "{\n";

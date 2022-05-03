@@ -91,7 +91,6 @@ enum GuiState
     GUI_STATE_FOCUS
 };
 
-// Host side GUI material parameters
 struct MaterialParameterGUI
 {
     int indexBSDF; // BSDF index to use in the closest hit program
@@ -102,6 +101,7 @@ struct MaterialParameterGUI
     float volumeDistanceScale;
     float ior; // index of refraction
 };
+
 
 // The actual geometries are tracked in m_geometries.
 struct GeometryData
@@ -116,10 +116,16 @@ struct GeometryData
 class Application
 {
 public:
-    Application(GLFWwindow *window,
-                Options const &options);
-    ~Application();
+    static Application& Get()
+    {
+        static Application instance;
+        return instance;
+    }
+    Application::~Application();
+    Application(Application const&) = delete;
+    void operator=(Application const&)  = delete;
 
+    void init(GLFWwindow *window);
     bool isValid() const;
 
     void reshape(int width, int height);
@@ -134,6 +140,8 @@ public:
     void guiReferenceManual(); // The IMGUI "programming manual" in form of a live window.
 
 private:
+    Application() {}
+
     void getSystemInformation();
 
     void initOpenGL();

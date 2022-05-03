@@ -35,6 +35,7 @@ set( HEADERS
   core/PinholeCamera.h
   core/Texture.h
   core/Timer.h
+  core/Backend.h
 )
 
 set( SOURCES
@@ -49,7 +50,7 @@ set( SOURCES
   core/Torus.cpp
   core/Sphere.cpp
   core/Texture.cpp
-  core/Timer.cpp
+  core/Backend.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.
