@@ -2,6 +2,7 @@
 #include "core/Options.h"
 #include "core/Application.h"
 #include "core/DebugUtils.h"
+#include "core/OptixRenderer.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -42,11 +43,18 @@ void Backend::init()
 
     initOpenGL();
     initInterop();
+
+    dumpSystemInformation();
+
+    CUDA_CHECK(cudaFree(0));
+    CUDA_CHECK(cuCtxGetCurrent(&m_cudaContext));
+    CUDA_CHECK(cudaStreamCreate(&m_cudaStream));
 }
 
 void Backend::mainloop()
 {
     auto& app = Application::Get();
+    auto& optix = OptixRenderer::Get();
 
     while (!glfwWindowShouldClose(m_window))
     {
@@ -55,10 +63,11 @@ void Backend::mainloop()
         reshape();
 
         mapInteropBuffer();
-        app.m_systemParameter.outputBuffer = m_interopBuffer;
-        app.render();
-        unmapInteropBuffer();
 
+        optix.m_systemParameter.outputBuffer = m_interopBuffer;
+        optix.render();
+
+        unmapInteropBuffer();
 
         app.guiNewFrame();
         app.guiWindow();
@@ -74,6 +83,16 @@ void Backend::mainloop()
 
 void Backend::clear()
 {
+    CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
+    CUDA_CHECK(cudaStreamDestroy(m_cudaStream));
+
+    CUDA_CHECK(cudaGraphicsUnregisterResource(m_cudaGraphicsResource));
+    glDeleteBuffers(1, &m_pbo);
+
+    glDeleteBuffers(1, &m_vboAttributes);
+    glDeleteBuffers(1, &m_vboIndices);
+    glDeleteProgram(m_glslProgram);
+
     ilShutDown();
     glfwTerminate();
 }
@@ -351,11 +370,134 @@ void Backend::reshape()
 
 
         auto& app = Application::Get();
+        auto& optix = OptixRenderer::Get();
+
         app.m_width = width;
         app.m_height = height;
-        app.m_systemParameter.outputBuffer = m_interopBuffer;
-        app.m_pinholeCamera.setViewport(m_width, m_height);
+
+        optix.m_width = width;
+        optix.m_height = height;
+
+        optix.m_systemParameter.outputBuffer = m_interopBuffer;
+        optix.m_pinholeCamera.setViewport(m_width, m_height);
+
         app.restartAccumulation();
+    }
+}
+
+void Backend::dumpSystemInformation()
+{
+    int versionDriver = 0;
+    CUDA_CHECK(cudaDriverGetVersion(&versionDriver));
+
+    // The version is returned as (1000 * major + 10 * minor).
+    int major = versionDriver / 1000;
+    int minor = (versionDriver - major * 1000) / 10;
+    std::cout << "Driver Version  = " << major << "." << minor << '\n';
+
+    int versionRuntime = 0;
+    CUDA_CHECK(cudaRuntimeGetVersion(&versionRuntime));
+
+    // The version is returned as (1000 * major + 10 * minor).
+    major = versionRuntime / 1000;
+    minor = (versionRuntime - major * 1000) / 10;
+    std::cout << "Runtime Version = " << major << "." << minor << '\n';
+
+    int countDevices = 0;
+    CUDA_CHECK(cudaGetDeviceCount(&countDevices));
+    std::cout << "Device Count    = " << countDevices << '\n';
+
+    for (int i = 0; i < countDevices; ++i)
+    {
+        cudaDeviceProp properties;
+
+        CUDA_CHECK(cudaGetDeviceProperties(&properties, i));
+
+        m_deviceProperties.push_back(properties);
+
+        std::cout << "Device " << i << ": " << properties.name << '\n';
+#if 1 // Condensed information
+        std::cout << "  SM " << properties.major << "." << properties.minor << '\n';
+        std::cout << "  Total Mem = " << properties.totalGlobalMem << '\n';
+        std::cout << "  ClockRate [kHz] = " << properties.clockRate << '\n';
+        std::cout << "  MaxThreadsPerBlock = " << properties.maxThreadsPerBlock << '\n';
+        std::cout << "  SM Count = " << properties.multiProcessorCount << '\n';
+        std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled << '\n';
+        std::cout << "  TCC Driver = " << properties.tccDriver << '\n';
+#else // Dump every property.
+        // std::cout << "name[256] = " << properties.name << '\n';
+        std::cout << "uuid = " << properties.uuid.bytes << '\n';
+        std::cout << "totalGlobalMem = " << properties.totalGlobalMem << '\n';
+        std::cout << "sharedMemPerBlock = " << properties.sharedMemPerBlock << '\n';
+        std::cout << "regsPerBlock = " << properties.regsPerBlock << '\n';
+        std::cout << "warpSize = " << properties.warpSize << '\n';
+        std::cout << "memPitch = " << properties.memPitch << '\n';
+        std::cout << "maxThreadsPerBlock = " << properties.maxThreadsPerBlock << '\n';
+        std::cout << "maxThreadsDim[3] = " << properties.maxThreadsDim[0] << ", " << properties.maxThreadsDim[1] << ", " << properties.maxThreadsDim[0] << '\n';
+        std::cout << "maxGridSize[3] = " << properties.maxGridSize[0] << ", " << properties.maxGridSize[1] << ", " << properties.maxGridSize[2] << '\n';
+        std::cout << "clockRate = " << properties.clockRate << '\n';
+        std::cout << "totalConstMem = " << properties.totalConstMem << '\n';
+        std::cout << "major = " << properties.major << '\n';
+        std::cout << "minor = " << properties.minor << '\n';
+        std::cout << "textureAlignment = " << properties.textureAlignment << '\n';
+        std::cout << "texturePitchAlignment = " << properties.texturePitchAlignment << '\n';
+        std::cout << "deviceOverlap = " << properties.deviceOverlap << '\n';
+        std::cout << "multiProcessorCount = " << properties.multiProcessorCount << '\n';
+        std::cout << "kernelExecTimeoutEnabled = " << properties.kernelExecTimeoutEnabled << '\n';
+        std::cout << "integrated = " << properties.integrated << '\n';
+        std::cout << "canMapHostMemory = " << properties.canMapHostMemory << '\n';
+        std::cout << "computeMode = " << properties.computeMode << '\n';
+        std::cout << "maxTexture1D = " << properties.maxTexture1D << '\n';
+        std::cout << "maxTexture1DMipmap = " << properties.maxTexture1DMipmap << '\n';
+        std::cout << "maxTexture1DLinear = " << properties.maxTexture1DLinear << '\n';
+        std::cout << "maxTexture2D[2] = " << properties.maxTexture2D[0] << ", " << properties.maxTexture2D[1] << '\n';
+        std::cout << "maxTexture2DMipmap[2] = " << properties.maxTexture2DMipmap[0] << ", " << properties.maxTexture2DMipmap[1] << '\n';
+        std::cout << "maxTexture2DLinear[3] = " << properties.maxTexture2DLinear[0] << ", " << properties.maxTexture2DLinear[1] << ", " << properties.maxTexture2DLinear[2] << '\n';
+        std::cout << "maxTexture2DGather[2] = " << properties.maxTexture2DGather[0] << ", " << properties.maxTexture2DGather[1] << '\n';
+        std::cout << "maxTexture3D[3] = " << properties.maxTexture3D[0] << ", " << properties.maxTexture3D[1] << ", " << properties.maxTexture3D[2] << '\n';
+        std::cout << "maxTexture3DAlt[3] = " << properties.maxTexture3DAlt[0] << ", " << properties.maxTexture3DAlt[1] << ", " << properties.maxTexture3DAlt[2] << '\n';
+        std::cout << "maxTextureCubemap = " << properties.maxTextureCubemap << '\n';
+        std::cout << "maxTexture1DLayered[2] = " << properties.maxTexture1DLayered[0] << ", " << properties.maxTexture1DLayered[1] << '\n';
+        std::cout << "maxTexture2DLayered[3] = " << properties.maxTexture2DLayered[0] << ", " << properties.maxTexture2DLayered[1] << ", " << properties.maxTexture2DLayered[2] << '\n';
+        std::cout << "maxTextureCubemapLayered[2] = " << properties.maxTextureCubemapLayered[0] << ", " << properties.maxTextureCubemapLayered[1] << '\n';
+        std::cout << "maxSurface1D = " << properties.maxSurface1D << '\n';
+        std::cout << "maxSurface2D[2] = " << properties.maxSurface2D[0] << ", " << properties.maxSurface2D[1] << '\n';
+        std::cout << "maxSurface3D[3] = " << properties.maxSurface3D[0] << ", " << properties.maxSurface3D[1] << ", " << properties.maxSurface3D[2] << '\n';
+        std::cout << "maxSurface1DLayered[2] = " << properties.maxSurface1DLayered[0] << ", " << properties.maxSurface1DLayered[1] << '\n';
+        std::cout << "maxSurface2DLayered[3] = " << properties.maxSurface2DLayered[0] << ", " << properties.maxSurface2DLayered[1] << ", " << properties.maxSurface2DLayered[2] << '\n';
+        std::cout << "maxSurfaceCubemap = " << properties.maxSurfaceCubemap << '\n';
+        std::cout << "maxSurfaceCubemapLayered[2] = " << properties.maxSurfaceCubemapLayered[0] << ", " << properties.maxSurfaceCubemapLayered[1] << '\n';
+        std::cout << "surfaceAlignment = " << properties.surfaceAlignment << '\n';
+        std::cout << "concurrentKernels = " << properties.concurrentKernels << '\n';
+        std::cout << "ECCEnabled = " << properties.ECCEnabled << '\n';
+        std::cout << "pciBusID = " << properties.pciBusID << '\n';
+        std::cout << "pciDeviceID = " << properties.pciDeviceID << '\n';
+        std::cout << "pciDomainID = " << properties.pciDomainID << '\n';
+        std::cout << "tccDriver = " << properties.tccDriver << '\n';
+        std::cout << "asyncEngineCount = " << properties.asyncEngineCount << '\n';
+        std::cout << "unifiedAddressing = " << properties.unifiedAddressing << '\n';
+        std::cout << "memoryClockRate = " << properties.memoryClockRate << '\n';
+        std::cout << "memoryBusWidth = " << properties.memoryBusWidth << '\n';
+        std::cout << "l2CacheSize = " << properties.l2CacheSize << '\n';
+        std::cout << "maxThreadsPerMultiProcessor = " << properties.maxThreadsPerMultiProcessor << '\n';
+        std::cout << "streamPrioritiesSupported = " << properties.streamPrioritiesSupported << '\n';
+        std::cout << "globalL1CacheSupported = " << properties.globalL1CacheSupported << '\n';
+        std::cout << "localL1CacheSupported = " << properties.localL1CacheSupported << '\n';
+        std::cout << "sharedMemPerMultiprocessor = " << properties.sharedMemPerMultiprocessor << '\n';
+        std::cout << "regsPerMultiprocessor = " << properties.regsPerMultiprocessor << '\n';
+        std::cout << "managedMemory = " << properties.managedMemory << '\n';
+        std::cout << "isMultiGpuBoard = " << properties.isMultiGpuBoard << '\n';
+        std::cout << "multiGpuBoardGroupID = " << properties.multiGpuBoardGroupID << '\n';
+        std::cout << "singleToDoublePrecisionPerfRatio = " << properties.singleToDoublePrecisionPerfRatio << '\n';
+        std::cout << "pageableMemoryAccess = " << properties.pageableMemoryAccess << '\n';
+        std::cout << "concurrentManagedAccess = " << properties.concurrentManagedAccess << '\n';
+        std::cout << "computePreemptionSupported = " << properties.computePreemptionSupported << '\n';
+        std::cout << "canUseHostPointerForRegisteredMem = " << properties.canUseHostPointerForRegisteredMem << '\n';
+        std::cout << "cooperativeLaunch = " << properties.cooperativeLaunch << '\n';
+        std::cout << "cooperativeMultiDeviceLaunch = " << properties.cooperativeMultiDeviceLaunch << '\n';
+        std::cout << "pageableMemoryAccessUsesHostPageTables = " << properties.pageableMemoryAccessUsesHostPageTables << '\n';
+        std::cout << "directManagedMemAccessFromHost = " << properties.directManagedMemAccessFromHost << '\n';
+#endif
     }
 }
 

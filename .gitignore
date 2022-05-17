@@ -1,5 +1,6 @@
 data
-3rdparty
+3rdparty/*
+!3rdparty/CMake
 .vscode
 build
 dll

@@ -177,18 +177,11 @@ extern "C" __global__ void __raygen__pathtracer()
             break;
     }
 
-    // NaN values will never go away. Filter them out before they can arrive in the output buffer.
-    // This only has an effect if the debug coloring above is off!
-    if (!(isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z)))
+    if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
     {
-        const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
-        if (0 < sysParameter.iterationIndex)
-        {
-            const float4 dst = sysParameter.outputBuffer[index]; // RGBA32F
-            radiance = lerp(make_float3(dst), radiance, 1.0f / float(sysParameter.iterationIndex + 1));
-        }
-        // sysIterationIndex 0 will fill the buffer.
-        // If this isn't done separately, the result of the lerp() above is undefined, e.g. dst could be NaN.
-        sysParameter.outputBuffer[index] = make_float4(radiance, 1.0f);
+        radiance = make_float3(10000.0f, 0.0f, 0.0f);
     }
+
+    const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
+    sysParameter.outputBuffer[index] = make_float4(radiance, 1.0f);
 }

@@ -69,14 +69,6 @@ macro(TARGET_INCLUDE_SYMBOL target symbol)
   endif()
 endmacro()
 
-# Search for all shipping OptiX 7 versions before adding subdirectories.
-# The resp. FindOptiX7*.cmake looks for OPTIX7*_PATH environment variables.
-# Doing this here allows excluding examples from the build which require a specific OptiX 7 minor version.
-# If multiple OptiX SDK versions are found, the newest is picked by the individual examples.
-find_package(OptiX70)
-find_package(OptiX71)
-find_package(OptiX72)
-find_package(OptiX73)
 find_package(OptiX74)
 
 FILE(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data" DATA_DIR)

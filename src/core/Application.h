@@ -43,7 +43,7 @@
 #include <GLFW/glfw3.h>
 
 #include "core/Options.h"
-#include "core/Logger.h"
+// #include "core/Logger.h"
 #include "core/PinholeCamera.h"
 #include "core/Timer.h"
 #include "core/Picture.h"
@@ -266,7 +266,7 @@ public:
     OptixFunctionTable m_api;
     OptixDeviceContext m_context;
 
-    Logger m_logger;
+    // Logger m_logger;
 
     OptixTraversableHandle m_root; // Scene root
     CUdeviceptr m_d_ias;           // Scene root's IAS (instance acceleration structure).

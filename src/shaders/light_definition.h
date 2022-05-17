@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,10 +39,10 @@ enum LightType
   NUM_LIGHT_TYPES     = 2
 };
 
-struct LightDefinition
+struct __align__(16) LightDefinition
 {
   LightType type; // Constant or spherical environment, rectangle (parallelogram).
-  
+
   // Rectangle lights are defined in world coordinates as footpoint and two vectors spanning a parallelogram.
   // All in world coordinates with no scaling.
   float3 position;

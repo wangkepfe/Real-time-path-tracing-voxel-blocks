@@ -35,6 +35,7 @@ set( HEADERS
   core/Texture.h
   core/Timer.h
   core/Backend.h
+  core/OptixRenderer.h
 )
 
 set( SOURCES
@@ -50,6 +51,7 @@ set( SOURCES
   core/Sphere.cpp
   core/Texture.cpp
   core/Backend.cpp
+  core/OptixRenderer.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.

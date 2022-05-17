@@ -163,13 +163,13 @@ void Application::init(GLFWwindow *window)
 
     m_width = std::max(1, options.getClientWidth());
     m_height = std::max(1, options.getClientHeight());
-    m_interop = options.getInterop();
+    // m_interop = options.getInterop();
 
-    m_lightID = options.getLight();
-    m_missID = options.getMiss();
-    m_environmentFilename = options.getEnvironment();
+    // m_lightID = options.getLight();
+    // m_missID = options.getMiss();
+    // m_environmentFilename = options.getEnvironment();
 
-    m_isValid = false;
+    m_isValid = true;
 
     m_sceneEpsilonFactor = 500; // Factor on SCENE_EPSILOPN_SCALE (1.0e-7f) used to offset ray tmin interval along the path to reduce self-intersections.
     m_iterationIndex = 0;
@@ -243,28 +243,6 @@ void Application::init(GLFWwindow *window)
     m_d_sbtRecordCallables = 0;
 
     m_d_sbtRecordGeometryInstanceData = nullptr;
-
-    // Initialize all renderer system parameters.
-    m_systemParameter.topObject = 0;
-    m_systemParameter.outputBuffer = nullptr;
-    m_systemParameter.lightDefinitions = nullptr;
-    m_systemParameter.materialParameters = nullptr;
-    m_systemParameter.envTexture = 0;
-    m_systemParameter.envCDF_U = nullptr;
-    m_systemParameter.envCDF_V = nullptr;
-    m_systemParameter.pathLengths = make_int2(2, 5);
-    m_systemParameter.envWidth = 0;
-    m_systemParameter.envHeight = 0;
-    m_systemParameter.envIntegral = 1.0f;
-    m_systemParameter.envRotation = 0.0f;
-    m_systemParameter.iterationIndex = 0;
-    m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
-    m_systemParameter.numLights = 0;
-    m_systemParameter.cameraType = 0;
-    m_systemParameter.cameraPosition = make_float3(0.0f, 0.0f, 1.0f);
-    m_systemParameter.cameraU = make_float3(1.0f, 0.0f, 0.0f);
-    m_systemParameter.cameraV = make_float3(0.0f, 1.0f, 0.0f);
-    m_systemParameter.cameraW = make_float3(0.0f, 0.0f, -1.0f);
 
     // Setup ImGui binding.
     ImGui::CreateContext();
@@ -346,16 +324,6 @@ Application::~Application()
         delete m_textureAlbedo;
         delete m_textureCutout;
 
-        if (m_interop)
-        {
-            CUDA_CHECK(cudaGraphicsUnregisterResource(m_cudaGraphicsResource));
-            glDeleteBuffers(1, &m_pbo);
-        }
-        else
-        {
-            CUDA_CHECK(cudaFree((void *)m_systemParameter.outputBuffer));
-            delete[] m_outputBuffer;
-        }
         CUDA_CHECK(cudaFree((void *)m_systemParameter.lightDefinitions));
         CUDA_CHECK(cudaFree((void *)m_systemParameter.materialParameters));
         CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
@@ -379,11 +347,6 @@ Application::~Application()
 
         CUDA_CHECK(cudaStreamDestroy(m_cudaStream));
         // FIXME No way to explicitly destroy the CUDA context here using only CUDA Runtime API calls?
-
-        glDeleteBuffers(1, &m_vboAttributes);
-        glDeleteBuffers(1, &m_vboIndices);
-
-        glDeleteProgram(m_glslProgram);
     }
 
     ImGui_ImplGlfwGL3_Shutdown();
@@ -658,6 +621,7 @@ void Application::initOpenGL()
     // glEnableVertexAttribArray(m_texCoordLocation);
 }
 
+
 OptixResult Application::initOptiXFunctionTable()
 {
 #ifdef _WIN32
@@ -695,50 +659,45 @@ bool Application::initOptiX()
 {
     // getSystemInformation(); // This optionally dumps system information.
 
-    cudaError_t cuErr = cudaFree(0); // Creates a CUDA context.
-    if (cuErr != cudaSuccess)
-    {
-        std::cerr << "ERROR: initOptiX() cudaFree(0) failed: " << cuErr << '\n';
-        return false;
-    }
+    // cudaError_t cuErr = cudaFree(0); // Creates a CUDA context.
+    // if (cuErr != cudaSuccess)
+    // {
+    //     std::cerr << "ERROR: initOptiX() cudaFree(0) failed: " << cuErr << '\n';
+    //     return false;
+    // }
 
-    CUresult cuRes = cuCtxGetCurrent(&m_cudaContext);
-    if (cuRes != CUDA_SUCCESS)
-    {
-        std::cerr << "ERROR: initOptiX() cuCtxGetCurrent() failed: " << cuRes << '\n';
-        return false;
-    }
+    // CUresult cuRes = cuCtxGetCurrent(&m_cudaContext);
+    // if (cuRes != CUDA_SUCCESS)
+    // {
+    //     std::cerr << "ERROR: initOptiX() cuCtxGetCurrent() failed: " << cuRes << '\n';
+    //     return false;
+    // }
 
-    cuErr = cudaStreamCreate(&m_cudaStream);
-    if (cuErr != cudaSuccess)
-    {
-        std::cerr << "ERROR: initOptiX() cudaStreamCreate() failed: " << cuErr << '\n';
-        return false;
-    }
+    // cuErr = cudaStreamCreate(&m_cudaStream);
 
-    OptixResult res = initOptiXFunctionTable();
-    if (res != OPTIX_SUCCESS)
-    {
-        std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << '\n';
-        return false;
-    }
+    // OptixResult res = initOptiXFunctionTable();
+    // if (res != OPTIX_SUCCESS)
+    // {
+    //     std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << '\n';
+    //     return false;
+    // }
 
-    OptixDeviceContextOptions options = {};
+    // OptixDeviceContextOptions options = {};
 
-    options.logCallbackFunction = &Logger::callback;
-    options.logCallbackData = &m_logger;
-    options.logCallbackLevel = 3; // Keep at warning level to suppress the disk cache messages.
+    // options.logCallbackFunction = &Logger::callback;
+    // options.logCallbackData = &m_logger;
+    // options.logCallbackLevel = 3; // Keep at warning level to suppress the disk cache messages.
 
-    res = m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_context);
-    if (res != OPTIX_SUCCESS)
-    {
-        std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << '\n';
-        return false;
-    }
+    // res = m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_context);
+    // if (res != OPTIX_SUCCESS)
+    // {
+    //     std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << '\n';
+    //     return false;
+    // }
 
     initRenderer(); // Initialize all the rest.
 
-    return true;
+    // return true;
 }
 
 void Application::restartAccumulation()
@@ -995,178 +954,178 @@ void Application::guiWindow()
         return;
     }
 
-    ImGui::PushItemWidth(-110); // Right-aligned, keep pixels for the labels.
+    // ImGui::PushItemWidth(-110); // Right-aligned, keep pixels for the labels.
 
-    if (ImGui::CollapsingHeader("System"))
-    {
-        if (ImGui::Checkbox("Present", &m_present))
-        {
-            // No action needed, happens automatically on next frame.
-        }
-        if (ImGui::Combo("Camera", (int *)&m_systemParameter.cameraType, "Pinhole\0Fisheye\0Spherical\0\0"))
-        {
-            restartAccumulation();
-        }
-        if (ImGui::DragInt("Min Path Length", &m_systemParameter.pathLengths.x, 1.0f, 0, 100))
-        {
-            restartAccumulation();
-        }
-        if (ImGui::DragInt("Max Path Length", &m_systemParameter.pathLengths.y, 1.0f, 0, 100))
-        {
-            restartAccumulation();
-        }
-        if (ImGui::DragFloat("Scene Epsilon", &m_sceneEpsilonFactor, 1.0f, 0.0f, 10000.0f))
-        {
-            m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
-            restartAccumulation();
-        }
-        if (ImGui::DragFloat("Env Rotation", &m_systemParameter.envRotation, 0.001f, 0.0f, 1.0f))
-        {
-            restartAccumulation();
-        }
-        if (ImGui::DragInt("Frames", &m_frames, 1.0f, 0, 10000))
-        {
-            if (m_frames != 0 && m_frames < m_iterationIndex) // If we already rendered more frames, start again.
-            {
-                restartAccumulation();
-            }
-        }
-        if (ImGui::DragFloat("Mouse Ratio", &m_mouseSpeedRatio, 0.1f, 0.1f, 1000.0f, "%.1f"))
-        {
-            m_pinholeCamera.setSpeedRatio(m_mouseSpeedRatio);
-        }
-    }
-    if (ImGui::CollapsingHeader("Tonemapper"))
-    {
-        if (ImGui::ColorEdit3("Balance", (float *)&m_colorBalance))
-        {
-            glUseProgram(m_glslProgram);
-            glUniform3f(glGetUniformLocation(m_glslProgram, "colorBalance"), m_colorBalance.x, m_colorBalance.y, m_colorBalance.z);
-            glUseProgram(0);
-        }
-        if (ImGui::DragFloat("Gamma", &m_gamma, 0.01f, 0.01f, 10.0f)) // Must not get 0.0f
-        {
-            glUseProgram(m_glslProgram);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "invGamma"), 1.0f / m_gamma);
-            glUseProgram(0);
-        }
-        if (ImGui::DragFloat("White Point", &m_whitePoint, 0.01f, 0.01f, 255.0f, "%.2f", 2.0f)) // Must not get 0.0f
-        {
-            glUseProgram(m_glslProgram);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "invWhitePoint"), m_brightness / m_whitePoint);
-            glUseProgram(0);
-        }
-        if (ImGui::DragFloat("Burn Lights", &m_burnHighlights, 0.01f, 0.0f, 10.0f, "%.2f"))
-        {
-            glUseProgram(m_glslProgram);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "burnHighlights"), m_burnHighlights);
-            glUseProgram(0);
-        }
-        if (ImGui::DragFloat("Crush Blacks", &m_crushBlacks, 0.01f, 0.0f, 1.0f, "%.2f"))
-        {
-            glUseProgram(m_glslProgram);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "crushBlacks"), m_crushBlacks + m_crushBlacks + 1.0f);
-            glUseProgram(0);
-        }
-        if (ImGui::DragFloat("Saturation", &m_saturation, 0.01f, 0.0f, 10.0f, "%.2f"))
-        {
-            glUseProgram(m_glslProgram);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "saturation"), m_saturation);
-            glUseProgram(0);
-        }
-        if (ImGui::DragFloat("Brightness", &m_brightness, 0.01f, 0.0f, 100.0f, "%.2f", 2.0f))
-        {
-            glUseProgram(m_glslProgram);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "invWhitePoint"), m_brightness / m_whitePoint);
-            glUseProgram(0);
-        }
-    }
-    if (ImGui::CollapsingHeader("Materials"))
-    {
-        bool changed = false;
+    // if (ImGui::CollapsingHeader("System"))
+    // {
+    //     if (ImGui::Checkbox("Present", &m_present))
+    //     {
+    //         // No action needed, happens automatically on next frame.
+    //     }
+    //     if (ImGui::Combo("Camera", (int *)&m_systemParameter.cameraType, "Pinhole\0Fisheye\0Spherical\0\0"))
+    //     {
+    //         restartAccumulation();
+    //     }
+    //     if (ImGui::DragInt("Min Path Length", &m_systemParameter.pathLengths.x, 1.0f, 0, 100))
+    //     {
+    //         restartAccumulation();
+    //     }
+    //     if (ImGui::DragInt("Max Path Length", &m_systemParameter.pathLengths.y, 1.0f, 0, 100))
+    //     {
+    //         restartAccumulation();
+    //     }
+    //     if (ImGui::DragFloat("Scene Epsilon", &m_sceneEpsilonFactor, 1.0f, 0.0f, 10000.0f))
+    //     {
+    //         m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
+    //         restartAccumulation();
+    //     }
+    //     if (ImGui::DragFloat("Env Rotation", &m_systemParameter.envRotation, 0.001f, 0.0f, 1.0f))
+    //     {
+    //         restartAccumulation();
+    //     }
+    //     if (ImGui::DragInt("Frames", &m_frames, 1.0f, 0, 10000))
+    //     {
+    //         if (m_frames != 0 && m_frames < m_iterationIndex) // If we already rendered more frames, start again.
+    //         {
+    //             restartAccumulation();
+    //         }
+    //     }
+    //     if (ImGui::DragFloat("Mouse Ratio", &m_mouseSpeedRatio, 0.1f, 0.1f, 1000.0f, "%.1f"))
+    //     {
+    //         m_pinholeCamera.setSpeedRatio(m_mouseSpeedRatio);
+    //     }
+    // }
+    // if (ImGui::CollapsingHeader("Tonemapper"))
+    // {
+    //     if (ImGui::ColorEdit3("Balance", (float *)&m_colorBalance))
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform3f(glGetUniformLocation(m_glslProgram, "colorBalance"), m_colorBalance.x, m_colorBalance.y, m_colorBalance.z);
+    //         glUseProgram(0);
+    //     }
+    //     if (ImGui::DragFloat("Gamma", &m_gamma, 0.01f, 0.01f, 10.0f)) // Must not get 0.0f
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform1f(glGetUniformLocation(m_glslProgram, "invGamma"), 1.0f / m_gamma);
+    //         glUseProgram(0);
+    //     }
+    //     if (ImGui::DragFloat("White Point", &m_whitePoint, 0.01f, 0.01f, 255.0f, "%.2f", 2.0f)) // Must not get 0.0f
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform1f(glGetUniformLocation(m_glslProgram, "invWhitePoint"), m_brightness / m_whitePoint);
+    //         glUseProgram(0);
+    //     }
+    //     if (ImGui::DragFloat("Burn Lights", &m_burnHighlights, 0.01f, 0.0f, 10.0f, "%.2f"))
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform1f(glGetUniformLocation(m_glslProgram, "burnHighlights"), m_burnHighlights);
+    //         glUseProgram(0);
+    //     }
+    //     if (ImGui::DragFloat("Crush Blacks", &m_crushBlacks, 0.01f, 0.0f, 1.0f, "%.2f"))
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform1f(glGetUniformLocation(m_glslProgram, "crushBlacks"), m_crushBlacks + m_crushBlacks + 1.0f);
+    //         glUseProgram(0);
+    //     }
+    //     if (ImGui::DragFloat("Saturation", &m_saturation, 0.01f, 0.0f, 10.0f, "%.2f"))
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform1f(glGetUniformLocation(m_glslProgram, "saturation"), m_saturation);
+    //         glUseProgram(0);
+    //     }
+    //     if (ImGui::DragFloat("Brightness", &m_brightness, 0.01f, 0.0f, 100.0f, "%.2f", 2.0f))
+    //     {
+    //         glUseProgram(m_glslProgram);
+    //         glUniform1f(glGetUniformLocation(m_glslProgram, "invWhitePoint"), m_brightness / m_whitePoint);
+    //         glUseProgram(0);
+    //     }
+    // }
+    // if (ImGui::CollapsingHeader("Materials"))
+    // {
+    //     bool changed = false;
 
-        // HACK The last material is a black specular reflection for the area light and not editable
-        // because this example does not support explicit light sampling of textured or cutout opacity geometry.
-        for (int i = 0; i < int(m_guiMaterialParameters.size()) - 1; ++i)
-        {
-            if (ImGui::TreeNode((void *)(intptr_t)i, "Material %d", i))
-            {
-                MaterialParameterGUI &parameters = m_guiMaterialParameters[i];
+    //     // HACK The last material is a black specular reflection for the area light and not editable
+    //     // because this example does not support explicit light sampling of textured or cutout opacity geometry.
+    //     for (int i = 0; i < int(m_guiMaterialParameters.size()) - 1; ++i)
+    //     {
+    //         if (ImGui::TreeNode((void *)(intptr_t)i, "Material %d", i))
+    //         {
+    //             MaterialParameterGUI &parameters = m_guiMaterialParameters[i];
 
-                if (ImGui::Combo("BSDF Type", (int *)&parameters.indexBSDF,
-                                 "Diffuse Reflection\0Specular Reflection\0Specular Reflection Transmission\0\0"))
-                {
-                    changed = true;
-                }
-                if (ImGui::ColorEdit3("Albedo", (float *)&parameters.albedo))
-                {
-                    changed = true;
-                }
-                if (ImGui::Checkbox("Use Albedo Texture", &parameters.useAlbedoTexture))
-                {
-                    changed = true;
-                }
-                if (ImGui::Checkbox("Thin-Walled", &parameters.thinwalled)) // Set this to true when using cutout opacity. Refracting materials won't look right with cutouts otherwise.
-                {
-                    changed = true;
-                }
-                // Only show material parameters for the BSDFs which are affected.
-                if (parameters.indexBSDF == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
-                {
-                    if (ImGui::ColorEdit3("Absorption", (float *)&parameters.absorptionColor))
-                    {
-                        changed = true;
-                    }
-                    if (ImGui::DragFloat("Volume Scale", &parameters.volumeDistanceScale, 0.01f, 0.0f, 100.0f, "%.2f"))
-                    {
-                        changed = true;
-                    }
-                    if (ImGui::DragFloat("IOR", &parameters.ior, 0.01f, 0.0f, 10.0f, "%.2f"))
-                    {
-                        changed = true;
-                    }
-                }
-                ImGui::TreePop();
-            }
-        }
+    //             if (ImGui::Combo("BSDF Type", (int *)&parameters.indexBSDF,
+    //                              "Diffuse Reflection\0Specular Reflection\0Specular Reflection Transmission\0\0"))
+    //             {
+    //                 changed = true;
+    //             }
+    //             if (ImGui::ColorEdit3("Albedo", (float *)&parameters.albedo))
+    //             {
+    //                 changed = true;
+    //             }
+    //             if (ImGui::Checkbox("Use Albedo Texture", &parameters.useAlbedoTexture))
+    //             {
+    //                 changed = true;
+    //             }
+    //             if (ImGui::Checkbox("Thin-Walled", &parameters.thinwalled)) // Set this to true when using cutout opacity. Refracting materials won't look right with cutouts otherwise.
+    //             {
+    //                 changed = true;
+    //             }
+    //             // Only show material parameters for the BSDFs which are affected.
+    //             if (parameters.indexBSDF == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
+    //             {
+    //                 if (ImGui::ColorEdit3("Absorption", (float *)&parameters.absorptionColor))
+    //                 {
+    //                     changed = true;
+    //                 }
+    //                 if (ImGui::DragFloat("Volume Scale", &parameters.volumeDistanceScale, 0.01f, 0.0f, 100.0f, "%.2f"))
+    //                 {
+    //                     changed = true;
+    //                 }
+    //                 if (ImGui::DragFloat("IOR", &parameters.ior, 0.01f, 0.0f, 10.0f, "%.2f"))
+    //                 {
+    //                     changed = true;
+    //                 }
+    //             }
+    //             ImGui::TreePop();
+    //         }
+    //     }
 
-        if (changed) // If any of the material parameters changed, simply upload them to the sysMaterialParameters again.
-        {
-            updateMaterialParameters();
-            restartAccumulation();
-        }
-    }
-    if (ImGui::CollapsingHeader("Lights"))
-    {
-        bool changed = false;
+    //     if (changed) // If any of the material parameters changed, simply upload them to the sysMaterialParameters again.
+    //     {
+    //         updateMaterialParameters();
+    //         restartAccumulation();
+    //     }
+    // }
+    // if (ImGui::CollapsingHeader("Lights"))
+    // {
+    //     bool changed = false;
 
-        for (int i = 0; i < int(m_lightDefinitions.size()); ++i)
-        {
-            LightDefinition &light = m_lightDefinitions[i];
+    //     for (int i = 0; i < int(m_lightDefinitions.size()); ++i)
+    //     {
+    //         LightDefinition &light = m_lightDefinitions[i];
 
-            // Allow to change the emission (radiant exitance in Watt/m^2) of the rectangle lights in the scene.
-            if (light.type == LIGHT_PARALLELOGRAM)
-            {
-                if (ImGui::TreeNode((void *)(intptr_t)i, "Light %d", i))
-                {
-                    if (ImGui::DragFloat3("Emission", (float *)&light.emission, 1.0f, 0.0f, 10000.0f, "%.0f"))
-                    {
-                        changed = true;
-                    }
-                    ImGui::TreePop();
-                }
-            }
-        }
-        if (changed) // If any of the light parameters changed, simply upload them to the sysMaterialParameters again.
-        {
-            CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
-            CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
+    //         // Allow to change the emission (radiant exitance in Watt/m^2) of the rectangle lights in the scene.
+    //         if (light.type == LIGHT_PARALLELOGRAM)
+    //         {
+    //             if (ImGui::TreeNode((void *)(intptr_t)i, "Light %d", i))
+    //             {
+    //                 if (ImGui::DragFloat3("Emission", (float *)&light.emission, 1.0f, 0.0f, 10000.0f, "%.0f"))
+    //                 {
+    //                     changed = true;
+    //                 }
+    //                 ImGui::TreePop();
+    //             }
+    //         }
+    //     }
+    //     if (changed) // If any of the light parameters changed, simply upload them to the sysMaterialParameters again.
+    //     {
+    //         CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
+    //         CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
 
-            restartAccumulation();
-        }
-    }
+    //         restartAccumulation();
+    //     }
+    // }
 
-    ImGui::PopItemWidth();
+    // ImGui::PopItemWidth();
 
     ImGui::End();
 }
@@ -1635,23 +1594,13 @@ void Application::initPipeline()
     // MODULES
 
     OptixModuleCompileOptions moduleCompileOptions = {};
-
-    moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT; // No explicit register limit.
-#if USE_MAX_OPTIMIZATION
-    moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
-                                                                        // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
-#if (OPTIX_VERSION >= 70400)
-    moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-#else
-    moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
-#endif
-#else // DEBUG
-    moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-    moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
-#endif
+    moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+    moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+    moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_DEFAULT;
+    // moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+    // moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 
     OptixPipelineCompileOptions pipelineCompileOptions = {};
-
     pipelineCompileOptions.usesMotionBlur = 0;
     pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
     pipelineCompileOptions.numPayloadValues = 2;   // I need two to encode a 64-bit pointer to the per ray payload structure.

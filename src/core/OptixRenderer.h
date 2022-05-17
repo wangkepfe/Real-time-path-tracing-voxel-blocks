@@ -13,6 +13,7 @@
 #include "shaders/light_definition.h"
 #include "shaders/vertex_attributes.h"
 
+#include "core/Texture.h"
 
 namespace jazzfusion {
 
@@ -41,18 +42,31 @@ public:
     OptixRenderer(OptixRenderer const&) = delete;
     void operator=(OptixRenderer const&) = delete;
 
+    void init();
+    void clear();
+    void render();
+
+    int                        m_width;
+    int                        m_height;
+
+    PinholeCamera              m_pinholeCamera;
+
+    SystemParameter            m_systemParameter;
+
 private:
     OptixRenderer() {}
-    OptixRenderer(OptixRenderer const&);
-    void operator=(OptixRenderer const&);
 
-    OptixFunctionTable m_api;
-    OptixDeviceContext m_context;
-    OptixTraversableHandle m_root; // Scene root
-    CUdeviceptr m_d_ias;           // Scene root's IAS (instance acceleration structure).
-    OptixPipeline m_pipeline;
-    SystemParameter m_systemParameter;    // Host side of the system parameters, changed by the GUI directly.
-    SystemParameter *m_d_systemParameter; // Device side CUdeviceptr of the system parameters.
+    Texture*                   m_textureEnvironment;
+    Texture*                   m_textureAlbedo;
+
+    OptixFunctionTable         m_api;
+    OptixDeviceContext         m_context;
+    OptixTraversableHandle     m_root;               // Scene root
+    CUdeviceptr                m_d_ias;              // Scene root's IAS (instance acceleration structure).
+    OptixPipeline              m_pipeline;
+
+    SystemParameter*           m_d_systemParameter;
+
     std::vector<OptixInstance> m_instances;
 };
 

@@ -38,14 +38,13 @@ public:
         static Backend instance;
         return instance;
     }
-    ~Backend() { clear(); }
     Backend(Backend const&) = delete;
     void operator=(Backend const&)  = delete;
 
     void init();
     void mainloop();
     void clear();
-
+    CUstream getCudaStream() const { return m_cudaStream; }
     GLFWwindow* getWindow() { return m_window; }
 
 private:
@@ -57,13 +56,12 @@ private:
     void mapInteropBuffer();
     void unmapInteropBuffer();
     void display();
+    void dumpSystemInformation();
 
     // Window
     GLFWwindow* m_window;
     int m_width;
     int m_height;
-    // int m_renderWidth;
-    // int m_renderHeight;
 
     // OpenGL variables
     GLuint m_pbo;
@@ -92,7 +90,7 @@ private:
     // // Timer
     // Timer m_timer;
 
-
+    // tone mapping
     float m_gamma;
     float3 m_colorBalance;
     float m_whitePoint;
