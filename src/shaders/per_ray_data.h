@@ -40,7 +40,7 @@
 #define MATERIAL_STACK_LAST 0
 #define MATERIAL_STACK_SIZE 1
 
-// Set when reaching a closesthit program. Unused in this demo
+ // Set when reaching a closesthit program. Unused in this demo
 #define FLAG_HIT 0x00000001
 // Set when reaching the __anyhit__shadow program. Indicates visibility test failed.
 #define FLAG_SHADOW 0x00000002
@@ -104,11 +104,11 @@ struct PerRayData
 // Alias the PerRayData pointer and an uint2 for the payload split and merge operations. Generates just move instructions.
 typedef union
 {
-    PerRayData *ptr;
+    PerRayData* ptr;
     uint2 dat;
 } Payload;
 
-__forceinline__ __device__ uint2 splitPointer(PerRayData *ptr)
+__forceinline__ __device__ uint2 splitPointer(PerRayData* ptr)
 {
     Payload payload;
 
@@ -117,7 +117,7 @@ __forceinline__ __device__ uint2 splitPointer(PerRayData *ptr)
     return payload.dat;
 }
 
-__forceinline__ __device__ PerRayData *mergePointer(unsigned int p0, unsigned int p1)
+__forceinline__ __device__ PerRayData* mergePointer(unsigned int p0, unsigned int p1)
 {
     Payload payload;
 

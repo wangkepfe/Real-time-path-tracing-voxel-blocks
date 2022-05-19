@@ -1,5 +1,5 @@
 # Looks for environment variable:
-# GLEW_PATH 
+# GLEW_PATH
 
 # Sets the variables:
 # GLEW_INCLUDE_DIRS

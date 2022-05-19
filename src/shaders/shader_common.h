@@ -46,7 +46,7 @@ static constexpr int RussionRouletteStartBounce = 2;
  *  ior : index of refraction ( n2 / n1 )
  *  returns false in case of total internal reflection, in that case r is initialized to (0,0,0).
  */
-__forceinline__ __host__ __device__ bool refract(float3 &r, float3 const &i, float3 const &n, const float ior)
+__forceinline__ __host__ __device__ bool refract(float3& r, float3 const& i, float3 const& n, const float ior)
 {
     float3 nn = n;
     float negNdotV = dot(i, nn);
@@ -86,7 +86,7 @@ struct TBN
     {
     }
 
-    __forceinline__ __host__ __device__ TBN(const float3 &n)
+    __forceinline__ __host__ __device__ TBN(const float3& n)
         : normal(n)
     {
         if (fabsf(normal.z) < fabsf(normal.x))
@@ -106,7 +106,7 @@ struct TBN
     }
 
     // Constructor for cases where tangent, bitangent, and normal are given as ortho-normal basis.
-    __forceinline__ __host__ __device__ TBN(const float3 &t, const float3 &b, const float3 &n)
+    __forceinline__ __host__ __device__ TBN(const float3& t, const float3& b, const float3& n)
         : tangent(t), bitangent(b), normal(n)
     {
     }
@@ -114,7 +114,7 @@ struct TBN
     // Normal is kept, tangent and bitangent are calculated.
     // Normal must be normalized.
     // Must not be used with degenerated vectors!
-    __forceinline__ __host__ __device__ TBN(const float3 &tangent_reference, const float3 &n)
+    __forceinline__ __host__ __device__ TBN(const float3& tangent_reference, const float3& n)
         : normal(n)
     {
         bitangent = normalize(cross(normal, tangent_reference));
@@ -128,14 +128,14 @@ struct TBN
         normal = -normal;
     }
 
-    __forceinline__ __host__ __device__ float3 transformToLocal(const float3 &p) const
+    __forceinline__ __host__ __device__ float3 transformToLocal(const float3& p) const
     {
         return make_float3(dot(p, tangent),
-                           dot(p, bitangent),
-                           dot(p, normal));
+            dot(p, bitangent),
+            dot(p, normal));
     }
 
-    __forceinline__ __host__ __device__ float3 transformToWorld(const float3 &p) const
+    __forceinline__ __host__ __device__ float3 transformToWorld(const float3& p) const
     {
         return p.x * tangent + p.y * bitangent + p.z * normal;
     }
@@ -145,13 +145,13 @@ struct TBN
     float3 normal;
 };
 
-__forceinline__ __host__ __device__ float luminance(const float3 &rgb)
+__forceinline__ __host__ __device__ float luminance(const float3& rgb)
 {
-    const float3 ntsc_luminance = {0.30f, 0.59f, 0.11f};
+    const float3 ntsc_luminance = { 0.30f, 0.59f, 0.11f };
     return dot(rgb, ntsc_luminance);
 }
 
-__forceinline__ __host__ __device__ float intensity(const float3 &rgb)
+__forceinline__ __host__ __device__ float intensity(const float3& rgb)
 {
     return (rgb.x + rgb.y + rgb.z) * 0.3333333333f;
 }
@@ -161,12 +161,12 @@ __forceinline__ __host__ __device__ float cube(const float x)
     return x * x * x;
 }
 
-__forceinline__ __host__ __device__ bool isNull(const float3 &v)
+__forceinline__ __host__ __device__ bool isNull(const float3& v)
 {
     return (v.x == 0.0f && v.y == 0.0f && v.z == 0.0f);
 }
 
-__forceinline__ __host__ __device__ bool isNotNull(const float3 &v)
+__forceinline__ __host__ __device__ bool isNotNull(const float3& v)
 {
     return (v.x != 0.0f || v.y != 0.0f || v.z != 0.0f);
 }

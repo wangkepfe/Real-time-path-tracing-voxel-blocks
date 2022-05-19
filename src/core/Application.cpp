@@ -35,10 +35,10 @@
 
 #ifdef _WIN32
 // Code based on helper function in optix_stubs.h
-static void *optixLoadWindowsDll(void)
+static void* optixLoadWindowsDll(void)
 {
-    const char *optixDllName = "nvoptix.dll";
-    void *handle = NULL;
+    const char* optixDllName = "nvoptix.dll";
+    void* handle = NULL;
 
     // Get the size of the path first, then allocate
     unsigned int size = GetSystemDirectoryA(NULL, 0);
@@ -49,7 +49,7 @@ static void *optixLoadWindowsDll(void)
     }
 
     size_t pathSize = size + 1 + strlen(optixDllName);
-    char *systemPath = (char *)malloc(pathSize);
+    char* systemPath = (char*)malloc(pathSize);
 
     if (GetSystemDirectoryA(systemPath, size) != size - 1)
     {
@@ -74,7 +74,7 @@ static void *optixLoadWindowsDll(void)
     // have its own registry entry, we are going to look for the OpenGL driver which lives
     // next to nvoptix.dll. 0 (null) will be returned if any errors occured.
 
-    static const char *deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
+    static const char* deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
     const ULONG flags = CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT;
     ULONG deviceListSize = 0;
 
@@ -83,7 +83,7 @@ static void *optixLoadWindowsDll(void)
         return NULL;
     }
 
-    char *deviceNames = (char *)malloc(deviceListSize);
+    char* deviceNames = (char*)malloc(deviceListSize);
 
     if (CM_Get_Device_ID_ListA(deviceInstanceIdentifiersGUID, deviceNames, deviceListSize, flags))
     {
@@ -94,7 +94,7 @@ static void *optixLoadWindowsDll(void)
     DEVINST devID = 0;
 
     // Continue to the next device if errors are encountered.
-    for (char *deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
+    for (char* deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
     {
         if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
         {
@@ -107,7 +107,7 @@ static void *optixLoadWindowsDll(void)
             continue;
         }
 
-        const char *valueName = "OpenGLDriverName";
+        const char* valueName = "OpenGLDriverName";
         DWORD valueSize = 0;
 
         LSTATUS ret = RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
@@ -117,7 +117,7 @@ static void *optixLoadWindowsDll(void)
             continue;
         }
 
-        char *regValue = (char *)malloc(valueSize);
+        char* regValue = (char*)malloc(valueSize);
         ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE)regValue, &valueSize);
         if (ret != ERROR_SUCCESS)
         {
@@ -134,7 +134,7 @@ static void *optixLoadWindowsDll(void)
         }
 
         size_t newPathSize = strlen(regValue) + strlen(optixDllName) + 1;
-        char *dllPath = (char *)malloc(newPathSize);
+        char* dllPath = (char*)malloc(newPathSize);
         strcpy(dllPath, regValue);
         strcat(dllPath, optixDllName);
 
@@ -156,7 +156,7 @@ static void *optixLoadWindowsDll(void)
 }
 #endif
 
-void Application::init(GLFWwindow *window)
+void Application::init(GLFWwindow* window)
 {
     // auto& backend = Backend::Get();
     Options options = {};
@@ -254,7 +254,7 @@ void Application::init(GLFWwindow *window)
 
 #if 1
     // Style the GUI colors to a neutral greyscale with plenty of transparency to concentrate on the image.
-    ImGuiStyle &style = ImGui::GetStyle();
+    ImGuiStyle& style = ImGui::GetStyle();
 
     // Change these RGB values to get any other tint.
     const float r = 1.0f;
@@ -381,7 +381,7 @@ void Application::reshape(int width, int height)
             size_t size;
 
             CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-            CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource)); // DAR Redundant. Must be done on each map anyway.
+            CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource)); // DAR Redundant. Must be done on each map anyway.
             CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
 
             assert(m_width * m_height * sizeof(float) * 4 <= size);
@@ -391,8 +391,8 @@ void Application::reshape(int width, int height)
             delete[] m_outputBuffer;
             m_outputBuffer = new float4[m_width * m_height];
 
-            CUDA_CHECK(cudaFree((void *)m_systemParameter.outputBuffer));
-            CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height));
+            CUDA_CHECK(cudaFree((void*)m_systemParameter.outputBuffer));
+            CUDA_CHECK(cudaMalloc((void**)&m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height));
         }
 
         m_pinholeCamera.setViewport(m_width, m_height);
@@ -558,7 +558,7 @@ void Application::initOpenGL()
 
         // Buffer size must be > 0 or OptiX can't create a buffer from it.
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
-        glBufferData(GL_PIXEL_UNPACK_BUFFER, m_width * m_height * sizeof(float) * 4, (void *)0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, m_width * m_height * sizeof(float) * 4, (void*)0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
 
@@ -589,17 +589,17 @@ void Application::initOpenGL()
 
     // Two hardcoded triangles in the identity matrix pojection coordinate system with 2D texture coordinates.
     const float attributes[16] =
-        {
-            // vertex2f,   texcoord2f
-            -1.0f, -1.0f, 0.0f, 0.0f,
-            1.0f, -1.0f, 1.0f, 0.0f,
-            1.0f, 1.0f, 1.0f, 1.0f,
-            -1.0f, 1.0f, 0.0f, 1.0f};
+    {
+        // vertex2f,   texcoord2f
+        -1.0f, -1.0f, 0.0f, 0.0f,
+        1.0f, -1.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, 1.0f, 1.0f,
+        -1.0f, 1.0f, 0.0f, 1.0f };
 
     unsigned int indices[6] =
-        {
-            0, 1, 2,
-            2, 3, 0};
+    {
+        0, 1, 2,
+        2, 3, 0 };
 
     glGenBuffers(1, &m_vboAttributes);
     assert(m_vboAttributes != 0);
@@ -609,15 +609,15 @@ void Application::initOpenGL()
 
     // Setup the vertex arrays from the interleaved vertex attributes.
     glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(float) * 16, (GLvoid const *)attributes, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(float) * 16, (GLvoid const*)attributes, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(unsigned int) * 6, (const GLvoid *)indices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(unsigned int) * 6, (const GLvoid*)indices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(m_positionLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
+    glVertexAttribPointer(m_positionLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid*)0);
     // glEnableVertexAttribArray(m_positionLocation);
 
-    glVertexAttribPointer(m_texCoordLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
+    glVertexAttribPointer(m_texCoordLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid*)(sizeof(float) * 2));
     // glEnableVertexAttribArray(m_texCoordLocation);
 }
 
@@ -625,32 +625,32 @@ void Application::initOpenGL()
 OptixResult Application::initOptiXFunctionTable()
 {
 #ifdef _WIN32
-    void *handle = optixLoadWindowsDll();
+    void* handle = optixLoadWindowsDll();
     if (!handle)
     {
         return OPTIX_ERROR_LIBRARY_NOT_FOUND;
     }
 
-    void *symbol = reinterpret_cast<void *>(GetProcAddress((HMODULE)handle, "optixQueryFunctionTable"));
+    void* symbol = reinterpret_cast<void*>(GetProcAddress((HMODULE)handle, "optixQueryFunctionTable"));
     if (!symbol)
     {
         return OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND;
     }
 #else
-    void *handle = dlopen("libnvoptix.so.1", RTLD_NOW);
+    void* handle = dlopen("libnvoptix.so.1", RTLD_NOW);
     if (!handle)
     {
         return OPTIX_ERROR_LIBRARY_NOT_FOUND;
     }
 
-    void *symbol = dlsym(handle, "optixQueryFunctionTable");
+    void* symbol = dlsym(handle, "optixQueryFunctionTable");
     if (!symbol)
     {
         return OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND;
     }
 #endif
 
-    OptixQueryFunctionTable_t *optixQueryFunctionTable = reinterpret_cast<OptixQueryFunctionTable_t *>(symbol);
+    OptixQueryFunctionTable_t* optixQueryFunctionTable = reinterpret_cast<OptixQueryFunctionTable_t*>(symbol);
 
     return optixQueryFunctionTable(OPTIX_ABI_VERSION, 0, 0, 0, &m_api, sizeof(OptixFunctionTable));
 }
@@ -707,7 +707,7 @@ void Application::restartAccumulation()
     m_presentAtSecond = 1.0;
 
     CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
 
     m_timer.restart();
 }
@@ -715,9 +715,9 @@ void Application::restartAccumulation()
 bool Application::render()
 {
     bool cameraChanged = m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
-                                                    m_systemParameter.cameraU,
-                                                    m_systemParameter.cameraV,
-                                                    m_systemParameter.cameraW);
+        m_systemParameter.cameraU,
+        m_systemParameter.cameraV,
+        m_systemParameter.cameraW);
     if (cameraChanged)
     {
         restartAccumulation();
@@ -729,7 +729,7 @@ bool Application::render()
     // Update only the sysParameter.iterationIndex.
     m_systemParameter.iterationIndex = m_iterationIndex++;
 
-    CUDA_CHECK(cudaMemcpy((void *)&m_d_systemParameter->iterationIndex, &m_systemParameter.iterationIndex, sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void*)&m_d_systemParameter->iterationIndex, &m_systemParameter.iterationIndex, sizeof(int), cudaMemcpyHostToDevice));
 
     // size_t size;
 
@@ -737,7 +737,7 @@ bool Application::render()
     // CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource));
 
 
-    CUDA_CHECK(cudaMemcpy((void *)&m_d_systemParameter->outputBuffer, &m_systemParameter.outputBuffer, sizeof(void *), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void*)&m_d_systemParameter->outputBuffer, &m_systemParameter.outputBuffer, sizeof(void*), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, m_cudaStream, (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
@@ -779,7 +779,7 @@ void Application::display()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
 
-    glDrawElements(GL_TRIANGLES, (GLsizei)6, GL_UNSIGNED_INT, (const GLvoid *)0);
+    glDrawElements(GL_TRIANGLES, (GLsizei)6, GL_UNSIGNED_INT, (const GLvoid*)0);
 
     glUseProgram(0);
 
@@ -787,11 +787,11 @@ void Application::display()
     glDisableVertexAttribArray(m_texCoordLocation);
 }
 
-void Application::checkInfoLog(const char *msg, GLuint object)
+void Application::checkInfoLog(const char* msg, GLuint object)
 {
     GLint maxLength;
     GLint length;
-    GLchar *infoLog;
+    GLchar* infoLog;
 
     if (glIsProgram(object))
     {
@@ -803,7 +803,7 @@ void Application::checkInfoLog(const char *msg, GLuint object)
     }
     if (maxLength > 1)
     {
-        infoLog = (GLchar *)malloc(maxLength);
+        infoLog = (GLchar*)malloc(maxLength);
         if (infoLog != NULL)
         {
             if (glIsShader(object))
@@ -872,7 +872,7 @@ void Application::initGLSL()
     if (m_glslVS)
     {
         GLsizei len = (GLsizei)vsSource.size();
-        const GLchar *vs = vsSource.c_str();
+        const GLchar* vs = vsSource.c_str();
         glShaderSource(m_glslVS, 1, &vs, &len);
         glCompileShader(m_glslVS);
         checkInfoLog(vs, m_glslVS);
@@ -885,7 +885,7 @@ void Application::initGLSL()
     if (m_glslFS)
     {
         GLsizei len = (GLsizei)fsSource.size();
-        const GLchar *fs = fsSource.c_str();
+        const GLchar* fs = fsSource.c_str();
         glShaderSource(m_glslFS, 1, &fs, &len);
         glCompileShader(m_glslFS);
         checkInfoLog(fs, m_glslFS);
@@ -1132,7 +1132,7 @@ void Application::guiWindow()
 
 void Application::guiEventHandler()
 {
-    ImGuiIO const &io = ImGui::GetIO();
+    ImGuiIO const& io = ImGui::GetIO();
 
     if (ImGui::IsKeyPressed(' ', false)) // Toggle the GUI window display with SPACE key.
     {
@@ -1205,7 +1205,7 @@ void Application::guiEventHandler()
     }
 }
 
-std::string Application::readPTX(std::string const &filename)
+std::string Application::readPTX(std::string const& filename)
 {
     std::filesystem::path cwd = std::filesystem::current_path();
     // std::cout << "The current directory is " << cwd.string() << std::endl;
@@ -1241,8 +1241,8 @@ void Application::updateMaterialParameters()
     // DAR PERF This could be made faster for GUI interactions on scenes with very many materials when really only copying the changed values.
     for (size_t i = 0; i < m_guiMaterialParameters.size(); ++i)
     {
-        MaterialParameterGUI &src = m_guiMaterialParameters[i]; // GUI layout.
-        MaterialParameter &dst = materialParameters[i];         // Device layout.
+        MaterialParameterGUI& src = m_guiMaterialParameters[i]; // GUI layout.
+        MaterialParameter& dst = materialParameters[i];         // Device layout.
 
         dst.indexBSDF = src.indexBSDF;
         dst.albedo = src.albedo;
@@ -1258,12 +1258,12 @@ void Application::updateMaterialParameters()
     }
 
     CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
-    CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.materialParameters, materialParameters.data(), sizeof(MaterialParameter) * materialParameters.size(), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void*)m_systemParameter.materialParameters, materialParameters.data(), sizeof(MaterialParameter) * materialParameters.size(), cudaMemcpyHostToDevice));
 }
 
 void Application::initMaterials()
 {
-    Picture *picture = new Picture;
+    Picture* picture = new Picture;
 
     unsigned int flags = IMAGE_FLAG_2D;
 
@@ -1367,7 +1367,7 @@ void Application::updateShaderBindingTable(const int instance)
         // Make sure the SBT isn't changed while the renderer is active.
         CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
         // Only copy the two SBT entries which changed.
-        CUDA_CHECK(cudaMemcpy((void *)&m_d_sbtRecordGeometryInstanceData[idx], &m_sbtRecordGeometryInstanceData[idx], sizeof(SbtRecordGeometryInstanceData), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy((void*)&m_d_sbtRecordGeometryInstanceData[idx], &m_sbtRecordGeometryInstanceData[idx], sizeof(SbtRecordGeometryInstanceData), cudaMemcpyHostToDevice));
     }
 }
 
@@ -1422,7 +1422,7 @@ void Application::createLights()
 
     case 2: // HDR Environment mapping with loaded texture.
     {
-        Picture *picture = new Picture; // Separating image file handling from CUDA texture handling.
+        Picture* picture = new Picture; // Separating image file handling from CUDA texture handling.
 
         const unsigned int flags = IMAGE_FLAG_2D | IMAGE_FLAG_ENV;
         if (!picture->load(m_environmentFilename, flags))
@@ -1434,11 +1434,11 @@ void Application::createLights()
         delete picture;
     }
 
-        light.type = LIGHT_ENVIRONMENT;
-        light.area = 4.0f * M_PIf; // Unused.
+    light.type = LIGHT_ENVIRONMENT;
+    light.area = 4.0f * M_PIf; // Unused.
 
-        m_lightDefinitions.push_back(light);
-        break;
+    m_lightDefinitions.push_back(light);
+    break;
     }
 
     if (m_lightID) // Add a square area light over the scene objects.
@@ -1460,10 +1460,10 @@ void Application::createLights()
 
         // The geometric light is stored in world coordinates for now.
         const float trafoLight[12] =
-            {
-                1.0f, 0.0f, 0.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f};
+        {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f };
 
         const unsigned int id = static_cast<unsigned int>(m_instances.size());
 

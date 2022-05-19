@@ -59,8 +59,8 @@ public:
 private:
     OptixRenderer() {}
 
-    Texture*                   m_textureEnvironment;
-    Texture*                   m_textureAlbedo;
+    Texture* m_textureEnvironment;
+    Texture* m_textureAlbedo;
 
     OptixFunctionTable         m_api;
     OptixDeviceContext         m_context;
@@ -68,7 +68,7 @@ private:
     CUdeviceptr                m_d_ias;              // Scene root's IAS (instance acceleration structure).
     OptixPipeline              m_pipeline;
 
-    SystemParameter*           m_d_systemParameter;
+    SystemParameter* m_d_systemParameter;
 
     std::vector<OptixInstance> m_instances;
 
@@ -87,7 +87,7 @@ private:
     SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
     SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
 
-    SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
+    SbtRecordGeometryInstanceData* m_d_sbtRecordGeometryInstanceData;
 
     std::vector<LightDefinition> m_lightDefinitions;
     std::vector<MaterialParameter> m_materialParameters;

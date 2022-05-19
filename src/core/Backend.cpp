@@ -12,7 +12,7 @@ namespace jazzfusion {
 
 static void errorCallback(int error, const char* description)
 {
-    std::cerr << "Error: "<< error << ": " << description << '\n';
+    std::cerr << "Error: " << error << ": " << description << '\n';
 }
 
 void Backend::init()
@@ -179,7 +179,7 @@ void Backend::initOpenGL()
     if (m_glslVS)
     {
         GLsizei len = (GLsizei)vsSource.size();
-        const GLchar *vs = vsSource.c_str();
+        const GLchar* vs = vsSource.c_str();
         glShaderSource(m_glslVS, 1, &vs, &len);
         glCompileShader(m_glslVS);
 
@@ -191,7 +191,7 @@ void Backend::initOpenGL()
     if (m_glslFS)
     {
         GLsizei len = (GLsizei)fsSource.size();
-        const GLchar *fs = fsSource.c_str();
+        const GLchar* fs = fsSource.c_str();
         glShaderSource(m_glslFS, 1, &fs, &len);
         glCompileShader(m_glslFS);
 
@@ -273,13 +273,13 @@ void Backend::initOpenGL()
 
     // Setup the vertex arrays from the interleaved vertex attributes.
     glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(float) * 16, (GLvoid const *)attributes, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)sizeof(float) * 16, (GLvoid const*)attributes, GL_STATIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(unsigned int) * 6, (const GLvoid *)indices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)sizeof(unsigned int) * 6, (const GLvoid*)indices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(m_positionLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)0);
-    glVertexAttribPointer(m_texCoordLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid *)(sizeof(float) * 2));
+    glVertexAttribPointer(m_positionLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid*)0);
+    glVertexAttribPointer(m_texCoordLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid*)(sizeof(float) * 2));
 }
 
 void Backend::display()
@@ -288,7 +288,7 @@ void Backend::display()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, (void *)0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei)m_width, (GLsizei)m_height, 0, GL_RGBA, GL_FLOAT, (void*)0);
 
     // Bind buffer
     glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
@@ -298,7 +298,7 @@ void Backend::display()
 
     glUseProgram(m_glslProgram);
 
-    glDrawElements(GL_TRIANGLES, (GLsizei)6, GL_UNSIGNED_INT, (const GLvoid *)0);
+    glDrawElements(GL_TRIANGLES, (GLsizei)6, GL_UNSIGNED_INT, (const GLvoid*)0);
 
     glUseProgram(0);
 
@@ -321,7 +321,7 @@ void Backend::initInterop()
     size_t size;
 
     CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-    CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_interopBuffer, &size, m_cudaGraphicsResource));
+    CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&m_interopBuffer, &size, m_cudaGraphicsResource));
     CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
 
     assert(m_width * m_height * sizeof(float) * 4 <= size);
@@ -331,7 +331,7 @@ void Backend::mapInteropBuffer()
 {
     size_t size;
     CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-    CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_interopBuffer, &size, m_cudaGraphicsResource));
+    CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&m_interopBuffer, &size, m_cudaGraphicsResource));
 }
 
 void Backend::unmapInteropBuffer()
@@ -363,7 +363,7 @@ void Backend::reshape()
         size_t size;
 
         CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-        CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_interopBuffer, &size, m_cudaGraphicsResource));
+        CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void**)&m_interopBuffer, &size, m_cudaGraphicsResource));
         CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
 
         assert(m_width * m_height * sizeof(float) * 4 <= size);

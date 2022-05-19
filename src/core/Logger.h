@@ -34,37 +34,37 @@
 #include <mutex>
 #include <iostream>
 
-// Adapts an std::ostream to the log callback interface used by the OptiX 7 API.
-//
-// It forwards all log messages to the ostream irrespective of their log level.
-// To make use of this class, pass OptixLogBuffer::callback as log callback and
-// the address of your instance as log callback data.
+ // Adapts an std::ostream to the log callback interface used by the OptiX 7 API.
+ //
+ // It forwards all log messages to the ostream irrespective of their log level.
+ // To make use of this class, pass OptixLogBuffer::callback as log callback and
+ // the address of your instance as log callback data.
 
 class Logger
 {
 public:
-  Logger() : m_stream(std::cout) {}
-  Logger(std::ostream& s)
-  : m_stream(s)
-  {
-  }
+    Logger() : m_stream(std::cout) {}
+    Logger(std::ostream& s)
+        : m_stream(s)
+    {
+    }
 
-  static void callback(unsigned int level, const char* tag, const char* message, void* cbdata)
-  {
-    Logger* self = static_cast<Logger*>(cbdata);
-    self->callback(level, tag, message);
-  }
+    static void callback(unsigned int level, const char* tag, const char* message, void* cbdata)
+    {
+        Logger* self = static_cast<Logger*>(cbdata);
+        self->callback(level, tag, message);
+    }
 
-  // Need this detour because m_mutex is not static.
-  void callback( unsigned int /*level*/, const char* tag, const char* message )
-  {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_stream << tag << ":" << ((message) ? message : "(no message)") << "\n";
-  }
+    // Need this detour because m_mutex is not static.
+    void callback(unsigned int /*level*/, const char* tag, const char* message)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_stream << tag << ":" << ((message) ? message : "(no message)") << "\n";
+    }
 
 private:
-  std::mutex    m_mutex;  // Mutex that protects m_stream.
-  std::ostream& m_stream; // Needs m_mutex.
+    std::mutex    m_mutex;  // Mutex that protects m_stream.
+    std::ostream& m_stream; // Needs m_mutex.
 };
 
 #endif // LOGGER_H

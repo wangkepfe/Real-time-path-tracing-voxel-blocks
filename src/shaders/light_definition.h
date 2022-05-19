@@ -33,38 +33,38 @@
 
 enum LightType
 {
-  LIGHT_ENVIRONMENT   = 0, // constant color or spherical environment map.
-  LIGHT_PARALLELOGRAM = 1, // Parallelogram area light.
+    LIGHT_ENVIRONMENT = 0, // constant color or spherical environment map.
+    LIGHT_PARALLELOGRAM = 1, // Parallelogram area light.
 
-  NUM_LIGHT_TYPES     = 2
+    NUM_LIGHT_TYPES = 2
 };
 
 struct __align__(16) LightDefinition
 {
-  LightType type; // Constant or spherical environment, rectangle (parallelogram).
+    LightType type; // Constant or spherical environment, rectangle (parallelogram).
 
-  // Rectangle lights are defined in world coordinates as footpoint and two vectors spanning a parallelogram.
-  // All in world coordinates with no scaling.
-  float3 position;
-  float3 vecU;
-  float3 vecV;
-  float3 normal;
-  float  area;
-  float3 emission;
+    // Rectangle lights are defined in world coordinates as footpoint and two vectors spanning a parallelogram.
+    // All in world coordinates with no scaling.
+    float3 position;
+    float3 vecU;
+    float3 vecV;
+    float3 normal;
+    float  area;
+    float3 emission;
 
-  // Manual padding to float4 alignment goes here.
-  float unused0;
-  float unused1;
-  float unused2;
+    // Manual padding to float4 alignment goes here.
+    float unused0;
+    float unused1;
+    float unused2;
 };
 
 struct LightSample
 {
-  float3 position;
-  float  distance;
-  float3 direction;
-  float3 emission;
-  float  pdf;
+    float3 position;
+    float  distance;
+    float3 direction;
+    float3 emission;
+    float  pdf;
 };
 
 #endif // LIGHT_DEFINITION_H

@@ -41,8 +41,7 @@ struct Timer
         do {
             currentTime = std::chrono::high_resolution_clock::now();
             deltaTime = std::chrono::duration<double, std::milli>(currentTime - previousTime).count();
-        }
-        while (deltaTime < minTimeAllowed);
+        } while (deltaTime < minTimeAllowed);
 
         previousTime = currentTime;
 
@@ -78,12 +77,12 @@ struct Timer
     }
 
     bool     firstTimeUse = true;
-    double   deltaTime    = 0.0;
-    float    fpsTimer     = 0.0f;
+    double   deltaTime = 0.0;
+    float    fpsTimer = 0.0f;
     uint32_t frameCounter = 0;
-    uint32_t fps          = 0;
+    uint32_t fps = 0;
 
-    std::chrono::steady_clock::time_point startTime {std::chrono::high_resolution_clock::now()};
+    std::chrono::steady_clock::time_point startTime{ std::chrono::high_resolution_clock::now() };
     std::chrono::steady_clock::time_point currentTime;
     std::chrono::steady_clock::time_point previousTime;
 };
@@ -91,8 +90,8 @@ struct Timer
 struct ScopeTimer
 {
     ScopeTimer(const std::string& name) :
-        name {name},
-        startTime {std::chrono::high_resolution_clock::now()}
+        name{ name },
+        startTime{ std::chrono::high_resolution_clock::now() }
     {}
     ~ScopeTimer()
     {

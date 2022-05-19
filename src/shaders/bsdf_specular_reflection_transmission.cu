@@ -35,10 +35,10 @@
 #include "shader_common.h"
 #include "random_number_generators.h"
 
-// This function evaluates a Fresnel dielectric function when the transmitting cosine ("cost")
-// is unknown and the incident index of refraction is assumed to be 1.0f.
-// \param et     The transmitted index of refraction.
-// \param costIn The cosine of the angle between the incident direction and normal direction.
+ // This function evaluates a Fresnel dielectric function when the transmitting cosine ("cost")
+ // is unknown and the incident index of refraction is assumed to be 1.0f.
+ // \param et     The transmitted index of refraction.
+ // \param costIn The cosine of the angle between the incident direction and normal direction.
 __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const float cosIn)
 {
     const float cosi = fabsf(cosIn);
@@ -66,7 +66,7 @@ __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const
     return (result <= 1.0f) ? result : 1.0f;
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const &parameters, State const &state, PerRayData *prd, float3 &wi, float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const& parameters, State const& state, PerRayData * prd, float3 & wi, float3 & f_over_pdf, float& pdf)
 {
     // Return the current material's absorption coefficient and ior to the integrator to be able to support nested materials.
     prd->absorption_ior = make_float4(parameters.absorption, parameters.ior);
@@ -76,8 +76,8 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
     // ior.xy are the current volume's IOR and the surrounding volume's IOR.
     // Thin-walled materials have no volume, always use the frontface eta for them!
     const float eta = (prd->flags & (FLAG_FRONTFACE | FLAG_THINWALLED))
-                          ? prd->absorption_ior.w / prd->ior.x
-                          : prd->ior.y / prd->absorption_ior.w;
+        ? prd->absorption_ior.w / prd->ior.x
+        : prd->ior.y / prd->absorption_ior.w;
 
     const float3 R = reflect(-prd->wo, state.normal);
 

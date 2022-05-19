@@ -25,12 +25,13 @@
 #include <vector>
 #include <filesystem>
 
-namespace {
-
-std::string ReadPtx(std::string const &filename)
+namespace
 {
-    //std::filesystem::path cwd = std::filesystem::current_path();
-    // std::cout << "The current directory is " << cwd.string() << std::endl;
+
+std::string ReadPtx(std::string const& filename)
+{
+    // std::filesystem::path cwd = std::filesystem::current_path();
+    //  std::cout << "The current directory is " << cwd.string() << std::endl;
 
     std::ifstream inputPtx(filename);
 
@@ -64,19 +65,19 @@ class OptixLogger
 {
 public:
     OptixLogger() : m_stream(std::cout) {}
-    OptixLogger(std::ostream &s)
+    OptixLogger(std::ostream& s)
         : m_stream(s)
     {
     }
 
-    static void callback(unsigned int level, const char *tag, const char *message, void *cbdata)
+    static void callback(unsigned int level, const char* tag, const char* message, void* cbdata)
     {
-        OptixLogger *self = static_cast<OptixLogger *>(cbdata);
+        OptixLogger* self = static_cast<OptixLogger*>(cbdata);
         self->callback(level, tag, message);
     }
 
     // Need this detour because m_mutex is not static.
-    void callback(unsigned int /*level*/, const char *tag, const char *message)
+    void callback(unsigned int /*level*/, const char* tag, const char* message)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_stream << tag << ":" << ((message) ? message : "(no message)") << "\n";
@@ -84,7 +85,7 @@ public:
 
 private:
     std::mutex m_mutex;     // Mutex that protects m_stream.
-    std::ostream &m_stream; // Needs m_mutex.
+    std::ostream& m_stream; // Needs m_mutex.
 };
 
 static OptixLogger g_logger = {};
@@ -97,23 +98,23 @@ void OptixRenderer::clear()
     delete m_textureEnvironment;
     delete m_textureAlbedo;
 
-    CUDA_CHECK(cudaFree((void *)m_systemParameter.lightDefinitions));
-    CUDA_CHECK(cudaFree((void *)m_systemParameter.materialParameters));
-    CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
+    CUDA_CHECK(cudaFree((void*)m_systemParameter.lightDefinitions));
+    CUDA_CHECK(cudaFree((void*)m_systemParameter.materialParameters));
+    CUDA_CHECK(cudaFree((void*)m_d_systemParameter));
 
     for (size_t i = 0; i < m_geometries.size(); ++i)
     {
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].indices));
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].attributes));
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].gas));
+        CUDA_CHECK(cudaFree((void*)m_geometries[i].indices));
+        CUDA_CHECK(cudaFree((void*)m_geometries[i].attributes));
+        CUDA_CHECK(cudaFree((void*)m_geometries[i].gas));
     }
-    CUDA_CHECK(cudaFree((void *)m_d_ias));
+    CUDA_CHECK(cudaFree((void*)m_d_ias));
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
+    CUDA_CHECK(cudaFree((void*)m_d_sbtRecordRaygeneration));
+    CUDA_CHECK(cudaFree((void*)m_d_sbtRecordMiss));
+    CUDA_CHECK(cudaFree((void*)m_d_sbtRecordCallables));
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    CUDA_CHECK(cudaFree((void*)m_d_sbtRecordGeometryInstanceData));
 
     OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
@@ -123,16 +124,16 @@ void OptixRenderer::render()
 {
     auto& backend = jazzfusion::Backend::Get();
     bool cameraChanged = m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
-                                                    m_systemParameter.cameraU,
-                                                    m_systemParameter.cameraV,
-                                                    m_systemParameter.cameraW);
+        m_systemParameter.cameraU,
+        m_systemParameter.cameraV,
+        m_systemParameter.cameraW);
 
     static int iterationIndex = 0;
     m_systemParameter.iterationIndex = iterationIndex++;
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
@@ -141,10 +142,10 @@ void OptixRenderer::render()
 
 #ifdef _WIN32
 // Code based on helper function in optix_stubs.h
-static void *optixLoadWindowsDll(void)
+static void* optixLoadWindowsDll(void)
 {
-    const char *optixDllName = "nvoptix.dll";
-    void *handle = NULL;
+    const char* optixDllName = "nvoptix.dll";
+    void* handle = NULL;
 
     // Get the size of the path first, then allocate
     unsigned int size = GetSystemDirectoryA(NULL, 0);
@@ -155,7 +156,7 @@ static void *optixLoadWindowsDll(void)
     }
 
     size_t pathSize = size + 1 + strlen(optixDllName);
-    char *systemPath = (char *)malloc(pathSize);
+    char* systemPath = (char*)malloc(pathSize);
 
     if (GetSystemDirectoryA(systemPath, size) != size - 1)
     {
@@ -180,7 +181,7 @@ static void *optixLoadWindowsDll(void)
     // have its own registry entry, we are going to look for the OpenGL driver which lives
     // next to nvoptix.dll. 0 (null) will be returned if any errors occured.
 
-    static const char *deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
+    static const char* deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
     const ULONG flags = CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT;
     ULONG deviceListSize = 0;
 
@@ -189,7 +190,7 @@ static void *optixLoadWindowsDll(void)
         return NULL;
     }
 
-    char *deviceNames = (char *)malloc(deviceListSize);
+    char* deviceNames = (char*)malloc(deviceListSize);
 
     if (CM_Get_Device_ID_ListA(deviceInstanceIdentifiersGUID, deviceNames, deviceListSize, flags))
     {
@@ -200,7 +201,7 @@ static void *optixLoadWindowsDll(void)
     DEVINST devID = 0;
 
     // Continue to the next device if errors are encountered.
-    for (char *deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
+    for (char* deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
     {
         if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
         {
@@ -213,7 +214,7 @@ static void *optixLoadWindowsDll(void)
             continue;
         }
 
-        const char *valueName = "OpenGLDriverName";
+        const char* valueName = "OpenGLDriverName";
         DWORD valueSize = 0;
 
         LSTATUS ret = RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
@@ -223,7 +224,7 @@ static void *optixLoadWindowsDll(void)
             continue;
         }
 
-        char *regValue = (char *)malloc(valueSize);
+        char* regValue = (char*)malloc(valueSize);
         ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE)regValue, &valueSize);
         if (ret != ERROR_SUCCESS)
         {
@@ -240,7 +241,7 @@ static void *optixLoadWindowsDll(void)
         }
 
         size_t newPathSize = strlen(regValue) + strlen(optixDllName) + 1;
-        char *dllPath = (char *)malloc(newPathSize);
+        char* dllPath = (char*)malloc(newPathSize);
         strcpy(dllPath, regValue);
         strcat(dllPath, optixDllName);
 
@@ -310,17 +311,17 @@ void OptixRenderer::init()
 
     // Create function table
     {
-        void *handle = optixLoadWindowsDll();
+        void* handle = optixLoadWindowsDll();
         if (!handle)
         {
             throw std::runtime_error("OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND");
         }
-        void *symbol = reinterpret_cast<void *>(GetProcAddress((HMODULE)handle, "optixQueryFunctionTable"));
+        void* symbol = reinterpret_cast<void*>(GetProcAddress((HMODULE)handle, "optixQueryFunctionTable"));
         if (!symbol)
         {
             throw std::runtime_error("OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND");
         }
-        OptixQueryFunctionTable_t *optixQueryFunctionTable = reinterpret_cast<OptixQueryFunctionTable_t *>(symbol);
+        OptixQueryFunctionTable_t* optixQueryFunctionTable = reinterpret_cast<OptixQueryFunctionTable_t*>(symbol);
 
         OptixResult res = optixQueryFunctionTable(OPTIX_ABI_VERSION, 0, 0, 0, &m_api, sizeof(OptixFunctionTable));
 
@@ -349,12 +350,12 @@ void OptixRenderer::init()
     {
         // Create texture
         {
-            Picture *picture = new Picture;
+            Picture* picture = new Picture;
 
             unsigned int flags = IMAGE_FLAG_2D;
 
-            //std::filesystem::path cwd = std::filesystem::current_path();
-            //std::cout << "The current directory is " << cwd.string() << std::endl;
+            // std::filesystem::path cwd = std::filesystem::current_path();
+            // std::cout << "The current directory is " << cwd.string() << std::endl;
 
             const std::string filenameDiffuse = std::string("data/Checker.png");
             if (!picture->load(filenameDiffuse, flags))
@@ -372,48 +373,48 @@ void OptixRenderer::init()
 
         // The order in this array matches the instance ID in the root IAS!
         // Lambert material for the floor.
-        parameters.indexBSDF     = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
-        parameters.albedo        = make_float3(0.8f, 0.8f, 0.8f); // Grey. Modulates the albedo texture.
+        parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
+        parameters.albedo = make_float3(0.8f, 0.8f, 0.8f);    // Grey. Modulates the albedo texture.
         parameters.textureAlbedo = m_textureAlbedo->getTextureObject();
-        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior           = 1.5f;
-        parameters.flags         = 0; // FLAG_THINWALLED;
+        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior = 1.5f;
+        parameters.flags = 0;                       // FLAG_THINWALLED;
         m_materialParameters.push_back(parameters); // 0
 
         // Glass material
-        parameters.indexBSDF     = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-        parameters.albedo        = make_float3(1.0f, 1.0f, 1.0f);
+        parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
+        parameters.albedo = make_float3(1.0f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
-        parameters.flags         = 0;
-        parameters.absorption    = make_float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
-        parameters.ior           = 1.52f; // Flint glass. Higher IOR than the surrounding box.
-        m_materialParameters.push_back(parameters); // 1
+        parameters.flags = 0;
+        parameters.absorption = make_float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
+        parameters.ior = 1.52f;                                                             // Flint glass. Higher IOR than the surrounding box.
+        m_materialParameters.push_back(parameters);                                         // 1
 
         // Lambert material
-        parameters.indexBSDF     = INDEX_BSDF_DIFFUSE_REFLECTION;
-        parameters.albedo        = make_float3(0.75f, 1.0f, 1.0f);
+        parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
+        parameters.albedo = make_float3(0.75f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
-        parameters.flags         = 0;
-        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior           = 1.5f;
+        parameters.flags = 0;
+        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior = 1.5f;
         m_materialParameters.push_back(parameters); // 2
 
         // Tinted mirror material.
-        parameters.indexBSDF     = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo        = make_float3(0.9f, 0.9f, 0.9f);
+        parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
+        parameters.albedo = make_float3(0.9f, 0.9f, 0.9f);
         parameters.textureAlbedo = 0;
-        parameters.flags         = 0;
-        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior           = 1.33f;
+        parameters.flags = 0;
+        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior = 1.33f;
         m_materialParameters.push_back(parameters); // 3
 
         // Black BSDF for the light. This last material will not be shown inside the GUI!
-        parameters.indexBSDF     = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo        = make_float3(0.0f, 1.0f, 1.0f);
+        parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
+        parameters.albedo = make_float3(0.0f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
-        parameters.flags         = 0;
-        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior           = 1.0f;
+        parameters.flags = 0;
+        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior = 1.0f;
         m_materialParameters.push_back(parameters); // 4
     }
 
@@ -430,15 +431,14 @@ void OptixRenderer::init()
             {
                 8.0f, 0.0f, 0.0f, 0.0f,
                 0.0f, 8.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 8.0f, 0.0f
-            };
+                0.0f, 0.0f, 8.0f, 0.0f };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoPlane, sizeof(float) * 12);
-            instance.instanceId        = id;
-            instance.visibilityMask    = 255;
-            instance.sbtOffset         = id;
-            instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
+            instance.instanceId = id;
+            instance.visibilityMask = 255;
+            instance.sbtOffset = id;
+            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = geoPlane;
 
             m_instances.push_back(instance);
@@ -452,8 +452,7 @@ void OptixRenderer::init()
             {
                 1.0f, 0.0f, 0.0f, -2.5f, // Move to the left.
                 0.0f, 1.0f, 0.0f, 1.25f, // The box is modeled with unit coordinates in the range [-1, 1], Move it above the floor plane.
-                0.0f, 0.0f, 1.0f, 0.0f
-            };
+                0.0f, 0.0f, 1.0f, 0.0f };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoBox, sizeof(float) * 12);
@@ -474,8 +473,7 @@ void OptixRenderer::init()
             {
                 1.0f, 0.0f, 0.0f, 0.0f,  // In the center, to the right of the box.
                 0.0f, 1.0f, 0.0f, 1.25f, // The sphere is modeled with radius 1.0f. Move it above the floor plane to show shadows.
-                0.0f, 0.0f, 1.0f, 0.0f
-            };
+                0.0f, 0.0f, 1.0f, 0.0f };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoSphere, sizeof(float) * 12);
@@ -496,8 +494,7 @@ void OptixRenderer::init()
             {
                 1.0f, 0.0f, 0.0f, 2.5f,  // Move it to the right of the sphere.
                 0.0f, 1.0f, 0.0f, 1.25f, // The torus has an outer radius of 0.5f. Move it above the floor plane.
-                0.0f, 0.0f, 1.0f, 0.0f
-            };
+                0.0f, 0.0f, 1.0f, 0.0f };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoTorus, sizeof(float) * 12);
@@ -526,7 +523,7 @@ void OptixRenderer::init()
 
             // HDR Environment mapping with loaded texture.
             {
-                Picture *picture = new Picture; // Separating image file handling from CUDA texture handling.
+                Picture* picture = new Picture; // Separating image file handling from CUDA texture handling.
 
                 const unsigned int flags = IMAGE_FLAG_2D | IMAGE_FLAG_ENV;
                 if (!picture->load("data/NV_Default_HDR_3000x1500.hdr", flags))
@@ -566,8 +563,7 @@ void OptixRenderer::init()
                 {
                     1.0f, 0.0f, 0.0f, 0.0f,
                     0.0f, 1.0f, 0.0f, 0.0f,
-                    0.0f, 0.0f, 1.0f, 0.0f
-                };
+                    0.0f, 0.0f, 1.0f, 0.0f };
                 const unsigned int id = static_cast<unsigned int>(m_instances.size());
 
                 memcpy(instance.transform, trafoLight, sizeof(float) * 12);
@@ -587,8 +583,8 @@ void OptixRenderer::init()
 
             const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
 
-            CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-            CUDA_CHECK(cudaMemcpy((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&d_instances, instancesSizeInBytes));
+            CUDA_CHECK(cudaMemcpy((void*)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice));
 
             OptixBuildInput instanceInput = {};
 
@@ -605,41 +601,41 @@ void OptixRenderer::init()
 
             OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-            CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_ias, iasBufferSizes.outputSizeInBytes));
 
             CUdeviceptr d_tmp;
 
-            CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void**)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
             auto& backend = jazzfusion::Backend::Get();
             OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
-                                                &accelBuildOptions, &instanceInput, 1,
-                                                d_tmp, iasBufferSizes.tempSizeInBytes,
-                                                m_d_ias, iasBufferSizes.outputSizeInBytes,
-                                                &m_root, nullptr, 0));
+                &accelBuildOptions, &instanceInput, 1,
+                d_tmp, iasBufferSizes.tempSizeInBytes,
+                m_d_ias, iasBufferSizes.outputSizeInBytes,
+                &m_root, nullptr, 0));
 
             CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-            CUDA_CHECK(cudaFree((void *)d_tmp));
-            CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
+            CUDA_CHECK(cudaFree((void*)d_tmp));
+            CUDA_CHECK(cudaFree((void*)d_instances)); // Don't need the instances anymore.
         }
 
         // Options
-        OptixModuleCompileOptions moduleCompileOptions          = {};
-        moduleCompileOptions.maxRegisterCount                   = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-        moduleCompileOptions.optLevel                           = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-        moduleCompileOptions.debugLevel                         = OPTIX_COMPILE_DEBUG_LEVEL_DEFAULT;
+        OptixModuleCompileOptions moduleCompileOptions = {};
+        moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+        moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+        moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_DEFAULT;
         // moduleCompileOptions.optLevel                        = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
         // moduleCompileOptions.debugLevel                      = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 
-        OptixPipelineCompileOptions pipelineCompileOptions      = {};
-        pipelineCompileOptions.usesMotionBlur                   = 0;
-        pipelineCompileOptions.traversableGraphFlags            = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
-        pipelineCompileOptions.numPayloadValues                 = 2;  // I need two to encode a 64-bit pointer to the per ray payload structure.
-        pipelineCompileOptions.numAttributeValues               = 2; // The minimum is two, for the barycentrics.
+        OptixPipelineCompileOptions pipelineCompileOptions = {};
+        pipelineCompileOptions.usesMotionBlur = 0;
+        pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
+        pipelineCompileOptions.numPayloadValues = 2;   // I need two to encode a 64-bit pointer to the per ray payload structure.
+        pipelineCompileOptions.numAttributeValues = 2; // The minimum is two, for the barycentrics.
         pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
 
-        OptixProgramGroupOptions programGroupOptions            = {};
+        OptixProgramGroupOptions programGroupOptions = {};
 
         // Shaders:
         std::vector<OptixModule> moduleList;
@@ -652,10 +648,10 @@ void OptixRenderer::init()
             OptixModule moduleRaygeneration;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration));
 
-            OptixProgramGroupDesc programGroupDescRaygeneration    = {};
-            programGroupDescRaygeneration.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-            programGroupDescRaygeneration.flags                    = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-            programGroupDescRaygeneration.raygen.module            = moduleRaygeneration;
+            OptixProgramGroupDesc programGroupDescRaygeneration = {};
+            programGroupDescRaygeneration.kind = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+            programGroupDescRaygeneration.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+            programGroupDescRaygeneration.raygen.module = moduleRaygeneration;
             programGroupDescRaygeneration.raygen.entryFunctionName = "__raygen__pathtracer";
 
             OptixProgramGroup programGroupRaygeneration;
@@ -671,9 +667,9 @@ void OptixRenderer::init()
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss));
 
             OptixProgramGroupDesc programGroupDescMissRadiance = {};
-            programGroupDescMissRadiance.kind                  = OPTIX_PROGRAM_GROUP_KIND_MISS;
-            programGroupDescMissRadiance.flags                 = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-            programGroupDescMissRadiance.miss.module           = moduleMiss;
+            programGroupDescMissRadiance.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+            programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+            programGroupDescMissRadiance.miss.module = moduleMiss;
 
             // Spherical HDR environment light.
             programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_sphere";
@@ -690,10 +686,10 @@ void OptixRenderer::init()
             OptixModule moduleClosesthit;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit));
 
-            OptixProgramGroupDesc programGroupDescHitRadiance        = {};
-            programGroupDescHitRadiance.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-            programGroupDescHitRadiance.flags                        = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-            programGroupDescHitRadiance.hitgroup.moduleCH            = moduleClosesthit;
+            OptixProgramGroupDesc programGroupDescHitRadiance = {};
+            programGroupDescHitRadiance.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+            programGroupDescHitRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+            programGroupDescHitRadiance.hitgroup.moduleCH = moduleClosesthit;
             programGroupDescHitRadiance.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
 
             OptixProgramGroup programGroupHitRadiance;
@@ -761,8 +757,8 @@ void OptixRenderer::init()
         // Pipeline
         OptixPipelineLinkOptions pipelineLinkOptions = {};
         {
-            pipelineLinkOptions.maxTraceDepth            = 2;
-            pipelineLinkOptions.debugLevel               = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+            pipelineLinkOptions.maxTraceDepth = 2;
+            pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
             // pipelineLinkOptions.debugLevel            = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
             OPTIX_CHECK(m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int)programGroups.size(), nullptr, nullptr, &m_pipeline));
         }
@@ -790,7 +786,7 @@ void OptixRenderer::init()
             const unsigned int directCallableStackSizeFromTraversal = stackSizesPipeline.dssDC;
             const unsigned int directCallableStackSizeFromState = stackSizesPipeline.dssDC;
             const unsigned int continuationStackSize = stackSizesPipeline.cssRG + cssCCTree + cssCHOrMSPlusCCTree * (std::max(1u, pipelineLinkOptions.maxTraceDepth) - 1u) +
-                                                        std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
+                std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
             const unsigned int maxTraversableGraphDepth = 2;
 
             OPTIX_CHECK(m_api.optixPipelineSetStackSize(m_pipeline, directCallableStackSizeFromTraversal, directCallableStackSizeFromState, continuationStackSize, maxTraversableGraphDepth));
@@ -802,16 +798,16 @@ void OptixRenderer::init()
         {
             SbtRecordHeader sbtRecordRaygeneration;
             OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[0], &sbtRecordRaygeneration));
-            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordRaygeneration, sizeof(SbtRecordHeader)));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_sbtRecordRaygeneration, sizeof(SbtRecordHeader)));
+            CUDA_CHECK(cudaMemcpy((void*)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
         }
 
         // Miss group
         {
             SbtRecordHeader sbtRecordMiss;
             OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[1], &sbtRecordMiss));
-            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader)));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordMiss, &sbtRecordMiss, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader)));
+            CUDA_CHECK(cudaMemcpy((void*)m_d_sbtRecordMiss, &sbtRecordMiss, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
         }
 
         // Hit group
@@ -834,13 +830,13 @@ void OptixRenderer::init()
             if (g_useGeometrySquareLight)
             {
                 const int idx = (numInstances - 1); // HACK The last instance is the parallelogram light.
-                const int lightIndex = 1;    // HACK If there is any environment light that is in sysParameter.lightDefinitions[0] and the area light in index [1] then.
+                const int lightIndex = 1;           // HACK If there is any environment light that is in sysParameter.lightDefinitions[0] and the area light in index [1] then.
                 m_sbtRecordGeometryInstanceData[idx].data.lightIndex = lightIndex;
                 m_sbtRecordGeometryInstanceData[idx + 1].data.lightIndex = lightIndex;
             }
 
-            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
+            CUDA_CHECK(cudaMemcpy((void*)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice));
         }
 
         // Direct callables
@@ -851,8 +847,8 @@ void OptixRenderer::init()
                 OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]));
             }
 
-            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
+            CUDA_CHECK(cudaMemcpy((void*)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice));
         }
 
         // Setup the OptixShaderBindingTable
@@ -880,16 +876,16 @@ void OptixRenderer::init()
             m_systemParameter.topObject = m_root;
 
             assert((sizeof(LightDefinition) & 15) == 0); // Check alignment to float4
-            CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
-            CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
+            CUDA_CHECK(cudaMemcpy((void*)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
 
-            CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
-            CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
+            CUDA_CHECK(cudaMemcpy((void*)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice));
 
             // Setup the environment texture values. These are all defaults when there is no environment texture filename given.
             m_systemParameter.envTexture = m_textureEnvironment->getTextureObject();
-            m_systemParameter.envCDF_U = (float *)m_textureEnvironment->getCDF_U();
-            m_systemParameter.envCDF_V = (float *)m_textureEnvironment->getCDF_V();
+            m_systemParameter.envCDF_U = (float*)m_textureEnvironment->getCDF_U();
+            m_systemParameter.envCDF_V = (float*)m_textureEnvironment->getCDF_V();
             m_systemParameter.envWidth = m_textureEnvironment->getWidth();
             m_systemParameter.envHeight = m_textureEnvironment->getHeight();
             m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
@@ -901,12 +897,12 @@ void OptixRenderer::init()
             m_systemParameter.cameraType = 0; // @TODO: remove this
 
             m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
-                                        m_systemParameter.cameraU,
-                                        m_systemParameter.cameraV,
-                                        m_systemParameter.cameraW);
+                m_systemParameter.cameraU,
+                m_systemParameter.cameraV,
+                m_systemParameter.cameraW);
 
-            CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_systemParameter, sizeof(SystemParameter)));
+            CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
         }
 
         // Destroy modules

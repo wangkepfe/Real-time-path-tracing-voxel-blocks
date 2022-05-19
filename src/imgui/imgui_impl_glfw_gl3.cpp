@@ -46,10 +46,10 @@
 #endif
 
 // GLFW data
-static GLFWwindow*  g_Window = NULL;
+static GLFWwindow* g_Window = NULL;
 static double       g_Time = 0.0f;
 static bool         g_MouseJustPressed[3] = { false, false, false };
-static GLFWcursor*  g_MouseCursors[ImGuiMouseCursor_Count_] = { 0 };
+static GLFWcursor* g_MouseCursors[ImGuiMouseCursor_Count_] = { 0 };
 
 // OpenGL3 data
 static GLuint       g_FontTexture = 0;
@@ -60,7 +60,7 @@ static unsigned int g_VboHandle = 0, g_VaoHandle = 0, g_ElementsHandle = 0;
 
 // OpenGL3 Render function.
 // (this used to be set in io.RenderDrawListsFn and called by ImGui::Render(), but you can now call this directly from your main loop)
-// Note that this implementation is little overcomplicated because we are saving/setting up/restoring every OpenGL state explicitly, in order to be able to run within any OpenGL engine that doesn't do so. 
+// Note that this implementation is little overcomplicated because we are saving/setting up/restoring every OpenGL state explicitly, in order to be able to run within any OpenGL engine that doesn't do so.
 void ImGui_ImplGlfwGL3_RenderDrawData(ImDrawData* draw_data)
 {
     // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
@@ -107,8 +107,8 @@ void ImGui_ImplGlfwGL3_RenderDrawData(ImDrawData* draw_data)
     glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height);
     const float ortho_projection[4][4] =
     {
-        { 2.0f/io.DisplaySize.x, 0.0f,                   0.0f, 0.0f },
-        { 0.0f,                  2.0f/-io.DisplaySize.y, 0.0f, 0.0f },
+        { 2.0f / io.DisplaySize.x, 0.0f,                   0.0f, 0.0f },
+        { 0.0f,                  2.0f / -io.DisplaySize.y, 0.0f, 0.0f },
         { 0.0f,                  0.0f,                  -1.0f, 0.0f },
         {-1.0f,                  1.0f,                   0.0f, 1.0f },
     };
@@ -229,7 +229,7 @@ bool ImGui_ImplGlfwGL3_CreateFontsTexture()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
     // Store our identifier
-    io.Fonts->TexID = (void *)(intptr_t)g_FontTexture;
+    io.Fonts->TexID = (void*)(intptr_t)g_FontTexture;
 
     // Restore state
     glBindTexture(GL_TEXTURE_2D, last_texture);
@@ -245,7 +245,7 @@ bool ImGui_ImplGlfwGL3_CreateDeviceObjects()
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &last_array_buffer);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &last_vertex_array);
 
-    const GLchar *vertex_shader =
+    const GLchar* vertex_shader =
         "#version 150\n"
         "uniform mat4 ProjMtx;\n"
         "in vec2 Position;\n"
@@ -423,8 +423,8 @@ void ImGui_ImplGlfwGL3_NewFrame()
     io.DisplayFramebufferScale = ImVec2(w > 0 ? ((float)display_w / w) : 0, h > 0 ? ((float)display_h / h) : 0);
 
     // Setup time step
-    double current_time =  glfwGetTime();
-    io.DeltaTime = g_Time > 0.0 ? (float)(current_time - g_Time) : (float)(1.0f/60.0f);
+    double current_time = glfwGetTime();
+    io.DeltaTime = g_Time > 0.0 ? (float)(current_time - g_Time) : (float)(1.0f / 60.0f);
     g_Time = current_time;
 
     // Setup inputs
@@ -444,7 +444,7 @@ void ImGui_ImplGlfwGL3_NewFrame()
     }
     else
     {
-        io.MousePos = ImVec2(-FLT_MAX,-FLT_MAX);
+        io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
     }
 
     for (int i = 0; i < 3; i++)
@@ -471,29 +471,29 @@ void ImGui_ImplGlfwGL3_NewFrame()
     if (io.NavFlags & ImGuiNavFlags_EnableGamepad)
     {
         // Update gamepad inputs
-        #define MAP_BUTTON(NAV_NO, BUTTON_NO)       { if (buttons_count > BUTTON_NO && buttons[BUTTON_NO] == GLFW_PRESS) io.NavInputs[NAV_NO] = 1.0f; }
-        #define MAP_ANALOG(NAV_NO, AXIS_NO, V0, V1) { float v = (axes_count > AXIS_NO) ? axes[AXIS_NO] : V0; v = (v - V0) / (V1 - V0); if (v > 1.0f) v = 1.0f; if (io.NavInputs[NAV_NO] < v) io.NavInputs[NAV_NO] = v; }
+#define MAP_BUTTON(NAV_NO, BUTTON_NO)       { if (buttons_count > BUTTON_NO && buttons[BUTTON_NO] == GLFW_PRESS) io.NavInputs[NAV_NO] = 1.0f; }
+#define MAP_ANALOG(NAV_NO, AXIS_NO, V0, V1) { float v = (axes_count > AXIS_NO) ? axes[AXIS_NO] : V0; v = (v - V0) / (V1 - V0); if (v > 1.0f) v = 1.0f; if (io.NavInputs[NAV_NO] < v) io.NavInputs[NAV_NO] = v; }
         int axes_count = 0, buttons_count = 0;
         const float* axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axes_count);
         const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
-        MAP_BUTTON(ImGuiNavInput_Activate,   0);     // Cross / A
-        MAP_BUTTON(ImGuiNavInput_Cancel,     1);     // Circle / B
-        MAP_BUTTON(ImGuiNavInput_Menu,       2);     // Square / X
-        MAP_BUTTON(ImGuiNavInput_Input,      3);     // Triangle / Y
-        MAP_BUTTON(ImGuiNavInput_DpadLeft,   13);    // D-Pad Left
-        MAP_BUTTON(ImGuiNavInput_DpadRight,  11);    // D-Pad Right
-        MAP_BUTTON(ImGuiNavInput_DpadUp,     10);    // D-Pad Up
-        MAP_BUTTON(ImGuiNavInput_DpadDown,   12);    // D-Pad Down
-        MAP_BUTTON(ImGuiNavInput_FocusPrev,  4);     // L1 / LB
-        MAP_BUTTON(ImGuiNavInput_FocusNext,  5);     // R1 / RB
-        MAP_BUTTON(ImGuiNavInput_TweakSlow,  4);     // L1 / LB
-        MAP_BUTTON(ImGuiNavInput_TweakFast,  5);     // R1 / RB
-        MAP_ANALOG(ImGuiNavInput_LStickLeft, 0,  -0.3f,  -0.9f);
-        MAP_ANALOG(ImGuiNavInput_LStickRight,0,  +0.3f,  +0.9f);
-        MAP_ANALOG(ImGuiNavInput_LStickUp,   1,  +0.3f,  +0.9f);
-        MAP_ANALOG(ImGuiNavInput_LStickDown, 1,  -0.3f,  -0.9f);
-        #undef MAP_BUTTON
-        #undef MAP_ANALOG
+        MAP_BUTTON(ImGuiNavInput_Activate, 0);     // Cross / A
+        MAP_BUTTON(ImGuiNavInput_Cancel, 1);     // Circle / B
+        MAP_BUTTON(ImGuiNavInput_Menu, 2);     // Square / X
+        MAP_BUTTON(ImGuiNavInput_Input, 3);     // Triangle / Y
+        MAP_BUTTON(ImGuiNavInput_DpadLeft, 13);    // D-Pad Left
+        MAP_BUTTON(ImGuiNavInput_DpadRight, 11);    // D-Pad Right
+        MAP_BUTTON(ImGuiNavInput_DpadUp, 10);    // D-Pad Up
+        MAP_BUTTON(ImGuiNavInput_DpadDown, 12);    // D-Pad Down
+        MAP_BUTTON(ImGuiNavInput_FocusPrev, 4);     // L1 / LB
+        MAP_BUTTON(ImGuiNavInput_FocusNext, 5);     // R1 / RB
+        MAP_BUTTON(ImGuiNavInput_TweakSlow, 4);     // L1 / LB
+        MAP_BUTTON(ImGuiNavInput_TweakFast, 5);     // R1 / RB
+        MAP_ANALOG(ImGuiNavInput_LStickLeft, 0, -0.3f, -0.9f);
+        MAP_ANALOG(ImGuiNavInput_LStickRight, 0, +0.3f, +0.9f);
+        MAP_ANALOG(ImGuiNavInput_LStickUp, 1, +0.3f, +0.9f);
+        MAP_ANALOG(ImGuiNavInput_LStickDown, 1, -0.3f, -0.9f);
+#undef MAP_BUTTON
+#undef MAP_ANALOG
     }
 
     // Start the frame. This call will update the io.WantCaptureMouse, io.WantCaptureKeyboard flag that you can use to dispatch inputs (or not) to your application.

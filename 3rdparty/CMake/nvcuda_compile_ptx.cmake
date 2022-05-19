@@ -22,12 +22,12 @@ FUNCTION(NVCUDA_COMPILE_PTX)
   set(multiValueArgs NVCC_OPTIONS SOURCES DEPENDENCIES)
 
   CMAKE_PARSE_ARGUMENTS(NVCUDA_COMPILE_PTX "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
-  
+
   if (NOT WIN32) # Do not create a folder with the name ${ConfigurationName} under Windows.
-    # Under Linux make sure the target directory exists. 
+    # Under Linux make sure the target directory exists.
     FILE(MAKE_DIRECTORY ${NVCUDA_COMPILE_PTX_TARGET_PATH})
   endif()
-  
+
   # Custom build rule to generate ptx files from cuda files
   FOREACH(input ${NVCUDA_COMPILE_PTX_SOURCES})
     get_filename_component(input_we "${input}" NAME_WE)
@@ -39,7 +39,7 @@ FUNCTION(NVCUDA_COMPILE_PTX)
     # message("output = ${output}")
 
     LIST(APPEND PTX_FILES "${output}")
-    
+
     # This prints the standalone NVCC command line for each CUDA file.
     # CUDAToolkit_NVCC_EXECUTABLE has been set with FindCUDAToolkit.cmake in Cmake 3.17 and newer.
     # message("${CUDAToolkit_NVCC_EXECUTABLE} " "--machine=64 " "--ptx " "${NVCUDA_COMPILE_PTX_NVCC_OPTIONS} " "${input} " "-o " "${output}")

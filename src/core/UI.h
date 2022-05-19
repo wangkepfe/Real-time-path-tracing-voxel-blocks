@@ -17,8 +17,6 @@ public:
 
 private:
     UI() {}
-    UI(UI const&);
-    void operator=(UI const&);
 };
 
 }

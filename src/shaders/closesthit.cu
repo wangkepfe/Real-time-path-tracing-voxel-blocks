@@ -45,12 +45,12 @@ extern "C" __constant__ SystemParameter sysParameter;
 
 // Get the 3x4 object to world transform and its inverse from a two-level hierarchy.
 // Arguments float4* objectToWorld, float4* worldToObject shortened for smaller code.
-__forceinline__ __device__ void getTransforms(float4 *mW, float4 *mO)
+__forceinline__ __device__ void getTransforms(float4* mW, float4* mO)
 {
     OptixTraversableHandle handle = optixGetTransformListHandle(0);
 
-    const float4 *tW = optixGetInstanceTransformFromHandle(handle);
-    const float4 *tO = optixGetInstanceInverseTransformFromHandle(handle);
+    const float4* tW = optixGetInstanceTransformFromHandle(handle);
+    const float4* tO = optixGetInstanceInverseTransformFromHandle(handle);
 
     mW[0] = tW[0];
     mW[1] = tW[1];
@@ -63,22 +63,22 @@ __forceinline__ __device__ void getTransforms(float4 *mW, float4 *mO)
 
 // Functions to get the individual transforms in case only one of them is needed.
 
-__forceinline__ __device__ void getTransformObjectToWorld(float4 *mW)
+__forceinline__ __device__ void getTransformObjectToWorld(float4* mW)
 {
     OptixTraversableHandle handle = optixGetTransformListHandle(0);
 
-    const float4 *tW = optixGetInstanceTransformFromHandle(handle);
+    const float4* tW = optixGetInstanceTransformFromHandle(handle);
 
     mW[0] = tW[0];
     mW[1] = tW[1];
     mW[2] = tW[2];
 }
 
-__forceinline__ __device__ void getTransformWorldToObject(float4 *mO)
+__forceinline__ __device__ void getTransformWorldToObject(float4* mO)
 {
     OptixTraversableHandle handle = optixGetTransformListHandle(0);
 
-    const float4 *tO = optixGetInstanceInverseTransformFromHandle(handle);
+    const float4* tO = optixGetInstanceInverseTransformFromHandle(handle);
 
     mO[0] = tO[0];
     mO[1] = tO[1];
@@ -86,7 +86,7 @@ __forceinline__ __device__ void getTransformWorldToObject(float4 *mO)
 }
 
 // Matrix3x4 * point. v.w == 1.0f
-__forceinline__ __device__ float3 transformPoint(const float4 *m, float3 const &v)
+__forceinline__ __device__ float3 transformPoint(const float4* m, float3 const& v)
 {
     float3 r;
 
@@ -98,7 +98,7 @@ __forceinline__ __device__ float3 transformPoint(const float4 *m, float3 const &
 }
 
 // Matrix3x4 * vector. v.w == 0.0f
-__forceinline__ __device__ float3 transformVector(const float4 *m, float3 const &v)
+__forceinline__ __device__ float3 transformVector(const float4* m, float3 const& v)
 {
     float3 r;
 
@@ -111,7 +111,7 @@ __forceinline__ __device__ float3 transformVector(const float4 *m, float3 const 
 
 // InverseMatrix3x4^T * normal. v.w == 0.0f
 // Get the inverse matrix as input and applies it as inverse transpose.
-__forceinline__ __device__ float3 transformNormal(const float4 *m, float3 const &v)
+__forceinline__ __device__ float3 transformNormal(const float4* m, float3 const& v)
 {
     float3 r;
 
@@ -124,9 +124,7 @@ __forceinline__ __device__ float3 transformNormal(const float4 *m, float3 const 
 
 extern "C" __global__ void __closesthit__radiance()
 {
-    PerRayData *thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
-
-    thePrd->f_over_pdf = make_float3(1.0f);
+    PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
     if (thePrd->flags & FLAG_SHADOW)
     {
@@ -134,15 +132,15 @@ extern "C" __global__ void __closesthit__radiance()
         return;
     }
 
-    GeometryInstanceData *theData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
+    GeometryInstanceData* theData = reinterpret_cast<GeometryInstanceData*>(optixGetSbtDataPointer());
 
     const unsigned int thePrimtiveIndex = optixGetPrimitiveIndex();
 
     const int3 tri = theData->indices[thePrimtiveIndex];
 
-    const VertexAttributes &va0 = theData->attributes[tri.x];
-    const VertexAttributes &va1 = theData->attributes[tri.y];
-    const VertexAttributes &va2 = theData->attributes[tri.z];
+    const VertexAttributes& va0 = theData->attributes[tri.x];
+    const VertexAttributes& va1 = theData->attributes[tri.y];
+    const VertexAttributes& va2 = theData->attributes[tri.z];
 
     const float2 theBarycentrics = optixGetTriangleBarycentrics(); // beta and gamma
     const float alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
@@ -196,7 +194,7 @@ extern "C" __global__ void __closesthit__radiance()
     float3 surfBsdfOverPdf;
     float surfPdf;
 
-    optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *, float3&, float3&, float&>(indexBsdfSample, parameters, state, thePrd, surfWi, surfBsdfOverPdf, surfPdf);
+    optixDirectCall<void, MaterialParameter const&, State const&, PerRayData*, float3&, float3&, float&>(indexBsdfSample, parameters, state, thePrd, surfWi, surfBsdfOverPdf, surfPdf);
 
     if (isDiffuse)
     {
@@ -205,9 +203,9 @@ extern "C" __global__ void __closesthit__radiance()
         const int numLights = sysParameter.numLights;
         const float2 randNum = rng2(thePrd->seed);
         const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
-        LightDefinition const &light = sysParameter.lightDefinitions[indexLight];
+        LightDefinition const& light = sysParameter.lightDefinitions[indexLight];
         const int indexCallable = light.type;
-        LightSample lightSample = optixDirectCall<LightSample, LightDefinition const &, const float3, const float2>(indexCallable, light, thePrd->pos, randNum);
+        LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const float3, const float2>(indexCallable, light, thePrd->pos, randNum);
 
         float misLightSurf = powerHeuristic(lightSample.pdf, surfPdf);
         if (0.0f < lightSample.pdf && rng(thePrd->seed) < misLightSurf) // Useful light sample?
@@ -216,7 +214,7 @@ extern "C" __global__ void __closesthit__radiance()
             // Returns BSDF f in .xyz and the BSDF pdf in .w
             // BSDF eval function is one index after the sample fucntion.
             const int indexBsdfEval = indexBsdfSample + 1;
-            const float4 lightBsdfAndPdf = optixDirectCall<float4, MaterialParameter const &, State const &, PerRayData const *, const float3>(indexBsdfEval, parameters, state, thePrd, lightSample.direction);
+            const float4 lightBsdfAndPdf = optixDirectCall<float4, MaterialParameter const&, State const&, PerRayData const*, const float3>(indexBsdfEval, parameters, state, thePrd, lightSample.direction);
             float3 lightBsdf = make_float3(lightBsdfAndPdf);
             float lightPdf = lightBsdfAndPdf.w;
 

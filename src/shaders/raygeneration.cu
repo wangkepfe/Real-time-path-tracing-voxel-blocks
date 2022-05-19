@@ -39,7 +39,7 @@
 
 extern "C" __constant__ SystemParameter sysParameter;
 
-__device__ __inline__ void PinholeCamera(const float2 screen, const float2 pixel, const float2 sample, float3 &origin, float3 &direction)
+__device__ __inline__ void PinholeCamera(const float2 screen, const float2 pixel, const float2 sample, float3& origin, float3& direction)
 {
     const float2 fragment = pixel + sample;               // Jitter the sub-pixel location
     const float2 ndc = (fragment / screen) * 2.0f - 1.0f; // Normalized device coordinates in range [-1, 1].
@@ -73,11 +73,11 @@ __device__ __inline__ bool TraceNextPath(PerRayData& prd, float4* absorptionStac
     uint2 payload = splitPointer(&prd);
 
     optixTrace(sysParameter.topObject,
-                prd.pos, prd.wi,                               // origin, direction
-                sysParameter.sceneEpsilon, prd.distance, 0.0f, // tmin, tmax, time
-                OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                0, 1, 0,
-                payload.x, payload.y);
+        prd.pos, prd.wi,                               // origin, direction
+        sysParameter.sceneEpsilon, prd.distance, 0.0f, // tmin, tmax, time
+        OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+        0, 1, 0,
+        payload.x, payload.y);
 
     // This renderer supports nested volumes.
     if (prd.flags & FLAG_VOLUME)

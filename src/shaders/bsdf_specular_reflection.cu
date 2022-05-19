@@ -34,7 +34,7 @@
 #include "material_parameter.h"
 #include "shader_common.h"
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const &parameters, State const &state, PerRayData *prd, float3 &wi, float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, float3 & wi, float3 & f_over_pdf, float& pdf)
 {
     wi = reflect(-prd->wo, state.normal);
 

@@ -9,7 +9,7 @@
 
 #include <IL/il.h>
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     auto& backend = jazzfusion::Backend::Get();
     auto& optix = jazzfusion::OptixRenderer::Get();

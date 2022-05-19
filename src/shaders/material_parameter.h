@@ -33,8 +33,8 @@
 
 #include "function_indices.h"
 
-// Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
-// Alignment of all data types used here is 4 bytes.
+ // Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
+ // Alignment of all data types used here is 4 bytes.
 struct __align__(16) MaterialParameter
 {
     // 8 byte alignment.

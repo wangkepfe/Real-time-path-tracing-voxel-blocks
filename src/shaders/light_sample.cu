@@ -36,7 +36,7 @@
 
 extern "C" __constant__ SystemParameter sysParameter;
 
-__forceinline__ __device__ void unitSquareToSphere(const float u, const float v, float3 &p, float &pdf)
+__forceinline__ __device__ void unitSquareToSphere(const float u, const float v, float3& p, float& pdf)
 {
     p.z = 1.0f - 2.0f * u;
     float r = 1.0f - p.z * p.z;
@@ -51,7 +51,7 @@ __forceinline__ __device__ void unitSquareToSphere(const float u, const float v,
 
 // Note that all light sampling routines return lightSample.direction and lightSample.distance in world space!
 
-extern "C" __device__ LightSample __direct_callable__light_env_constant(LightDefinition const &light, const float3 point, const float2 sample)
+extern "C" __device__ LightSample __direct_callable__light_env_constant(LightDefinition const& light, const float3 point, const float2 sample)
 {
     LightSample lightSample;
 
@@ -66,7 +66,7 @@ extern "C" __device__ LightSample __direct_callable__light_env_constant(LightDef
     return lightSample;
 }
 
-extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefinition const &light, const float3 point, const float2 sample)
+extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefinition const& light, const float3 point, const float2 sample)
 {
     LightSample lightSample;
 
@@ -78,7 +78,7 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
     unsigned int ilo = 0;     // Use this for full spherical lighting. (This matches the result of indirect environment lighting.)
     unsigned int ihi = sizeV; // Index on the last entry containing 1.0f. Can never be reached with the sample in the range [0.0f, 1.0f).
 
-    const float *cdfV = sysParameter.envCDF_V;
+    const float* cdfV = sysParameter.envCDF_V;
 
     // Binary search the row index to look up.
     while (ilo != ihi - 1) // When a pair of limits have been found, the lower index indicates the cell to use.
@@ -104,7 +104,7 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
     ihi = sizeU; // Index on the last entry containing 1.0f. Can never be reached with the sample in the range [0.0f, 1.0f).
 
     // Pointer to the indexY row!
-    const float *cdfU = &sysParameter.envCDF_U[vIdx * (sizeU + 1)]; // Horizontal CDF is one bigger then the texture width!
+    const float* cdfU = &sysParameter.envCDF_U[vIdx * (sizeU + 1)]; // Horizontal CDF is one bigger then the texture width!
 
     while (ilo != ihi - 1) // When a pair of limits have been found, the lower index indicates the cell to use.
     {
@@ -142,8 +142,8 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
     const float sinTheta = sinf(theta);
     // The miss program places the 1->0 seam at the positive z-axis and looks from the inside.
     lightSample.direction = make_float3(-sinf(phi) * sinTheta, // Starting on positive z-axis going around clockwise (to negative x-axis).
-                                        -cosf(theta),          // From south pole to north pole.
-                                        cosf(phi) * sinTheta); // Starting on positive z-axis.
+        -cosf(theta),          // From south pole to north pole.
+        cosf(phi) * sinTheta); // Starting on positive z-axis.
 
     // Note that environment lights do not set the light sample position!
     lightSample.distance = RT_DEFAULT_MAX; // Environment light.
@@ -158,7 +158,7 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
     return lightSample;
 }
 
-extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDefinition const &light, const float3 point, const float2 sample)
+extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDefinition const& light, const float3 point, const float2 sample)
 {
     LightSample lightSample;
 

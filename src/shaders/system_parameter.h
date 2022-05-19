@@ -40,16 +40,16 @@ struct SystemParameter
     // 8 byte alignment
     OptixTraversableHandle topObject;
 
-    float4 *outputBuffer;
+    float4* outputBuffer;
 
-    LightDefinition *lightDefinitions;
+    LightDefinition* lightDefinitions;
 
-    MaterialParameter *materialParameters;
+    MaterialParameter* materialParameters;
 
     cudaTextureObject_t envTexture;
 
-    float *envCDF_U; // 2D, size (envWidth + 1) * envHeight
-    float *envCDF_V; // 1D, size (envHeight + 1)
+    float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
+    float* envCDF_V; // 1D, size (envHeight + 1)
 
     int2 pathLengths;
 
@@ -77,8 +77,8 @@ struct SystemParameter
 // SBT Record data for the hit group.
 struct GeometryInstanceData
 {
-    int3 *indices;
-    VertexAttributes *attributes;
+    int3* indices;
+    VertexAttributes* attributes;
 
     int materialIndex;
     int lightIndex; // Negative means not a light.

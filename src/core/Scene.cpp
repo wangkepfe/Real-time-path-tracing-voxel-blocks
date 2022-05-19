@@ -5,25 +5,25 @@ namespace jazzfusion
 {
 
 OptixTraversableHandle Scene::createGeometry(
-    OptixFunctionTable &api,
-    OptixDeviceContext &context,
+    OptixFunctionTable& api,
+    OptixDeviceContext& context,
     CUstream cudaStream,
-    std::vector<GeometryData> &geometries,
-    std::vector<VertexAttributes> const &attributes,
-    std::vector<unsigned int> const &indices)
+    std::vector<GeometryData>& geometries,
+    std::vector<VertexAttributes> const& attributes,
+    std::vector<unsigned int> const& indices)
 {
     CUdeviceptr d_attributes;
     CUdeviceptr d_indices;
 
     const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributes.size();
 
-    CUDA_CHECK(cudaMalloc((void **)&d_attributes, attributesSizeInBytes));
-    CUDA_CHECK(cudaMemcpy((void *)d_attributes, attributes.data(), attributesSizeInBytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void**)&d_attributes, attributesSizeInBytes));
+    CUDA_CHECK(cudaMemcpy((void*)d_attributes, attributes.data(), attributesSizeInBytes, cudaMemcpyHostToDevice));
 
     const size_t indicesSizeInBytes = sizeof(unsigned int) * indices.size();
 
-    CUDA_CHECK(cudaMalloc((void **)&d_indices, indicesSizeInBytes));
-    CUDA_CHECK(cudaMemcpy((void *)d_indices, indices.data(), indicesSizeInBytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMalloc((void**)&d_indices, indicesSizeInBytes));
+    CUDA_CHECK(cudaMemcpy((void*)d_indices, indices.data(), indicesSizeInBytes, cudaMemcpyHostToDevice));
 
     OptixBuildInput triangleInput = {};
 
@@ -40,7 +40,7 @@ OptixTraversableHandle Scene::createGeometry(
     triangleInput.triangleArray.numIndexTriplets = (unsigned int)indices.size() / 3;
     triangleInput.triangleArray.indexBuffer = d_indices;
 
-    unsigned int triangleInputFlags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+    unsigned int triangleInputFlags[1] = { OPTIX_GEOMETRY_FLAG_NONE };
 
     triangleInput.triangleArray.flags = triangleInputFlags;
     triangleInput.triangleArray.numSbtRecords = 1;
@@ -56,23 +56,23 @@ OptixTraversableHandle Scene::createGeometry(
 
     CUdeviceptr d_gas; // This holds the geometry acceleration structure.
 
-    CUDA_CHECK(cudaMalloc((void **)&d_gas, accelBufferSizes.outputSizeInBytes));
+    CUDA_CHECK(cudaMalloc((void**)&d_gas, accelBufferSizes.outputSizeInBytes));
 
     CUdeviceptr d_tmp;
 
-    CUDA_CHECK(cudaMalloc((void **)&d_tmp, accelBufferSizes.tempSizeInBytes));
+    CUDA_CHECK(cudaMalloc((void**)&d_tmp, accelBufferSizes.tempSizeInBytes));
 
     OptixTraversableHandle traversableHandle = 0; // This is the GAS handle which gets returned.
 
     OPTIX_CHECK(api.optixAccelBuild(context, cudaStream,
-                                    &accelBuildOptions, &triangleInput, 1,
-                                    d_tmp, accelBufferSizes.tempSizeInBytes,
-                                    d_gas, accelBufferSizes.outputSizeInBytes,
-                                    &traversableHandle, nullptr, 0));
+        &accelBuildOptions, &triangleInput, 1,
+        d_tmp, accelBufferSizes.tempSizeInBytes,
+        d_gas, accelBufferSizes.outputSizeInBytes,
+        &traversableHandle, nullptr, 0));
 
     CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
-    CUDA_CHECK(cudaFree((void *)d_tmp));
+    CUDA_CHECK(cudaFree((void*)d_tmp));
 
     // Track the GeometryData to be able to set them in the SBT record GeometryInstanceData and free them on exit.
     GeometryData geometry;
@@ -88,10 +88,10 @@ OptixTraversableHandle Scene::createGeometry(
     return traversableHandle;
 }
 
-OptixTraversableHandle Scene::createBox(OptixFunctionTable &api,
-                                        OptixDeviceContext &context,
-                                        CUstream cudaStream,
-                                        std::vector<GeometryData> &geometries)
+OptixTraversableHandle Scene::createBox(OptixFunctionTable& api,
+    OptixDeviceContext& context,
+    CUstream cudaStream,
+    std::vector<GeometryData>& geometries)
 {
     float left = -1.0f;
     float right = 1.0f;
@@ -244,10 +244,10 @@ OptixTraversableHandle Scene::createBox(OptixFunctionTable &api,
     return createGeometry(api, context, cudaStream, geometries, attributes, indices);
 }
 
-OptixTraversableHandle Scene::createSphere(OptixFunctionTable &api,
-                                            OptixDeviceContext &context,
-                                            CUstream cudaStream,
-                                            std::vector<GeometryData> &geometries, const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta)
+OptixTraversableHandle Scene::createSphere(OptixFunctionTable& api,
+    OptixDeviceContext& context,
+    CUstream cudaStream,
+    std::vector<GeometryData>& geometries, const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta)
 {
     assert(3 <= tessU && 3 <= tessV);
 
@@ -285,8 +285,8 @@ OptixTraversableHandle Scene::createSphere(OptixFunctionTable &api,
 
             // Unit sphere coordinates are the normals.
             float3 normal = make_float3(cosPhi * sinTheta,
-                                        -cosTheta, // -y to start at the south pole.
-                                        -sinPhi * sinTheta);
+                -cosTheta, // -y to start at the south pole.
+                -sinPhi * sinTheta);
             VertexAttributes attrib;
 
             attrib.vertex = normal * radius;
@@ -322,10 +322,10 @@ OptixTraversableHandle Scene::createSphere(OptixFunctionTable &api,
 }
 
 // Parallelogram from footpoint position, spanned by unnormalized vectors vecU and vecV, normal is normalized and on the CCW frontface.
-OptixTraversableHandle Scene::createParallelogram(OptixFunctionTable &api,
-                                                    OptixDeviceContext &context,
-                                                    CUstream cudaStream,
-                                                    std::vector<GeometryData> &geometries, float3 const &position, float3 const &vecU, float3 const &vecV, float3 const &normal)
+OptixTraversableHandle Scene::createParallelogram(OptixFunctionTable& api,
+    OptixDeviceContext& context,
+    CUstream cudaStream,
+    std::vector<GeometryData>& geometries, float3 const& position, float3 const& vecU, float3 const& vecV, float3 const& normal)
 {
     std::vector<VertexAttributes> attributes;
 
@@ -366,10 +366,10 @@ OptixTraversableHandle Scene::createParallelogram(OptixFunctionTable &api,
     return createGeometry(api, context, cudaStream, geometries, attributes, indices);
 }
 
-OptixTraversableHandle Scene::createTorus(OptixFunctionTable &api,
-                                            OptixDeviceContext &context,
-                                            CUstream cudaStream,
-                                            std::vector<GeometryData> &geometries, const unsigned int tessU, const unsigned int tessV, const float innerRadius, const float outerRadius)
+OptixTraversableHandle Scene::createTorus(OptixFunctionTable& api,
+    OptixDeviceContext& context,
+    CUstream cudaStream,
+    std::vector<GeometryData>& geometries, const unsigned int tessU, const unsigned int tessV, const float innerRadius, const float outerRadius)
 {
     assert(3 <= tessU && 3 <= tessV);
 
@@ -448,10 +448,10 @@ OptixTraversableHandle Scene::createTorus(OptixFunctionTable &api,
     return createGeometry(api, context, cudaStream, geometries, attributes, indices);
 }
 
-OptixTraversableHandle Scene::createPlane(OptixFunctionTable &api,
-                                            OptixDeviceContext &context,
-                                            CUstream cudaStream,
-                                            std::vector<GeometryData> &geometries, const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis)
+OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
+    OptixDeviceContext& context,
+    CUstream cudaStream,
+    std::vector<GeometryData>& geometries, const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis)
 {
     assert(1 <= tessU && 1 <= tessV);
 

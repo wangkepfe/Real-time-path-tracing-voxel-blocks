@@ -29,7 +29,8 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 
-namespace jazzfusion {
+namespace jazzfusion
+{
 
 class Backend
 {
@@ -40,7 +41,7 @@ public:
         return instance;
     }
     Backend(Backend const&) = delete;
-    void operator=(Backend const&)  = delete;
+    void operator=(Backend const&) = delete;
 
     void init();
     void mainloop();
@@ -79,9 +80,9 @@ private:
     GLuint m_glslProgram;
 
     // CUDA stuffs
-    CUcontext m_cudaContext;
-    CUstream m_cudaStream;
-    cudaGraphicsResource *m_cudaGraphicsResource;
+    CUcontext             m_cudaContext;
+    CUstream              m_cudaStream;
+    cudaGraphicsResource* m_cudaGraphicsResource;
 
     // buffer
     float4* m_interopBuffer;

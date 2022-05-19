@@ -123,9 +123,9 @@ public:
     }
     Application::~Application();
     Application(Application const&) = delete;
-    void operator=(Application const&)  = delete;
+    void operator=(Application const&) = delete;
 
-    void init(GLFWwindow *window);
+    void init(GLFWwindow* window);
     bool isValid() const;
 
     void reshape(int width, int height);
@@ -147,7 +147,7 @@ public:
 
     void initOpenGL();
 
-    void checkInfoLog(const char *msg, GLuint object);
+    void checkInfoLog(const char* msg, GLuint object);
     void initGLSL();
 
     OptixResult initOptiXFunctionTable();
@@ -164,11 +164,11 @@ public:
 
     void restartAccumulation();
 
-    std::string readPTX(std::string const &filename);
+    std::string readPTX(std::string const& filename);
 
     void updateShaderBindingTable(const int instance);
 
-    GLFWwindow *m_window;
+    GLFWwindow* m_window;
 
     int m_width;
     int m_height;
@@ -194,7 +194,7 @@ public:
     GLuint m_pbo;
     GLuint m_hdrTexture;
 
-    float4 *m_outputBuffer;
+    float4* m_outputBuffer;
 
     // The material parameters exposed inside the GUI are slightly different than the resulting values for the device.
     // The GUI exposes an absorption color and a distance scale, and the thin-walled property as bool.
@@ -234,9 +234,9 @@ public:
     std::vector<LightDefinition> m_lightDefinitions;
 
     // Need to store these as pointers to be able to tear them down before the Application.
-    Texture *m_textureEnvironment;
-    Texture *m_textureAlbedo;
-    Texture *m_textureCutout;
+    Texture* m_textureEnvironment;
+    Texture* m_textureAlbedo;
+    Texture* m_textureCutout;
 
     // OpenGL resources used inside the VBO path.
     GLuint m_vboAttributes;
@@ -252,7 +252,7 @@ public:
     CUstream m_cudaStream;
 
     // The handle for the registered OpenGL PBO when using interop.
-    cudaGraphicsResource *m_cudaGraphicsResource;
+    cudaGraphicsResource* m_cudaGraphicsResource;
 
     // All others are OptiX types.
     OptixFunctionTable m_api;
@@ -268,7 +268,7 @@ public:
     OptixPipeline m_pipeline;
 
     SystemParameter m_systemParameter;    // Host side of the system parameters, changed by the GUI directly.
-    SystemParameter *m_d_systemParameter; // Device side CUdeviceptr of the system parameters.
+    SystemParameter* m_d_systemParameter; // Device side CUdeviceptr of the system parameters.
 
     std::vector<GeometryData2> m_geometries;
 
@@ -289,7 +289,7 @@ public:
     SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
     SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
 
-    SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
+    SbtRecordGeometryInstanceData* m_d_sbtRecordGeometryInstanceData;
 };
 
 #endif // APPLICATION_H

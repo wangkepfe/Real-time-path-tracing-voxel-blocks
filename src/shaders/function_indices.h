@@ -33,9 +33,9 @@
 
 enum FunctionIndexSpecular
 {
-    INDEX_BSDF_SPECULAR_REFLECTION              = 0,
+    INDEX_BSDF_SPECULAR_REFLECTION = 0,
     INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 1,
-    NUM_SPECULAR_BSDF                           = 2,
+    NUM_SPECULAR_BSDF = 2,
 };
 
 enum FunctionIndexDiffuse

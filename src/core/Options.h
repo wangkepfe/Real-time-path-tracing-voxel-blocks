@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,28 +36,28 @@
 class Options
 {
 public:
-  Options();
-  ~Options();
+    Options();
+    ~Options();
 
-  bool parseCommandLine(int argc, char *argv[]);
+    bool parseCommandLine(int argc, char* argv[]);
 
-  int         getClientWidth() const;
-  int         getClientHeight() const;
-  bool        getInterop() const;
-  int         getLight() const;
-  int         getMiss() const;
-  std::string getEnvironment() const;
-
-private:
-  void printUsage(std::string const& argv);
+    int         getClientWidth() const;
+    int         getClientHeight() const;
+    bool        getInterop() const;
+    int         getLight() const;
+    int         getMiss() const;
+    std::string getEnvironment() const;
 
 private:
-  int         m_widthClient;
-  int         m_heightClient;
-  bool        m_interop;
-  int         m_light;
-  int         m_miss;
-  std::string m_environment;
+    void printUsage(std::string const& argv);
+
+private:
+    int         m_widthClient;
+    int         m_heightClient;
+    bool        m_interop;
+    int         m_light;
+    int         m_miss;
+    std::string m_environment;
 };
 
 #endif // APPLICATION_OPTIONS_H

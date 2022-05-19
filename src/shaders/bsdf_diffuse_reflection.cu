@@ -35,7 +35,7 @@
 #include "shader_common.h"
 #include "random_number_generators.h"
 
-__forceinline__ __device__ void alignVector(float3 const &axis, float3 &w)
+__forceinline__ __device__ void alignVector(float3 const& axis, float3& w)
 {
     // Align w with axis.
     const float s = copysignf(1.0f, axis.z);
@@ -45,7 +45,7 @@ __forceinline__ __device__ void alignVector(float3 const &axis, float3 &w)
     w = k * h - w;
 }
 
-__forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample, float3 const &axis, float3 &w, float &pdf)
+__forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample, float3 const& axis, float3& w, float& pdf)
 {
     // Choose a point on the local hemisphere coordinates about +z.
     const float theta = 2.0f * M_PIf * sample.x;
@@ -61,7 +61,7 @@ __forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample
     alignVector(axis, w);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const &parameters, State const &state, PerRayData *prd, float3 &wi, float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, float3 & wi, float3 & f_over_pdf, float& pdf)
 {
     unitSquareToCosineHemisphere(rng2(prd->seed), state.normal, wi, pdf);
 
@@ -75,7 +75,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(Mat
 }
 
 // The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction prd.wi (indirect lighting).
-extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, State const &state, PerRayData *const prd, const float3 wiL)
+extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)
 {
     const float3 f = state.albedo * M_1_PIf;
     const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);
