@@ -310,42 +310,42 @@ void Application::init(GLFWwindow *window)
 
     // initOpenGL();
 
-    m_isValid = initOptiX();
+    // m_isValid = initOptiX();
 }
 
 Application::~Application()
 {
     if (m_isValid)
     {
-        CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
+        //CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
 
-        // Delete the textures while the context is still alive.
-        delete m_textureEnvironment;
-        delete m_textureAlbedo;
-        delete m_textureCutout;
+        //// Delete the textures while the context is still alive.
+        //delete m_textureEnvironment;
+        //delete m_textureAlbedo;
+        //delete m_textureCutout;
 
-        CUDA_CHECK(cudaFree((void *)m_systemParameter.lightDefinitions));
-        CUDA_CHECK(cudaFree((void *)m_systemParameter.materialParameters));
-        CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
+        //CUDA_CHECK(cudaFree((void *)m_systemParameter.lightDefinitions));
+        //CUDA_CHECK(cudaFree((void *)m_systemParameter.materialParameters));
+        //CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
 
-        for (size_t i = 0; i < m_geometries.size(); ++i)
-        {
-            CUDA_CHECK(cudaFree((void *)m_geometries[i].indices));
-            CUDA_CHECK(cudaFree((void *)m_geometries[i].attributes));
-            CUDA_CHECK(cudaFree((void *)m_geometries[i].gas));
-        }
-        CUDA_CHECK(cudaFree((void *)m_d_ias));
+        //for (size_t i = 0; i < m_geometries.size(); ++i)
+        //{
+        //    CUDA_CHECK(cudaFree((void *)m_geometries[i].indices));
+        //    CUDA_CHECK(cudaFree((void *)m_geometries[i].attributes));
+        //    CUDA_CHECK(cudaFree((void *)m_geometries[i].gas));
+        //}
+        //CUDA_CHECK(cudaFree((void *)m_d_ias));
 
-        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
-        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
-        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
+        //CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
+        //CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
+        //CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
 
-        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+        //CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
 
-        OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
-        OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
+        //OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
+        //OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
 
-        CUDA_CHECK(cudaStreamDestroy(m_cudaStream));
+        //CUDA_CHECK(cudaStreamDestroy(m_cudaStream));
         // FIXME No way to explicitly destroy the CUDA context here using only CUDA Runtime API calls?
     }
 
@@ -697,7 +697,7 @@ bool Application::initOptiX()
 
     initRenderer(); // Initialize all the rest.
 
-    // return true;
+    return true;
 }
 
 void Application::restartAccumulation()
@@ -1205,85 +1205,6 @@ void Application::guiEventHandler()
     }
 }
 
-// This part is always identical in the generated geometry creation routines.
-OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes> const &attributes, std::vector<unsigned int> const &indices)
-{
-    CUdeviceptr d_attributes;
-    CUdeviceptr d_indices;
-
-    const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributes.size();
-
-    CUDA_CHECK(cudaMalloc((void **)&d_attributes, attributesSizeInBytes));
-    CUDA_CHECK(cudaMemcpy((void *)d_attributes, attributes.data(), attributesSizeInBytes, cudaMemcpyHostToDevice));
-
-    const size_t indicesSizeInBytes = sizeof(unsigned int) * indices.size();
-
-    CUDA_CHECK(cudaMalloc((void **)&d_indices, indicesSizeInBytes));
-    CUDA_CHECK(cudaMemcpy((void *)d_indices, indices.data(), indicesSizeInBytes, cudaMemcpyHostToDevice));
-
-    OptixBuildInput triangleInput = {};
-
-    triangleInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
-
-    triangleInput.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangleInput.triangleArray.vertexStrideInBytes = sizeof(VertexAttributes);
-    triangleInput.triangleArray.numVertices = (unsigned int)attributes.size();
-    triangleInput.triangleArray.vertexBuffers = &d_attributes;
-
-    triangleInput.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
-    triangleInput.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
-
-    triangleInput.triangleArray.numIndexTriplets = (unsigned int)indices.size() / 3;
-    triangleInput.triangleArray.indexBuffer = d_indices;
-
-    unsigned int triangleInputFlags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
-
-    triangleInput.triangleArray.flags = triangleInputFlags;
-    triangleInput.triangleArray.numSbtRecords = 1;
-
-    OptixAccelBuildOptions accelBuildOptions = {};
-
-    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-    OptixAccelBufferSizes accelBufferSizes;
-
-    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &triangleInput, 1, &accelBufferSizes));
-
-    CUdeviceptr d_gas; // This holds the geometry acceleration structure.
-
-    CUDA_CHECK(cudaMalloc((void **)&d_gas, accelBufferSizes.outputSizeInBytes));
-
-    CUdeviceptr d_tmp;
-
-    CUDA_CHECK(cudaMalloc((void **)&d_tmp, accelBufferSizes.tempSizeInBytes));
-
-    OptixTraversableHandle traversableHandle = 0; // This is the GAS handle which gets returned.
-
-    OPTIX_CHECK(m_api.optixAccelBuild(m_context, m_cudaStream,
-                                      &accelBuildOptions, &triangleInput, 1,
-                                      d_tmp, accelBufferSizes.tempSizeInBytes,
-                                      d_gas, accelBufferSizes.outputSizeInBytes,
-                                      &traversableHandle, nullptr, 0));
-
-    CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
-
-    CUDA_CHECK(cudaFree((void *)d_tmp));
-
-    // Track the GeometryData to be able to set them in the SBT record GeometryInstanceData and free them on exit.
-    GeometryData geometry;
-
-    geometry.indices = d_indices;
-    geometry.attributes = d_attributes;
-    geometry.numIndices = indices.size();
-    geometry.numAttributes = attributes.size();
-    geometry.gas = d_gas;
-
-    m_geometries.push_back(geometry);
-
-    return traversableHandle;
-}
-
 std::string Application::readPTX(std::string const &filename)
 {
     std::filesystem::path cwd = std::filesystem::current_path();
@@ -1432,495 +1353,6 @@ void Application::initMaterials()
     m_guiMaterialParameters.push_back(parameters); // 5
 }
 
-void Application::initPipeline()
-{
-    assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
-    assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
-
-    // INSTANCES
-
-    OptixInstance instance = {};
-
-    OptixTraversableHandle geoPlane = createPlane(1, 1, 1);
-
-    const float trafoPlane[12] =
-        {
-            8.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 8.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 8.0f, 0.0f};
-
-    unsigned int id = static_cast<unsigned int>(m_instances.size());
-
-    memcpy(instance.transform, trafoPlane, sizeof(float) * 12);
-    instance.instanceId = id;
-    instance.visibilityMask = 255;
-    instance.sbtOffset = id;
-    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    instance.traversableHandle = geoPlane;
-
-    m_instances.push_back(instance); // Plane
-
-    OptixTraversableHandle geoBox = createBox();
-
-    const float trafoBox[12] =
-        {
-            1.0f, 0.0f, 0.0f, -2.5f, // Move to the left.
-            0.0f, 1.0f, 0.0f, 1.25f, // The box is modeled with unit coordinates in the range [-1, 1], Move it above the floor plane.
-            0.0f, 0.0f, 1.0f, 0.0f};
-
-    id = static_cast<unsigned int>(m_instances.size());
-
-    memcpy(instance.transform, trafoBox, sizeof(float) * 12);
-    instance.instanceId = id;
-    instance.visibilityMask = 255;
-    instance.sbtOffset = id;
-    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    instance.traversableHandle = geoBox;
-
-    m_instances.push_back(instance); // Box
-
-#if 0
-    // This is not instanced to match the original optixIntro_07 example for exact performance comparisons.
-    OptixTraversableHandle geoNested = createSphere(180, 90, 1.0f, M_PIf);
-
-    const float trafoNested[12] =
-        {
-            0.75f,
-            0.0f,
-            0.0f,
-            -2.5f, // Scale this sphere down and move it into the center of the box.
-            0.0f,
-            0.75f,
-            0.0f,
-            1.25f,
-            0.0f,
-            0.0f,
-            0.75f,
-            0.0f,
-        };
-
-    id = static_cast<unsigned int>(m_instances.size());
-
-    memcpy(instance.transform, trafoNested, sizeof(float) * 12);
-    instance.instanceId = id;
-    instance.visibilityMask = 255;
-    instance.sbtOffset = id;
-    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    instance.traversableHandle = geoNested;
-
-    m_instances.push_back(instance); // Nested sphere.
-#endif
-
-    OptixTraversableHandle geoSphere = createSphere(180, 90, 1.0f, M_PIf);
-
-    const float trafoSphere[12] =
-        {
-            1.0f, 0.0f, 0.0f, 0.0f,  // In the center, to the right of the box.
-            0.0f, 1.0f, 0.0f, 1.25f, // The sphere is modeled with radius 1.0f. Move it above the floor plane to show shadows.
-            0.0f, 0.0f, 1.0f, 0.0f};
-
-    id = static_cast<unsigned int>(m_instances.size());
-
-    memcpy(instance.transform, trafoSphere, sizeof(float) * 12);
-    instance.instanceId = id;
-    instance.visibilityMask = 255;
-    instance.sbtOffset = id;
-    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    instance.traversableHandle = geoSphere;
-
-    m_instances.push_back(instance); // Sphere
-
-    OptixTraversableHandle geoTorus = createTorus(180, 180, 0.75f, 0.25f);
-
-    const float trafoTorus[12] =
-        {
-            1.0f, 0.0f, 0.0f, 2.5f,  // Move it to the right of the sphere.
-            0.0f, 1.0f, 0.0f, 1.25f, // The torus has an outer radius of 0.5f. Move it above the floor plane.
-            0.0f, 0.0f, 1.0f, 0.0f};
-
-    id = static_cast<unsigned int>(m_instances.size());
-
-    memcpy(instance.transform, trafoTorus, sizeof(float) * 12);
-    instance.instanceId = id;
-    instance.visibilityMask = 255;
-    instance.sbtOffset = id;
-    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    instance.traversableHandle = geoTorus;
-
-    m_instances.push_back(instance); // Torus
-
-    createLights();
-
-    CUdeviceptr d_instances;
-
-    const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-
-    CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-    CUDA_CHECK(cudaMemcpy((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice));
-
-    OptixBuildInput instanceInput = {};
-
-    instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-    instanceInput.instanceArray.instances = d_instances;
-    instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-    OptixAccelBuildOptions accelBuildOptions = {};
-
-    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-    OptixAccelBufferSizes iasBufferSizes = {};
-
-    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-    CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
-
-    CUdeviceptr d_tmp;
-
-    CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-    OPTIX_CHECK(m_api.optixAccelBuild(m_context, m_cudaStream,
-                                      &accelBuildOptions, &instanceInput, 1,
-                                      d_tmp, iasBufferSizes.tempSizeInBytes,
-                                      m_d_ias, iasBufferSizes.outputSizeInBytes,
-                                      &m_root, nullptr, 0));
-
-    CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
-
-    CUDA_CHECK(cudaFree((void *)d_tmp));
-
-    CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
-
-    // MODULES
-
-    OptixModuleCompileOptions moduleCompileOptions = {};
-    moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-    moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-    moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_DEFAULT;
-    // moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-    // moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
-
-    OptixPipelineCompileOptions pipelineCompileOptions = {};
-    pipelineCompileOptions.usesMotionBlur = 0;
-    pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
-    pipelineCompileOptions.numPayloadValues = 2;   // I need two to encode a 64-bit pointer to the per ray payload structure.
-    pipelineCompileOptions.numAttributeValues = 2; // The minimum is two, for the barycentrics.
-    pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
-
-    OptixProgramGroupOptions programGroupOptions = {}; // So far this is just a placeholder today.
-
-    // RAYGENERATION
-    std::string ptxRaygeneration = readPTX("ptx/raygeneration.ptx");
-
-    OptixModule moduleRaygeneration;
-
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration));
-
-    OptixProgramGroupDesc programGroupDescRaygeneration = {};
-
-    programGroupDescRaygeneration.kind = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-    programGroupDescRaygeneration.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    programGroupDescRaygeneration.raygen.module = moduleRaygeneration;
-    programGroupDescRaygeneration.raygen.entryFunctionName = "__raygen__pathtracer";
-
-    OptixProgramGroup programGroupRaygeneration;
-
-    // Multiple program groups could be constructed at once here. Put all OptixProgramGroupDesc in a vector and call this once. (This is shown in the bigger example.)
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescRaygeneration, 1, &programGroupOptions, nullptr, nullptr, &programGroupRaygeneration));
-
-    // RADIANCE RAY TYPE
-
-    // MISS
-    std::string ptxMiss = readPTX("ptx/miss.ptx");
-
-    OptixModule moduleMiss;
-
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss));
-
-    OptixProgramGroupDesc programGroupDescMissRadiance = {};
-
-    programGroupDescMissRadiance.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
-    programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    programGroupDescMissRadiance.miss.module = moduleMiss;
-
-    // Spherical HDR environment light.
-    programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_sphere";
-
-    OptixProgramGroup programGroupMissRadiance;
-
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissRadiance));
-
-    // CLOSESTHIT, INTERSECTION (hit group)
-    std::string ptxClosesthit = readPTX("ptx/closesthit.ptx");
-
-    OptixModule moduleClosesthit;
-
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit));
-
-    OptixProgramGroupDesc programGroupDescHitRadiance = {};
-
-    programGroupDescHitRadiance.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-    programGroupDescHitRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    programGroupDescHitRadiance.hitgroup.moduleCH = moduleClosesthit;
-    programGroupDescHitRadiance.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
-
-    OptixProgramGroup programGroupHitRadiance;
-
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadiance));
-
-    // DIRECT CALLABLES
-    std::string ptxLightSample = readPTX("ptx/light_sample.ptx");
-    std::string ptxDiffuseReflection = readPTX("ptx/bsdf_diffuse_reflection.ptx");
-    std::string ptxSpecularReflection = readPTX("ptx/bsdf_specular_reflection.ptx");
-    std::string ptxSpecularReflectionTransmission = readPTX("ptx/bsdf_specular_reflection_transmission.ptx");
-
-    OptixModule moduleLightSample;
-    OptixModule moduleDiffuseReflection;
-    OptixModule moduleSpecularReflection;
-    OptixModule moduleSpecularReflectionTransmission;
-
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLightSample.c_str(), ptxLightSample.size(), nullptr, nullptr, &moduleLightSample));
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxDiffuseReflection.c_str(), ptxDiffuseReflection.size(), nullptr, nullptr, &moduleDiffuseReflection));
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflection.c_str(), ptxSpecularReflection.size(), nullptr, nullptr, &moduleSpecularReflection));
-    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflectionTransmission.c_str(), ptxSpecularReflectionTransmission.size(), nullptr, nullptr, &moduleSpecularReflectionTransmission));
-
-    std::vector<OptixProgramGroupDesc> programGroupDescCallables;
-
-    OptixProgramGroupDesc pgd = {};
-
-    pgd.kind = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
-    pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-
-    // Two light sampling functions, one for the environment and one for the parallelogram.
-    pgd.callables.moduleDC = moduleLightSample;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
-    programGroupDescCallables.push_back(pgd);
-
-    pgd.callables.moduleDC = moduleSpecularReflection;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.moduleDC = moduleSpecularReflectionTransmission;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
-    programGroupDescCallables.push_back(pgd);
-
-    pgd.callables.moduleDC = moduleDiffuseReflection;
-    pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection";
-    programGroupDescCallables.push_back(pgd);
-    pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection";
-    programGroupDescCallables.push_back(pgd);
-
-
-
-    std::vector<OptixProgramGroup> programGroupCallables(programGroupDescCallables.size());
-
-    OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), (unsigned int)programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
-
-    // PIPELINE
-
-    std::vector<OptixProgramGroup> programGroups;
-
-    programGroups.push_back(programGroupRaygeneration);
-    programGroups.push_back(programGroupMissRadiance);
-    programGroups.push_back(programGroupHitRadiance);
-    for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
-    {
-        programGroups.push_back(programGroupCallables[i]);
-    }
-
-    OptixPipelineLinkOptions pipelineLinkOptions = {};
-
-    pipelineLinkOptions.maxTraceDepth = 2;
-#if USE_MAX_OPTIMIZATION
-    // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
-#if (OPTIX_VERSION >= 70400)
-    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-#else
-    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
-#endif
-#else // DEBUG
-    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
-#endif
-#if (OPTIX_VERSION == 70000)
-    pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
-#endif
-
-    OPTIX_CHECK(m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int)programGroups.size(), nullptr, nullptr, &m_pipeline));
-
-    // STACK SIZES
-
-    OptixStackSizes stackSizesPipeline = {};
-
-    for (size_t i = 0; i < programGroups.size(); ++i)
-    {
-        OptixStackSizes stackSizes;
-
-        OPTIX_CHECK(m_api.optixProgramGroupGetStackSize(programGroups[i], &stackSizes));
-
-        stackSizesPipeline.cssRG = std::max(stackSizesPipeline.cssRG, stackSizes.cssRG);
-        stackSizesPipeline.cssMS = std::max(stackSizesPipeline.cssMS, stackSizes.cssMS);
-        stackSizesPipeline.cssCH = std::max(stackSizesPipeline.cssCH, stackSizes.cssCH);
-        stackSizesPipeline.cssAH = std::max(stackSizesPipeline.cssAH, stackSizes.cssAH);
-        stackSizesPipeline.cssIS = std::max(stackSizesPipeline.cssIS, stackSizes.cssIS);
-        stackSizesPipeline.cssCC = std::max(stackSizesPipeline.cssCC, stackSizes.cssCC);
-        stackSizesPipeline.dssDC = std::max(stackSizesPipeline.dssDC, stackSizes.dssDC);
-    }
-
-    // Temporaries
-    const unsigned int cssCCTree = stackSizesPipeline.cssCC; // Should be 0. No continuation callables in this pipeline. // maxCCDepth == 0
-    const unsigned int cssCHOrMSPlusCCTree = std::max(stackSizesPipeline.cssCH, stackSizesPipeline.cssMS) + cssCCTree;
-
-    // Arguments
-    const unsigned int directCallableStackSizeFromTraversal = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromTraversal: DC is invoked from IS or AH.      // Possible stack size optimizations.
-    const unsigned int directCallableStackSizeFromState = stackSizesPipeline.dssDC;     // maxDCDepth == 1 // FromState:     DC is invoked from RG, MS, or CH. // Possible stack size optimizations.
-    const unsigned int continuationStackSize = stackSizesPipeline.cssRG + cssCCTree + cssCHOrMSPlusCCTree * (std::max(1u, pipelineLinkOptions.maxTraceDepth) - 1u) +
-                                               std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
-    // "The maxTraversableGraphDepth responds to the maximum number of traversables visited when calling optixTrace.
-    // Every acceleration structure and motion transform count as one level of traversal."
-    // Render Graph is at maximum: IAS -> GAS
-    const unsigned int maxTraversableGraphDepth = 2;
-
-    OPTIX_CHECK(m_api.optixPipelineSetStackSize(m_pipeline, directCallableStackSizeFromTraversal, directCallableStackSizeFromState, continuationStackSize, maxTraversableGraphDepth));
-
-    // Set up Shader Binding Table (SBT)
-    // The shader binding table is inherently connected to the scene graph geometry instances in this example.
-
-    // Raygeneration group
-    SbtRecordHeader sbtRecordRaygeneration;
-
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupRaygeneration, &sbtRecordRaygeneration));
-
-    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordRaygeneration, sizeof(SbtRecordHeader)));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
-
-    // Miss group
-    std::vector<SbtRecordHeader> sbtRecordMiss(1);
-
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupMissRadiance, &sbtRecordMiss[0]));
-
-    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader)));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
-
-    // Hit groups for radiance and shadow rays per instance.
-    // Note that the SBT record data field is uninitialized after these!
-    OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupHitRadiance, &m_sbtRecordHitRadiance));
-
-    // The real content.
-    const int numInstances = static_cast<int>(m_instances.size());
-
-    m_sbtRecordGeometryInstanceData.resize(numInstances);
-
-    for (int i = 0; i < numInstances; ++i)
-    {
-        const int idx = i; // idx == radiance ray, idx + 1 == shadow ray
-
-        // Only update the header to switch the program hit group. The SBT record data field doesn't change.
-        memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-
-        m_sbtRecordGeometryInstanceData[idx].data.indices = (int3 *)m_geometries[i].indices;
-        m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes *)m_geometries[i].attributes;
-        m_sbtRecordGeometryInstanceData[idx].data.materialIndex = i;
-        m_sbtRecordGeometryInstanceData[idx].data.lightIndex = -1;
-    }
-
-    if (m_lightID)
-    {
-        const int idx = (numInstances - 1); // HACK The last instance is the parallelogram light.
-        const int lightIndex = (m_missID != 0) ? 1 : 0;    // HACK If there is any environment light that is in sysParameter.lightDefinitions[0] and the area light in index [1] then.
-        m_sbtRecordGeometryInstanceData[idx].data.lightIndex = lightIndex;
-        m_sbtRecordGeometryInstanceData[idx + 1].data.lightIndex = lightIndex;
-    }
-
-    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice));
-
-    // CALLABLES
-    std::vector<SbtRecordHeader> sbtRecordCallables(programGroupDescCallables.size());
-
-    for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
-    {
-        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]));
-    }
-
-    CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice));
-
-    // Setup the OptixShaderBindingTable.
-    m_sbt.raygenRecord = m_d_sbtRecordRaygeneration;
-
-    m_sbt.exceptionRecord = 0;
-
-    m_sbt.missRecordBase = m_d_sbtRecordMiss;
-    m_sbt.missRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
-    m_sbt.missRecordCount = 1;
-
-    m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
-    m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
-    m_sbt.hitgroupRecordCount = numInstances;
-
-    m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
-    m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
-    m_sbt.callablesRecordCount = (unsigned int)sbtRecordCallables.size();
-
-    // Setup "sysParameter" data.
-    m_systemParameter.topObject = m_root;
-
-    // if (m_interop)
-    // {
-    //     CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&m_cudaGraphicsResource, m_pbo, cudaGraphicsRegisterFlagsNone)); // No flags for read-write access during accumulation.
-
-    //     size_t size;
-
-    //     CUDA_CHECK(cudaGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-    //     CUDA_CHECK(cudaGraphicsResourceGetMappedPointer((void **)&m_systemParameter.outputBuffer, &size, m_cudaGraphicsResource));
-    //     CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream));
-
-    //     assert(m_width * m_height * sizeof(float) * 4 <= size);
-    // }
-    // else
-    // {
-    //     CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.outputBuffer, sizeof(float4) * m_width * m_height)); // No data initialization, that is done at iterationIndex == 0.
-    // }
-
-    assert((sizeof(LightDefinition) & 15) == 0); // Check alignment to float4
-    CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
-    CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
-
-    CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_guiMaterialParameters.size()));
-    updateMaterialParameters();
-
-    // Setup the environment texture values. These are all defaults when there is no environment texture filename given.
-    m_systemParameter.envTexture = m_textureEnvironment->getTextureObject();
-    m_systemParameter.envCDF_U = (float *)m_textureEnvironment->getCDF_U();
-    m_systemParameter.envCDF_V = (float *)m_textureEnvironment->getCDF_V();
-    m_systemParameter.envWidth = m_textureEnvironment->getWidth();
-    m_systemParameter.envHeight = m_textureEnvironment->getHeight();
-    m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
-
-    m_systemParameter.pathLengths = make_int2(2, 10); // Default max path length set to 10 for the nested materials and to match optixIntro_07 for performance comparison.
-    m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
-    m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
-    m_systemParameter.iterationIndex = 0;
-    m_systemParameter.cameraType = 0; // @TODO: remove this
-
-    m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
-                               m_systemParameter.cameraU,
-                               m_systemParameter.cameraV,
-                               m_systemParameter.cameraW);
-
-    CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
-    CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
-
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleRaygeneration));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleMiss));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleClosesthit));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleLightSample));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleDiffuseReflection));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleSpecularReflection));
-    OPTIX_CHECK(m_api.optixModuleDestroy(moduleSpecularReflectionTransmission));
-}
-
 // In contrast to the original optixIntro_07, this example supports dynamic switching of the cutout opacity material parameter.
 void Application::updateShaderBindingTable(const int instance)
 {
@@ -1948,7 +1380,7 @@ void Application::initRenderer()
     initMaterials();
     const float timeMaterials = m_timer.getTime();
 
-    initPipeline();
+    // initPipeline();
     const float timePipeline = m_timer.getTime();
 
     std::cout << "initRenderer(): " << timePipeline - timeRenderer << " seconds overall\n";
@@ -2022,7 +1454,7 @@ void Application::createLights()
 
         m_lightDefinitions.push_back(light);
 
-        OptixTraversableHandle geoLight = createParallelogram(light.position, light.vecU, light.vecV, light.normal);
+        OptixTraversableHandle geoLight = {};
 
         OptixInstance instance = {};
 

@@ -72,11 +72,9 @@
 struct State
 {
     float3 normalGeo;
-    // float3 tangent; // Unused in this demo. Exists and would be needed for anisotropic distributions.
     float3 normal;
     float3 texcoord;
-
-    float3 albedo; // PERF Added albedo to the state to allow modulation with an optional texture once before BSDF sampling and evaluation.
+    float3 albedo;
 };
 
 // Note that the fields are ordered by CUDA alignment restrictions.

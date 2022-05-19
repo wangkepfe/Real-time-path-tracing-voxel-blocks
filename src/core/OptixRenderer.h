@@ -15,6 +15,9 @@
 
 #include "core/Texture.h"
 
+#include "DebugUtils.h"
+#include "core/Scene.h"
+
 namespace jazzfusion {
 
 struct SbtRecordHeader
@@ -68,6 +71,26 @@ private:
     SystemParameter*           m_d_systemParameter;
 
     std::vector<OptixInstance> m_instances;
+
+    std::vector<GeometryData> m_geometries;
+
+    OptixShaderBindingTable m_sbt;
+
+    std::vector<SbtRecordGeometryInstanceData> m_sbtRecordGeometryInstanceData;
+
+    CUdeviceptr m_d_sbtRecordRaygeneration;
+    CUdeviceptr m_d_sbtRecordMiss;
+    CUdeviceptr m_d_sbtRecordCallables;
+
+    SbtRecordGeometryInstanceData m_sbtRecordHitRadiance;
+    SbtRecordGeometryInstanceData m_sbtRecordHitShadow;
+    SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
+    SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
+
+    SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
+
+    std::vector<LightDefinition> m_lightDefinitions;
+    std::vector<MaterialParameter> m_materialParameters;
 };
 
 }

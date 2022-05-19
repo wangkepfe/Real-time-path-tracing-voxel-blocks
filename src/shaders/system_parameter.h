@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,52 +37,51 @@
 
 struct SystemParameter
 {
-  // 8 byte alignment
-  OptixTraversableHandle topObject;
+    // 8 byte alignment
+    OptixTraversableHandle topObject;
 
-  float4* outputBuffer;
+    float4 *outputBuffer;
 
-  LightDefinition* lightDefinitions;
+    LightDefinition *lightDefinitions;
 
-  MaterialParameter* materialParameters;
+    MaterialParameter *materialParameters;
 
-  cudaTextureObject_t envTexture;
+    cudaTextureObject_t envTexture;
 
-  float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
-  float* envCDF_V; // 1D, size (envHeight + 1)
-  
-  int2 pathLengths;
+    float *envCDF_U; // 2D, size (envWidth + 1) * envHeight
+    float *envCDF_V; // 1D, size (envHeight + 1)
 
-  // 4 byte alignment 
-  //unsigned int outputWidth; // HACK Using the launch dimensions instead.
-  //unsigned int outputHeight;
+    int2 pathLengths;
 
-  unsigned int envWidth; // The original size of the environment texture.
-  unsigned int envHeight;
-  float        envIntegral;
-  float        envRotation;
+    // 4 byte alignment
+    // unsigned int outputWidth; // HACK Using the launch dimensions instead.
+    // unsigned int outputHeight;
 
-  int    iterationIndex;
-  float  sceneEpsilon;
+    unsigned int envWidth; // The original size of the environment texture.
+    unsigned int envHeight;
+    float envIntegral;
+    float envRotation;
 
-  int    numLights;
+    int iterationIndex;
+    float sceneEpsilon;
 
-  int    cameraType;
-  float3 cameraPosition;
-  float3 cameraU;
-  float3 cameraV;
-  float3 cameraW;
+    int numLights;
+
+    int cameraType;
+    float3 cameraPosition;
+    float3 cameraU;
+    float3 cameraV;
+    float3 cameraW;
 };
-
 
 // SBT Record data for the hit group.
 struct GeometryInstanceData
 {
-  int3*             indices;
-  VertexAttributes* attributes;
-  
-  int materialIndex;
-  int lightIndex;    // Negative means not a light.
+    int3 *indices;
+    VertexAttributes *attributes;
+
+    int materialIndex;
+    int lightIndex; // Negative means not a light.
 };
 
 #endif // SYSTEM_PARAMETER_H

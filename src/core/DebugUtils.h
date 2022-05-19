@@ -3,6 +3,7 @@
 #pragma once
 
 #include "cassert"
+#include <iostream>
 
 #define CUDA_CHECK(call)                                                                                                                                           \
     {                                                                                                                                                              \

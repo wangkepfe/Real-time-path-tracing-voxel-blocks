@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -35,24 +35,17 @@
 
 // Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
 // Alignment of all data types used here is 4 bytes.
-struct MaterialParameter
+struct __align__(16) MaterialParameter
 {
-  // 8 byte alignment.
-  cudaTextureObject_t textureAlbedo; 
-  cudaTextureObject_t textureCutout; 
+    // 8 byte alignment.
+    cudaTextureObject_t textureAlbedo;
 
-  // 4 byte alignment.
-  int           indexBSDF;  // BSDF index to use in the closest hit program
-  float3        albedo;     // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
-  float3        absorption; // Absorption coefficient
-  float         ior;        // Index of refraction
-  unsigned int  flags;      // Thin-walled on/off
-
-  // Manual padding to 16-byte alignment goes here.
-  int pad0;
-  int pad1;
-  int pad3;
-  //int pad4;
+    // 4 byte alignment.
+    int indexBSDF;      // BSDF index to use in the closest hit program
+    float3 albedo;      // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
+    float3 absorption;  // Absorption coefficient
+    float ior;          // Index of refraction
+    unsigned int flags; // Thin-walled on/off
 };
 
 #endif // MATERIAL_PARAMETER_H

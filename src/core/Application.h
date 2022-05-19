@@ -104,7 +104,7 @@ struct MaterialParameterGUI
 
 
 // The actual geometries are tracked in m_geometries.
-struct GeometryData
+struct GeometryData2
 {
     CUdeviceptr indices;
     CUdeviceptr attributes;
@@ -154,17 +154,9 @@ public:
     bool initOptiX();
 
     void initMaterials();
-    void initPipeline();
+    // void initPipeline();
 
     void initRenderer(); // All scene and renderer setup goes here.
-
-    OptixTraversableHandle createBox();
-    OptixTraversableHandle createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis);
-    OptixTraversableHandle createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta);
-    OptixTraversableHandle createTorus(const unsigned int tessU, const unsigned int tessV, const float innerRadius, const float outerRadius);
-    OptixTraversableHandle createParallelogram(float3 const &position, float3 const &vecU, float3 const &vecV, float3 const &normal);
-
-    OptixTraversableHandle createGeometry(std::vector<VertexAttributes> const &attributes, std::vector<unsigned int> const &indices);
 
     void createLights();
 
@@ -278,7 +270,7 @@ public:
     SystemParameter m_systemParameter;    // Host side of the system parameters, changed by the GUI directly.
     SystemParameter *m_d_systemParameter; // Device side CUdeviceptr of the system parameters.
 
-    std::vector<GeometryData> m_geometries;
+    std::vector<GeometryData2> m_geometries;
 
     std::vector<OptixInstance> m_instances;
 

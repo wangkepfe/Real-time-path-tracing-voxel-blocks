@@ -27,6 +27,7 @@
 #include <cuda_gl_interop.h>
 
 #include <GLFW/glfw3.h>
+#include <vector>
 
 namespace jazzfusion {
 
@@ -46,6 +47,7 @@ public:
     void clear();
     CUstream getCudaStream() const { return m_cudaStream; }
     GLFWwindow* getWindow() { return m_window; }
+    CUcontext getCudaContext() const { return m_cudaContext; }
 
 private:
     Backend() {}
@@ -98,6 +100,8 @@ private:
     float m_crushBlacks;
     float m_saturation;
     float m_brightness;
+
+    std::vector<cudaDeviceProp> m_deviceProperties;
 };
 
 }

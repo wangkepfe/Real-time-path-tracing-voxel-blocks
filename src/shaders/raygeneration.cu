@@ -35,6 +35,8 @@
 #include "shader_common.h"
 #include "random_number_generators.h"
 
+#include "ShaderDebugUtils.h"
+
 extern "C" __constant__ SystemParameter sysParameter;
 
 __device__ __inline__ void PinholeCamera(const float2 screen, const float2 pixel, const float2 sample, float3 &origin, float3 &direction)
@@ -98,17 +100,6 @@ __device__ __inline__ bool TraceNextPath(PerRayData& prd, float4* absorptionStac
     // PERF f_over_pdf already contains the proper throughput adjustment for diffuse materials: f * (fabsf(optix::dot(prd.wi, state.normal)) / prd.pdf);
     throughput *= prd.f_over_pdf;
 
-    // Unbiased Russian Roulette path termination.
-    // if (RussionRouletteStartBounce <= depth) // Start termination after a minimum number of bounces.
-    // {
-    //     const float probability = fmaxf(throughput); // Other options: // intensity(throughput); // fminf(0.5f, intensity(throughput));
-    //     if (probability < rng(prd.seed))             // Paths with lower probability to continue are terminated earlier.
-    //     {
-    //         return false;
-    //     }
-    //     throughput /= probability; // Path isn't terminated. Adjust the throughput so that the average is right again.
-    // }
-
     // Adjust the material volume stack if the geometry is not thin-walled but a border between two volumes
     // and the outgoing ray direction was a transmission.
     if ((prd.flags & (FLAG_THINWALLED | FLAG_TRANSMISSION)) == FLAG_TRANSMISSION)
@@ -139,7 +130,7 @@ extern "C" __global__ void __raygen__pathtracer()
 {
     PerRayData prd;
 
-    // This assumes that the launch dimensions are matching the size of the output buffer.
+    // // This assumes that the launch dimensions are matching the size of the output buffer.
     const uint3 theLaunchDim = optixGetLaunchDimensions();
     const uint3 theLaunchIndex = optixGetLaunchIndex();
 
@@ -160,7 +151,8 @@ extern "C" __global__ void __raygen__pathtracer()
     // The absorption coefficient and IOR of the volume the ray is currently inside.
     float4 absorptionStack[MATERIAL_STACK_SIZE]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
 
-    float3 radiance = make_float3(0.0f);   // Start with black.
+    float3 radiance = make_float3(1.0f);
+
     float3 throughput = make_float3(1.0f); // The throughput for the next radiance, starts with 1.0f.
 
     int stackIdx = MATERIAL_STACK_EMPTY; // Start with empty nested materials stack.

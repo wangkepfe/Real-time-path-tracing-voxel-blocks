@@ -47,7 +47,7 @@ void Backend::init()
     dumpSystemInformation();
 
     CUDA_CHECK(cudaFree(0));
-    CUDA_CHECK(cuCtxGetCurrent(&m_cudaContext));
+    cuCtxGetCurrent(&m_cudaContext);
     CUDA_CHECK(cudaStreamCreate(&m_cudaStream));
 }
 
@@ -60,7 +60,7 @@ void Backend::mainloop()
     {
         glfwPollEvents();
 
-        reshape();
+        //reshape();
 
         mapInteropBuffer();
 

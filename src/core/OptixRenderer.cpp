@@ -3,9 +3,57 @@
 #include "core/Application.h"
 #include "core/DebugUtils.h"
 #include "OptixRenderer.h"
+#include "core/Scene.h"
+
+#ifdef _WIN32
+// The cfgmgr32 header is necessary for interrogating driver information in the registry.
+#include <cfgmgr32.h>
+// For convenience the library is also linked in automatically using the #pragma command.
+#pragma comment(lib, "Cfgmgr32.lib")
+#else
+#include <dlfcn.h>
+#endif
 
 #include <mutex>
 #include <iostream>
+#include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <string.h>
+#include <vector>
+#include <filesystem>
+
+namespace {
+
+std::string ReadPtx(std::string const &filename)
+{
+    //std::filesystem::path cwd = std::filesystem::current_path();
+    // std::cout << "The current directory is " << cwd.string() << std::endl;
+
+    std::ifstream inputPtx(filename);
+
+    if (!inputPtx)
+    {
+        std::cerr << "ERROR: ReadPtx() Failed to open file " << filename << '\n';
+        return std::string();
+    }
+
+    std::stringstream ptx;
+
+    ptx << inputPtx.rdbuf();
+
+    if (inputPtx.fail())
+    {
+        std::cerr << "ERROR: ReadPtx() Failed to read file " << filename << '\n';
+        return std::string();
+    }
+
+    return ptx.str();
+}
+
+} // namespace
 
 namespace jazzfusion
 {
@@ -38,6 +86,8 @@ private:
     std::mutex m_mutex;     // Mutex that protects m_stream.
     std::ostream &m_stream; // Needs m_mutex.
 };
+
+static OptixLogger g_logger = {};
 
 void OptixRenderer::clear()
 {
@@ -77,14 +127,16 @@ void OptixRenderer::render()
                                                     m_systemParameter.cameraV,
                                                     m_systemParameter.cameraW);
 
+    static int iterationIndex = 0;
+    m_systemParameter.iterationIndex = iterationIndex++;
+
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+
     CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
 
-    m_systemParameter.iterationIndex = m_iterationIndex++;
-
-    CUDA_CHECK(cudaMemcpy((void*)&m_d_systemParameter->iterationIndex, &m_systemParameter.iterationIndex, sizeof(int), cudaMemcpyHostToDevice));
-
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+
+    CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 }
 
 #ifdef _WIN32
@@ -230,7 +282,7 @@ void OptixRenderer::init()
         m_systemParameter.envIntegral = 1.0f;
         m_systemParameter.envRotation = 0.0f;
         m_systemParameter.iterationIndex = 0;
-        m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
+        m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = 0;
         m_systemParameter.cameraType = 0;
         m_systemParameter.cameraPosition = make_float3(0.0f, 0.0f, 1.0f);
@@ -261,13 +313,12 @@ void OptixRenderer::init()
         void *handle = optixLoadWindowsDll();
         if (!handle)
         {
-            return OPTIX_ERROR_LIBRARY_NOT_FOUND;
+            throw std::runtime_error("OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND");
         }
-
         void *symbol = reinterpret_cast<void *>(GetProcAddress((HMODULE)handle, "optixQueryFunctionTable"));
         if (!symbol)
         {
-            return OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND;
+            throw std::runtime_error("OPTIX_ERROR_ENTRY_SYMBOL_NOT_FOUND");
         }
         OptixQueryFunctionTable_t *optixQueryFunctionTable = reinterpret_cast<OptixQueryFunctionTable_t *>(symbol);
 
@@ -283,15 +334,15 @@ void OptixRenderer::init()
     {
         OptixDeviceContextOptions options = {};
         options.logCallbackFunction = &OptixLogger::callback;
-        options.logCallbackData = &m_OptixLogger;
+        options.logCallbackData = &g_logger;
         options.logCallbackLevel = 3; // Keep at warning level to suppress the disk cache messages.
 
-        res = m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_context);
+        auto& backend = jazzfusion::Backend::Get();
+        auto res = m_api.optixDeviceContextCreate(backend.getCudaContext(), &options, &m_context);
         if (res != OPTIX_SUCCESS)
         {
             throw std::runtime_error("ERROR: initOptiX() optixDeviceContextCreate() failed");
         }
-
     }
 
     // Create materials
@@ -302,8 +353,8 @@ void OptixRenderer::init()
 
             unsigned int flags = IMAGE_FLAG_2D;
 
-            std::filesystem::path cwd = std::filesystem::current_path();
-            std::cout << "The current directory is " << cwd.string() << std::endl;
+            //std::filesystem::path cwd = std::filesystem::current_path();
+            //std::cout << "The current directory is " << cwd.string() << std::endl;
 
             const std::string filenameDiffuse = std::string("data/Checker.png");
             if (!picture->load(filenameDiffuse, flags))
@@ -317,58 +368,53 @@ void OptixRenderer::init()
         }
 
         // Setup GUI material parameters, one for each of the implemented BSDFs.
-        MaterialParameterGUI parameters;
+        MaterialParameter parameters;
 
         // The order in this array matches the instance ID in the root IAS!
         // Lambert material for the floor.
-        parameters.indexBSDF           = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
-        parameters.albedo              = make_float3(0.8f); // Grey. Modulates the albedo texture.
-        parameters.useAlbedoTexture    = true;
-        parameters.thinwalled          = false;
-        parameters.absorptionColor     = make_float3(1.0f);
-        parameters.volumeDistanceScale = 1.0f;
-        parameters.ior                 = 1.5f;
-        m_guiMaterialParameters.push_back(parameters); // 0
+        parameters.indexBSDF     = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
+        parameters.albedo        = make_float3(0.8f, 0.8f, 0.8f); // Grey. Modulates the albedo texture.
+        parameters.textureAlbedo = m_textureAlbedo->getTextureObject();
+        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior           = 1.5f;
+        parameters.flags         = 0; // FLAG_THINWALLED;
+        m_materialParameters.push_back(parameters); // 0
 
         // Glass material
-        parameters.indexBSDF           = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-        parameters.albedo              = make_float3(1.0f);
-        parameters.useAlbedoTexture    = false;
-        parameters.thinwalled          = false;
-        parameters.absorptionColor     = make_float3(0.5f, 0.75f, 0.5f); // Green
-        parameters.volumeDistanceScale = 1.0f;
-        parameters.ior                 = 1.52f; // Flint glass. Higher IOR than the surrounding box.
-        m_guiMaterialParameters.push_back(parameters); // 1
+        parameters.indexBSDF     = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
+        parameters.albedo        = make_float3(1.0f, 1.0f, 1.0f);
+        parameters.textureAlbedo = 0;
+        parameters.flags         = 0;
+        parameters.absorption    = make_float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
+        parameters.ior           = 1.52f; // Flint glass. Higher IOR than the surrounding box.
+        m_materialParameters.push_back(parameters); // 1
 
         // Lambert material
-        parameters.indexBSDF           = INDEX_BSDF_DIFFUSE_REFLECTION;
-        parameters.albedo              = make_float3(0.75f);
-        parameters.useAlbedoTexture    = false;
-        parameters.thinwalled          = false;
-        parameters.absorptionColor     = make_float3(0.980392f, 0.729412f, 0.470588f);
-        parameters.volumeDistanceScale = 1.0f;
-        parameters.ior                 = 1.5f;
-        m_guiMaterialParameters.push_back(parameters); // 2
+        parameters.indexBSDF     = INDEX_BSDF_DIFFUSE_REFLECTION;
+        parameters.albedo        = make_float3(0.75f, 1.0f, 1.0f);
+        parameters.textureAlbedo = 0;
+        parameters.flags         = 0;
+        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior           = 1.5f;
+        m_materialParameters.push_back(parameters); // 2
 
         // Tinted mirror material.
-        parameters.indexBSDF           = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo              = make_float3(0.9f, 0.9f, 0.9f);
-        parameters.useAlbedoTexture    = false;
-        parameters.thinwalled          = false;
-        parameters.absorptionColor     = make_float3(0.9f, 0.9f, 0.9f);
-        parameters.volumeDistanceScale = 1.0f;
-        parameters.ior                 = 1.33f;
-        m_guiMaterialParameters.push_back(parameters); // 3
+        parameters.indexBSDF     = INDEX_BSDF_SPECULAR_REFLECTION;
+        parameters.albedo        = make_float3(0.9f, 0.9f, 0.9f);
+        parameters.textureAlbedo = 0;
+        parameters.flags         = 0;
+        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior           = 1.33f;
+        m_materialParameters.push_back(parameters); // 3
 
         // Black BSDF for the light. This last material will not be shown inside the GUI!
-        parameters.indexBSDF           = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo              = make_float3(0.0f);
-        parameters.useAlbedoTexture    = false;
-        parameters.thinwalled          = false;
-        parameters.absorptionColor     = make_float3(1.0f);
-        parameters.volumeDistanceScale = 1.0f;
-        parameters.ior                 = 1.0f;
-        m_guiMaterialParameters.push_back(parameters); // 4
+        parameters.indexBSDF     = INDEX_BSDF_SPECULAR_REFLECTION;
+        parameters.albedo        = make_float3(0.0f, 1.0f, 1.0f);
+        parameters.textureAlbedo = 0;
+        parameters.flags         = 0;
+        parameters.absorption    = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.ior           = 1.0f;
+        m_materialParameters.push_back(parameters); // 4
     }
 
     // Create instances
@@ -379,7 +425,7 @@ void OptixRenderer::init()
         // Plane
         {
             OptixInstance instance = {};
-            OptixTraversableHandle geoPlane = createPlane(1, 1, 1);
+            OptixTraversableHandle geoPlane = Scene::createPlane(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, 1, 1, 1);
             const float trafoPlane[12] =
             {
                 8.0f, 0.0f, 0.0f, 0.0f,
@@ -400,14 +446,15 @@ void OptixRenderer::init()
 
         // Box
         {
-            OptixTraversableHandle geoBox = createBox();
+            OptixInstance instance = {};
+            OptixTraversableHandle geoBox = Scene::createBox(m_api, m_context, Backend::Get().getCudaStream(), m_geometries);
             const float trafoBox[12] =
             {
                 1.0f, 0.0f, 0.0f, -2.5f, // Move to the left.
                 0.0f, 1.0f, 0.0f, 1.25f, // The box is modeled with unit coordinates in the range [-1, 1], Move it above the floor plane.
                 0.0f, 0.0f, 1.0f, 0.0f
             };
-            id = static_cast<unsigned int>(m_instances.size());
+            unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoBox, sizeof(float) * 12);
             instance.instanceId = id;
@@ -421,14 +468,15 @@ void OptixRenderer::init()
 
         // Sphere
         {
-            OptixTraversableHandle geoSphere = createSphere(180, 90, 1.0f, M_PIf);
+            OptixInstance instance = {};
+            OptixTraversableHandle geoSphere = Scene::createSphere(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, 180, 90, 1.0f, M_PIf);
             const float trafoSphere[12] =
             {
                 1.0f, 0.0f, 0.0f, 0.0f,  // In the center, to the right of the box.
                 0.0f, 1.0f, 0.0f, 1.25f, // The sphere is modeled with radius 1.0f. Move it above the floor plane to show shadows.
                 0.0f, 0.0f, 1.0f, 0.0f
             };
-            id = static_cast<unsigned int>(m_instances.size());
+            unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoSphere, sizeof(float) * 12);
             instance.instanceId = id;
@@ -442,14 +490,15 @@ void OptixRenderer::init()
 
         // Torus
         {
-            OptixTraversableHandle geoTorus = createTorus(180, 180, 0.75f, 0.25f);
+            OptixInstance instance = {};
+            OptixTraversableHandle geoTorus = Scene::createTorus(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, 180, 180, 0.75f, 0.25f);
             const float trafoTorus[12] =
             {
                 1.0f, 0.0f, 0.0f, 2.5f,  // Move it to the right of the sphere.
                 0.0f, 1.0f, 0.0f, 1.25f, // The torus has an outer radius of 0.5f. Move it above the floor plane.
                 0.0f, 0.0f, 1.0f, 0.0f
             };
-            id = static_cast<unsigned int>(m_instances.size());
+            unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoTorus, sizeof(float) * 12);
             instance.instanceId = id;
@@ -508,7 +557,7 @@ void OptixRenderer::init()
 
                 m_lightDefinitions.push_back(light);
 
-                OptixTraversableHandle geoLight = createParallelogram(light.position, light.vecU, light.vecV, light.normal);
+                OptixTraversableHandle geoLight = Scene::createParallelogram(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, light.position, light.vecU, light.vecV, light.normal);
 
                 OptixInstance instance = {};
 
@@ -599,7 +648,7 @@ void OptixRenderer::init()
 
         // Raygen
         {
-            std::string ptxRaygeneration = readPTX("ptx/raygeneration.ptx");
+            std::string ptxRaygeneration = ReadPtx("ptx/raygeneration.ptx");
             OptixModule moduleRaygeneration;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration));
 
@@ -617,7 +666,7 @@ void OptixRenderer::init()
 
         // Miss
         {
-            std::string ptxMiss = readPTX("ptx/miss.ptx");
+            std::string ptxMiss = ReadPtx("ptx/miss.ptx");
             OptixModule moduleMiss;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss));
 
@@ -637,7 +686,7 @@ void OptixRenderer::init()
 
         // Closest hit
         {
-            std::string ptxClosesthit = readPTX("ptx/closesthit.ptx");
+            std::string ptxClosesthit = ReadPtx("ptx/closesthit.ptx");
             OptixModule moduleClosesthit;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit));
 
@@ -655,10 +704,10 @@ void OptixRenderer::init()
 
         // Direct callables
         {
-            std::string ptxLightSample = readPTX("ptx/light_sample.ptx");
-            std::string ptxDiffuseReflection = readPTX("ptx/bsdf_diffuse_reflection.ptx");
-            std::string ptxSpecularReflection = readPTX("ptx/bsdf_specular_reflection.ptx");
-            std::string ptxSpecularReflectionTransmission = readPTX("ptx/bsdf_specular_reflection_transmission.ptx");
+            std::string ptxLightSample = ReadPtx("ptx/light_sample.ptx");
+            std::string ptxDiffuseReflection = ReadPtx("ptx/bsdf_diffuse_reflection.ptx");
+            std::string ptxSpecularReflection = ReadPtx("ptx/bsdf_specular_reflection.ptx");
+            std::string ptxSpecularReflectionTransmission = ReadPtx("ptx/bsdf_specular_reflection_transmission.ptx");
 
             OptixModule moduleLightSample;
             OptixModule moduleDiffuseReflection;
@@ -698,7 +747,7 @@ void OptixRenderer::init()
             programGroupDescCallables.push_back(pgd);
 
             programGroupCallables.resize(programGroupDescCallables.size());
-            OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), (unsigned int)programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
+            OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
             for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
             {
                 programGroups.push_back(programGroupCallables[i]);
@@ -710,8 +759,8 @@ void OptixRenderer::init()
         }
 
         // Pipeline
+        OptixPipelineLinkOptions pipelineLinkOptions = {};
         {
-            OptixPipelineLinkOptions pipelineLinkOptions = {};
             pipelineLinkOptions.maxTraceDepth            = 2;
             pipelineLinkOptions.debugLevel               = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
             // pipelineLinkOptions.debugLevel            = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
@@ -795,9 +844,8 @@ void OptixRenderer::init()
         }
 
         // Direct callables
+        std::vector<SbtRecordHeader> sbtRecordCallables(programGroupCallables.size());
         {
-            std::vector<SbtRecordHeader> sbtRecordCallables(programGroupCallables.size());
-
             for (size_t i = 0; i < programGroupCallables.size(); ++i)
             {
                 OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]));
@@ -819,6 +867,7 @@ void OptixRenderer::init()
 
             m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
             m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
+            const int numInstances = static_cast<int>(m_instances.size());
             m_sbt.hitgroupRecordCount = numInstances;
 
             m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
@@ -834,8 +883,8 @@ void OptixRenderer::init()
             CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
             CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
 
-            CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_guiMaterialParameters.size()));
-            updateMaterialParameters();
+            CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
+            CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice));
 
             // Setup the environment texture values. These are all defaults when there is no environment texture filename given.
             m_systemParameter.envTexture = m_textureEnvironment->getTextureObject();
@@ -846,7 +895,7 @@ void OptixRenderer::init()
             m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
 
             m_systemParameter.pathLengths = make_int2(2, 10);
-            m_systemParameter.sceneEpsilon = m_sceneEpsilonFactor * SCENE_EPSILON_SCALE;
+            m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
             m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
             m_systemParameter.iterationIndex = 0;
             m_systemParameter.cameraType = 0; // @TODO: remove this

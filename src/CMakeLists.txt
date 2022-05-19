@@ -36,22 +36,19 @@ set( HEADERS
   core/Timer.h
   core/Backend.h
   core/OptixRenderer.h
+  core/Scene.h
 )
 
 set( SOURCES
   core/main.cpp
   core/Application.cpp
-  core/Box.cpp
   core/Options.cpp
-  core/Parallelogram.cpp
   core/Picture.cpp
   core/PinholeCamera.cpp
-  core/Plane.cpp
-  core/Torus.cpp
-  core/Sphere.cpp
   core/Texture.cpp
   core/Backend.cpp
   core/OptixRenderer.cpp
+  core/Scene.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.
