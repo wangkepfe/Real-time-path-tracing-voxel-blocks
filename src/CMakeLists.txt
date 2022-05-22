@@ -26,60 +26,49 @@ set( IMGUI
 )
 
 set( HEADERS
-  core/Application.h
-  core/CheckMacros.h
-  core/Logger.h
-  core/MyAssert.h
-  core/Options.h
-  core/Picture.h
-  core/PinholeCamera.h
-  core/Texture.h
-  core/Timer.h
+  util/DebugUtils.h
+  util/Picture.h
+  core/Camera.h
+  util/Texture.h
+  util/Timer.h
+  core/Backend.h
+  core/OptixRenderer.h
+  core/Scene.h
+  core/UI.h
 )
 
 set( SOURCES
   core/main.cpp
-  core/Application.cpp
-  core/Box.cpp
-  core/Options.cpp
-  core/Parallelogram.cpp
-  core/Picture.cpp
-  core/PinholeCamera.cpp
-  core/Plane.cpp
-  core/Torus.cpp
-  core/Sphere.cpp
-  core/Texture.cpp
-  core/Timer.cpp
+  util/Picture.cpp
+  core/Camera.cpp
+  util/Texture.cpp
+  core/Backend.cpp
+  core/OptixRenderer.cpp
+  core/Scene.cpp
+  core/UI.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.
 set( SHADERS
   # Core shaders.
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/closesthit.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/miss.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/raygeneration.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ClosestHit.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Miss.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RayGen.cu
 
   # Direct callables
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_sample.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_diffuse_reflection.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_specular_reflection.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_specular_reflection_transmission.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/LightSample.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Bsdf.cu
 )
 
 set( SHADERS_HEADERS
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/app_config.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/function_indices.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_definition.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_parameter.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/per_ray_data.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/random_number_generators.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/system_parameter.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader_common.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vector_math.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vertex_attributes.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderCommon.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RngUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/SystemParameter.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderCommon.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/MathUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderDebugUtils.h
 )
 
-# FILE(TO_NATIVE_PATH "${CMAKE_CURRENT_BINARY_DIR}/ptx" PTX_DIR)
 set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")
 
 message("PTX_DIR = " "${PTX_DIR}")
@@ -97,11 +86,6 @@ source_group( "sources"         FILES ${SOURCES} )
 source_group( "shaders"         FILES ${SHADERS} )
 source_group( "shaders_headers" FILES ${SHADERS_HEADERS} )
 source_group( "ptx"             FILES ${PTX_SOURCES})
-
-#message("GLEW_INCLUDE_DIRS        = " "${GLEW_INCLUDE_DIRS}")
-#message("GLFW_INCLUDE_DIR         = " "${GLFW_INCLUDE_DIR}")
-#message("CUDAToolkit_INCLUDE_DIRS = " "${CUDAToolkit_INCLUDE_DIRS}")
-#message("IL_INCLUDE_DIR           = " "${IL_INCLUDE_DIR}")
 
 include_directories(
   "."
@@ -127,13 +111,6 @@ add_executable( jazzfusion
   ${SHADERS}
   ${PTX_SOURCES}
 )
-
-#message("OPENGL_gl_LIBRARY = " "${OPENGL_gl_LIBRARY}")
-#message("GLEW_LIBRARIES    = " "${GLEW_LIBRARIES}")
-#message("GLFW_LIBRARIES    = " "${GLFW_LIBRARIES}")
-#message("IL_LIBRARIES      = " "${IL_LIBRARIES}")
-#message("ILU_LIBRARIES     = " "${ILU_LIBRARIES}")
-#message("ILUT_LIBRARIES    = " "${ILUT_LIBRARIES}")
 
 target_link_libraries( jazzfusion
   ${OPENGL_gl_LIBRARY}

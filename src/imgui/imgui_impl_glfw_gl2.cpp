@@ -9,7 +9,7 @@
 // This code is mostly provided as a reference to learn how ImGui integration works, because it is shorter to read.
 // If your code is using GL3+ context or any semi modern OpenGL calls, using this is likely to make everything more
 // complicated, will require your code to reset every single OpenGL attributes to their initial state, and might
-// confuse your GPU driver. 
+// confuse your GPU driver.
 // The GL2 code is unable to reset attributes or even call e.g. "glUseProgram(0)" because they don't exist in that API.
 
 // You can copy and use unmodified imgui_impl_* files in your project. See main.cpp for an example of using this.
@@ -47,17 +47,17 @@
 #endif
 
 // GLFW data
-static GLFWwindow*  g_Window = NULL;
+static GLFWwindow* g_Window = NULL;
 static double       g_Time = 0.0f;
 static bool         g_MouseJustPressed[3] = { false, false, false };
-static GLFWcursor*  g_MouseCursors[ImGuiMouseCursor_Count_] = { 0 };
+static GLFWcursor* g_MouseCursors[ImGuiMouseCursor_Count_] = { 0 };
 
 // OpenGL data
 static GLuint       g_FontTexture = 0;
 
 // OpenGL2 Render function.
 // (this used to be set in io.RenderDrawListsFn and called by ImGui::Render(), but you can now call this directly from your main loop)
-// Note that this implementation is little overcomplicated because we are saving/setting up/restoring every OpenGL state explicitly, in order to be able to run within any OpenGL engine that doesn't do so. 
+// Note that this implementation is little overcomplicated because we are saving/setting up/restoring every OpenGL state explicitly, in order to be able to run within any OpenGL engine that doesn't do so.
 void ImGui_ImplGlfwGL2_RenderDrawData(ImDrawData* draw_data)
 {
     // Avoid rendering when minimized, scale coordinates for retina displays (screen coordinates != framebuffer coordinates)
@@ -73,7 +73,7 @@ void ImGui_ImplGlfwGL2_RenderDrawData(ImDrawData* draw_data)
     GLint last_texture; glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
     GLint last_polygon_mode[2]; glGetIntegerv(GL_POLYGON_MODE, last_polygon_mode);
     GLint last_viewport[4]; glGetIntegerv(GL_VIEWPORT, last_viewport);
-    GLint last_scissor_box[4]; glGetIntegerv(GL_SCISSOR_BOX, last_scissor_box); 
+    GLint last_scissor_box[4]; glGetIntegerv(GL_SCISSOR_BOX, last_scissor_box);
     glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT | GL_TEXTURE_BIT); // DAR Was missing GL_TEXTURE_BIT. Need to store the glTexEnv setting as well.
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE); // DAR IMGUI uses GL_MODULATE when not using GLSL shaders.
     glEnable(GL_BLEND);
@@ -204,7 +204,7 @@ bool ImGui_ImplGlfwGL2_CreateDeviceObjects()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
     // Store our identifier
-    io.Fonts->TexID = (void *)(intptr_t)g_FontTexture;
+    io.Fonts->TexID = (void*)(intptr_t)g_FontTexture;
 
     // Restore state
     glBindTexture(GL_TEXTURE_2D, last_texture);
@@ -307,8 +307,8 @@ void ImGui_ImplGlfwGL2_NewFrame()
     io.DisplayFramebufferScale = ImVec2(w > 0 ? ((float)display_w / w) : 0, h > 0 ? ((float)display_h / h) : 0);
 
     // Setup time step
-    double current_time =  glfwGetTime();
-    io.DeltaTime = g_Time > 0.0 ? (float)(current_time - g_Time) : (float)(1.0f/60.0f);
+    double current_time = glfwGetTime();
+    io.DeltaTime = g_Time > 0.0 ? (float)(current_time - g_Time) : (float)(1.0f / 60.0f);
     g_Time = current_time;
 
     // Setup inputs
@@ -328,7 +328,7 @@ void ImGui_ImplGlfwGL2_NewFrame()
     }
     else
     {
-        io.MousePos = ImVec2(-FLT_MAX,-FLT_MAX);
+        io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
     }
 
     for (int i = 0; i < 3; i++)
