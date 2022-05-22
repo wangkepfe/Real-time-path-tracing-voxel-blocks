@@ -8,15 +8,14 @@
 // OptiX 7 function table structure.
 #include <optix_function_table.h>
 
-#include "shaders/system_parameter.h"
-#include "shaders/function_indices.h"
-#include "shaders/light_definition.h"
-#include "shaders/vertex_attributes.h"
+#include "shaders/SystemParameter.h"
 
-#include "core/Texture.h"
+#include "util/Texture.h"
 
-#include "DebugUtils.h"
+#include "util/DebugUtils.h"
 #include "core/Scene.h"
+
+#include "Camera.h"
 
 namespace jazzfusion {
 
@@ -47,50 +46,55 @@ public:
 
     void init();
     void clear();
-    void render();
+    void render(float4* interopBuffer);
 
-    int                        m_width;
-    int                        m_height;
+    Camera& getCamera() { return m_camera; }
+    SystemParameter& getSystemParameter() { return m_systemParameter; }
 
-    PinholeCamera              m_pinholeCamera;
-
-    SystemParameter            m_systemParameter;
+    void setWidth(int width) { m_width = width; }
+    void setHeight(int height) { m_height = height; }
 
 private:
     OptixRenderer() {}
 
+    int                                        m_width;
+    int                                        m_height;
+
+    Camera                                     m_camera;
+    SystemParameter                            m_systemParameter;
+
     Texture* m_textureEnvironment;
     Texture* m_textureAlbedo;
 
-    OptixFunctionTable         m_api;
-    OptixDeviceContext         m_context;
-    OptixTraversableHandle     m_root;               // Scene root
-    CUdeviceptr                m_d_ias;              // Scene root's IAS (instance acceleration structure).
-    OptixPipeline              m_pipeline;
+    OptixFunctionTable                         m_api;
+    OptixDeviceContext                         m_context;
+    OptixTraversableHandle                     m_root;
+    CUdeviceptr                                m_d_ias;
+    OptixPipeline                              m_pipeline;
 
     SystemParameter* m_d_systemParameter;
 
-    std::vector<OptixInstance> m_instances;
+    std::vector<OptixInstance>                 m_instances;
 
-    std::vector<GeometryData> m_geometries;
+    std::vector<GeometryData>                  m_geometries;
 
-    OptixShaderBindingTable m_sbt;
+    OptixShaderBindingTable                    m_sbt;
 
     std::vector<SbtRecordGeometryInstanceData> m_sbtRecordGeometryInstanceData;
 
-    CUdeviceptr m_d_sbtRecordRaygeneration;
-    CUdeviceptr m_d_sbtRecordMiss;
-    CUdeviceptr m_d_sbtRecordCallables;
+    CUdeviceptr                                m_d_sbtRecordRaygeneration;
+    CUdeviceptr                                m_d_sbtRecordMiss;
+    CUdeviceptr                                m_d_sbtRecordCallables;
 
-    SbtRecordGeometryInstanceData m_sbtRecordHitRadiance;
-    SbtRecordGeometryInstanceData m_sbtRecordHitShadow;
-    SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
-    SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
+    SbtRecordGeometryInstanceData              m_sbtRecordHitRadiance;
+    SbtRecordGeometryInstanceData              m_sbtRecordHitShadow;
+    SbtRecordGeometryInstanceData              m_sbtRecordHitRadianceCutout;
+    SbtRecordGeometryInstanceData              m_sbtRecordHitShadowCutout;
 
     SbtRecordGeometryInstanceData* m_d_sbtRecordGeometryInstanceData;
 
-    std::vector<LightDefinition> m_lightDefinitions;
-    std::vector<MaterialParameter> m_materialParameters;
+    std::vector<LightDefinition>               m_lightDefinitions;
+    std::vector<MaterialParameter>             m_materialParameters;
 };
 
 }

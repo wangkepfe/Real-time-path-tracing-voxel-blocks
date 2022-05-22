@@ -1,5 +1,5 @@
 #include "core/Scene.h"
-#include "shaders/vector_math.h"
+#include "shaders/MathUtils.h"
 
 namespace jazzfusion
 {

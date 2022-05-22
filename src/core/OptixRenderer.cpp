@@ -1,7 +1,5 @@
 #include "core/Backend.h"
-#include "core/Options.h"
-#include "core/Application.h"
-#include "core/DebugUtils.h"
+#include "util/DebugUtils.h"
 #include "OptixRenderer.h"
 #include "core/Scene.h"
 
@@ -120,10 +118,10 @@ void OptixRenderer::clear()
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
 }
 
-void OptixRenderer::render()
+void OptixRenderer::render(float4* interopBuffer)
 {
     auto& backend = jazzfusion::Backend::Get();
-    bool cameraChanged = m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
+    bool cameraChanged = m_camera.getFrustum(m_systemParameter.cameraPosition,
         m_systemParameter.cameraU,
         m_systemParameter.cameraV,
         m_systemParameter.cameraW);
@@ -133,6 +131,7 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
+    m_systemParameter.outputBuffer = interopBuffer;
     CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
@@ -268,7 +267,7 @@ void OptixRenderer::init()
     {
         m_width = 1920;
         m_height = 1080;
-        m_pinholeCamera.setViewport(m_width, m_height);
+        m_camera.setViewport(m_width, m_height);
 
         m_systemParameter.topObject = 0;
         m_systemParameter.outputBuffer = nullptr;
@@ -431,7 +430,8 @@ void OptixRenderer::init()
             {
                 8.0f, 0.0f, 0.0f, 0.0f,
                 0.0f, 8.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 8.0f, 0.0f };
+                0.0f, 0.0f, 8.0f, 0.0f
+            };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoPlane, sizeof(float) * 12);
@@ -452,7 +452,8 @@ void OptixRenderer::init()
             {
                 1.0f, 0.0f, 0.0f, -2.5f, // Move to the left.
                 0.0f, 1.0f, 0.0f, 1.25f, // The box is modeled with unit coordinates in the range [-1, 1], Move it above the floor plane.
-                0.0f, 0.0f, 1.0f, 0.0f };
+                0.0f, 0.0f, 1.0f, 0.0f
+            };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoBox, sizeof(float) * 12);
@@ -473,7 +474,8 @@ void OptixRenderer::init()
             {
                 1.0f, 0.0f, 0.0f, 0.0f,  // In the center, to the right of the box.
                 0.0f, 1.0f, 0.0f, 1.25f, // The sphere is modeled with radius 1.0f. Move it above the floor plane to show shadows.
-                0.0f, 0.0f, 1.0f, 0.0f };
+                0.0f, 0.0f, 1.0f, 0.0f
+            };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoSphere, sizeof(float) * 12);
@@ -494,7 +496,8 @@ void OptixRenderer::init()
             {
                 1.0f, 0.0f, 0.0f, 2.5f,  // Move it to the right of the sphere.
                 0.0f, 1.0f, 0.0f, 1.25f, // The torus has an outer radius of 0.5f. Move it above the floor plane.
-                0.0f, 0.0f, 1.0f, 0.0f };
+                0.0f, 0.0f, 1.0f, 0.0f
+            };
             unsigned int id = static_cast<unsigned int>(m_instances.size());
 
             memcpy(instance.transform, trafoTorus, sizeof(float) * 12);
@@ -563,7 +566,8 @@ void OptixRenderer::init()
                 {
                     1.0f, 0.0f, 0.0f, 0.0f,
                     0.0f, 1.0f, 0.0f, 0.0f,
-                    0.0f, 0.0f, 1.0f, 0.0f };
+                    0.0f, 0.0f, 1.0f, 0.0f
+                };
                 const unsigned int id = static_cast<unsigned int>(m_instances.size());
 
                 memcpy(instance.transform, trafoLight, sizeof(float) * 12);
@@ -644,7 +648,7 @@ void OptixRenderer::init()
 
         // Raygen
         {
-            std::string ptxRaygeneration = ReadPtx("ptx/raygeneration.ptx");
+            std::string ptxRaygeneration = ReadPtx("ptx/RayGen.ptx");
             OptixModule moduleRaygeneration;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration));
 
@@ -662,7 +666,7 @@ void OptixRenderer::init()
 
         // Miss
         {
-            std::string ptxMiss = ReadPtx("ptx/miss.ptx");
+            std::string ptxMiss = ReadPtx("ptx/Miss.ptx");
             OptixModule moduleMiss;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss));
 
@@ -682,7 +686,7 @@ void OptixRenderer::init()
 
         // Closest hit
         {
-            std::string ptxClosesthit = ReadPtx("ptx/closesthit.ptx");
+            std::string ptxClosesthit = ReadPtx("ptx/ClosestHit.ptx");
             OptixModule moduleClosesthit;
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit));
 
@@ -700,20 +704,14 @@ void OptixRenderer::init()
 
         // Direct callables
         {
-            std::string ptxLightSample = ReadPtx("ptx/light_sample.ptx");
-            std::string ptxDiffuseReflection = ReadPtx("ptx/bsdf_diffuse_reflection.ptx");
-            std::string ptxSpecularReflection = ReadPtx("ptx/bsdf_specular_reflection.ptx");
-            std::string ptxSpecularReflectionTransmission = ReadPtx("ptx/bsdf_specular_reflection_transmission.ptx");
+            std::string ptxLightSample = ReadPtx("ptx/LightSample.ptx");
+            std::string ptxBsdf = ReadPtx("ptx/Bsdf.ptx");
 
             OptixModule moduleLightSample;
-            OptixModule moduleDiffuseReflection;
-            OptixModule moduleSpecularReflection;
-            OptixModule moduleSpecularReflectionTransmission;
+            OptixModule moduleBsdf;
 
             OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLightSample.c_str(), ptxLightSample.size(), nullptr, nullptr, &moduleLightSample));
-            OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxDiffuseReflection.c_str(), ptxDiffuseReflection.size(), nullptr, nullptr, &moduleDiffuseReflection));
-            OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflection.c_str(), ptxSpecularReflection.size(), nullptr, nullptr, &moduleSpecularReflection));
-            OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflectionTransmission.c_str(), ptxSpecularReflectionTransmission.size(), nullptr, nullptr, &moduleSpecularReflectionTransmission));
+            OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxBsdf.c_str(), ptxBsdf.size(), nullptr, nullptr, &moduleBsdf));
 
             std::vector<OptixProgramGroupDesc> programGroupDescCallables;
 
@@ -722,21 +720,19 @@ void OptixRenderer::init()
             pgd.kind = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
             pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
 
-            // Two light sampling functions, one for the environment and one for the parallelogram.
             pgd.callables.moduleDC = moduleLightSample;
+
             pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
             programGroupDescCallables.push_back(pgd);
             pgd.callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
             programGroupDescCallables.push_back(pgd);
 
-            pgd.callables.moduleDC = moduleSpecularReflection;
+            pgd.callables.moduleDC = moduleBsdf;
+
             pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
             programGroupDescCallables.push_back(pgd);
-            pgd.callables.moduleDC = moduleSpecularReflectionTransmission;
             pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
             programGroupDescCallables.push_back(pgd);
-
-            pgd.callables.moduleDC = moduleDiffuseReflection;
             pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection";
             programGroupDescCallables.push_back(pgd);
             pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection";
@@ -749,9 +745,7 @@ void OptixRenderer::init()
                 programGroups.push_back(programGroupCallables[i]);
             }
             moduleList.push_back(moduleLightSample);
-            moduleList.push_back(moduleDiffuseReflection);
-            moduleList.push_back(moduleSpecularReflection);
-            moduleList.push_back(moduleSpecularReflectionTransmission);
+            moduleList.push_back(moduleBsdf);
         }
 
         // Pipeline
@@ -896,7 +890,7 @@ void OptixRenderer::init()
             m_systemParameter.iterationIndex = 0;
             m_systemParameter.cameraType = 0; // @TODO: remove this
 
-            m_pinholeCamera.getFrustum(m_systemParameter.cameraPosition,
+            m_camera.getFrustum(m_systemParameter.cameraPosition,
                 m_systemParameter.cameraU,
                 m_systemParameter.cameraV,
                 m_systemParameter.cameraW);

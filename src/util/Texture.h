@@ -2,17 +2,14 @@
 
 #pragma once
 
-#ifndef TEXTURE_H
-#define TEXTURE_H
-
-// Always include this before any OptiX headers.
 #include <cuda.h>
 #include <cuda_runtime.h>
-
-#include "core/Picture.h"
-
+#include "util/Picture.h"
 #include <string>
 #include <vector>
+
+namespace jazzfusion
+{
 
 // Bitfield encoding of the texture channels.
 // These are used to remap user format and user data to the internal format.
@@ -146,4 +143,4 @@ private:
     float m_integral;
 };
 
-#endif // TEXTURE_H
+}

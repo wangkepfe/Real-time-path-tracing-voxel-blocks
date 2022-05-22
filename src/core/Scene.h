@@ -10,13 +10,10 @@
 
 #include <vector>
 
-#include "shaders/system_parameter.h"
-#include "shaders/function_indices.h"
-#include "shaders/light_definition.h"
-#include "shaders/vertex_attributes.h"
-#include "shaders/vector_math.h"
+#include "shaders/SystemParameter.h"
+#include "shaders/MathUtils.h"
 
-#include "DebugUtils.h"
+#include "util/DebugUtils.h"
 
 namespace jazzfusion
 {

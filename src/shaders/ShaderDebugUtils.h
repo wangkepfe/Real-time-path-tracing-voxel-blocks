@@ -1,7 +1,5 @@
 #pragma once
-
-#include "vector_math.h"
-
+#include "MathUtils.h"
 #include <optix.h>
 #include <cuda_runtime.h>
 

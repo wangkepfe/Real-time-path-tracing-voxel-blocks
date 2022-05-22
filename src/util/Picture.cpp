@@ -1,10 +1,4 @@
-
-
-// Code in these classes is based on the ILTexLoader.h/.cpp routines inside the NVIDIA nvpro-pipeline ILTexLoader plugin:
-// https://github.com/nvpro-pipeline/pipeline/blob/master/dp/sg/io/IL/Loader/ILTexLoader.cpp
-
-
-#include "core/Picture.h"
+#include "util/Picture.h"
 
 #include <algorithm>
 #include <cctype>
@@ -13,6 +7,8 @@
 
 #include "cassert"
 
+namespace jazzfusion
+{
 
 static unsigned int numberOfComponents(int format)
 {
@@ -740,3 +736,4 @@ void Picture::generateEnvironment(unsigned int width, unsigned int height)
     delete[] rgba;
 }
 
+}

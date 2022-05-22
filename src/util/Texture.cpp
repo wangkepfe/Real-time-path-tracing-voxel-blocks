@@ -1,17 +1,14 @@
-
-
-#include "shaders/app_config.h"
-
-#include "shaders/vector_math.h"
-
-#include "core/Texture.h"
-#include "core/DebugUtils.h"
-
+#include "shaders/ShaderCommon.h"
+#include "shaders/MathUtils.h"
+#include "util/Texture.h"
+#include "util/DebugUtils.h"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
-
 #include "cassert"
+
+namespace jazzfusion
+{
 
 // The ENC_RED|GREEN|BLUE|ALPHA|LUM codes define from which source channel is read when writing R, G, B, A or L.
 static unsigned int determineHostEncoding(int format, int type) // format and type are DevIL defines..
@@ -1488,4 +1485,6 @@ float Texture::getIntegral() const
 {
     // This is the sum of the piecewise linear function values (roughly the texels' intensity) divided by the number of texels m_width * m_height.
     return m_integral;
+}
+
 }

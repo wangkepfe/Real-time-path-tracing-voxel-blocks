@@ -1,15 +1,11 @@
-
-
-#include "shaders/app_config.h"
-
-#include "core/PinholeCamera.h"
-
+#include "shaders/MathUtils.h"
+#include "core/Camera.h"
 #include <iostream>
 
-#include "shaders/shader_common.h"
+namespace jazzfusion
+{
 
-
-PinholeCamera::PinholeCamera()
+Camera::Camera()
     : m_distance(10.0f) // Some camera defaults for the demo scene.
     , m_phi(0.75f)
     , m_theta(0.6f)
@@ -36,11 +32,11 @@ PinholeCamera::PinholeCamera()
     m_cameraW = make_float3(0.0f, 0.0f, -1.0f);
 }
 
-PinholeCamera::~PinholeCamera()
+Camera::~Camera()
 {
 }
 
-void PinholeCamera::setViewport(int w, int h)
+void Camera::setViewport(int w, int h)
 {
     if (m_width != w || m_height != h)
     {
@@ -52,13 +48,13 @@ void PinholeCamera::setViewport(int w, int h)
     }
 }
 
-void PinholeCamera::setBaseCoordinates(int x, int y)
+void Camera::setBaseCoordinates(int x, int y)
 {
     m_baseX = x;
     m_baseY = y;
 }
 
-void PinholeCamera::orbit(int x, int y)
+void Camera::orbit(int x, int y)
 {
     if (setDelta(x, y))
     {
@@ -86,7 +82,7 @@ void PinholeCamera::orbit(int x, int y)
     }
 }
 
-void PinholeCamera::pan(int x, int y)
+void Camera::pan(int x, int y)
 {
     if (setDelta(x, y))
     {
@@ -98,7 +94,7 @@ void PinholeCamera::pan(int x, int y)
     }
 }
 
-void PinholeCamera::dolly(int x, int y)
+void Camera::dolly(int x, int y)
 {
     if (setDelta(x, y))
     {
@@ -113,7 +109,7 @@ void PinholeCamera::dolly(int x, int y)
     }
 }
 
-void PinholeCamera::focus(int x, int y)
+void Camera::focus(int x, int y)
 {
     if (setDelta(x, y))
     {
@@ -124,7 +120,7 @@ void PinholeCamera::focus(int x, int y)
     }
 }
 
-void PinholeCamera::setFocusDistance(float f)
+void Camera::setFocusDistance(float f)
 {
     if (m_distance != f && 0.001f < f) // Avoid swapping sides.
     {
@@ -134,7 +130,7 @@ void PinholeCamera::setFocusDistance(float f)
     }
 }
 
-void PinholeCamera::zoom(float x)
+void Camera::zoom(float x)
 {
     m_fov += float(x);
     if (m_fov < 1.0f)
@@ -148,12 +144,12 @@ void PinholeCamera::zoom(float x)
     m_changed = true;
 }
 
-float PinholeCamera::getAspectRatio() const
+float Camera::getAspectRatio() const
 {
     return m_aspect;
 }
 
-bool PinholeCamera::getFrustum(float3& pos, float3& u, float3& v, float3& w)
+bool Camera::getFrustum(float3& pos, float3& u, float3& v, float3& w)
 {
     bool changed = m_changed;
     if (changed)
@@ -183,7 +179,7 @@ bool PinholeCamera::getFrustum(float3& pos, float3& u, float3& v, float3& w)
     return changed;
 }
 
-bool PinholeCamera::setDelta(int x, int y)
+bool Camera::setDelta(int x, int y)
 {
     if (m_baseX != x || m_baseY != y)
     {
@@ -199,7 +195,7 @@ bool PinholeCamera::setDelta(int x, int y)
     return false;
 }
 
-void PinholeCamera::setSpeedRatio(float f)
+void Camera::setSpeedRatio(float f)
 {
     m_speedRatio = f;
     if (m_speedRatio < 0.01f)
@@ -210,4 +206,6 @@ void PinholeCamera::setSpeedRatio(float f)
     {
         m_speedRatio = 1000.0f;
     }
+}
+
 }

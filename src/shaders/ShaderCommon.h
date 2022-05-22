@@ -1,72 +1,44 @@
-/*
- * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  * Neither the name of NVIDIA CORPORATION nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
 #pragma once
 
-#ifndef PER_RAY_DATA_H
-#define PER_RAY_DATA_H
-
-#include "app_config.h"
-
 #include <optix.h>
+#include <cuda_runtime.h>
 
-#define MATERIAL_STACK_EMPTY -1
-#define MATERIAL_STACK_FIRST 0
-#define MATERIAL_STACK_LAST 0
-#define MATERIAL_STACK_SIZE 1
+#define INL_HOST_DEVICE __forceinline__ __host__ __device__
+#define INL_DEVICE __forceinline__ __device__
 
- // Set when reaching a closesthit program. Unused in this demo
-#define FLAG_HIT 0x00000001
+static constexpr int BounceLimit = 6;
+static constexpr float RayMax = 1.e27f;
+
+// Prevent that division by very small floating point values results in huge values, for example dividing by pdf.
+static constexpr float DenominatorEpsilon = 1.0e-6f;
+
+static constexpr int MaterialStackEmpty = -1;
+static constexpr int MaterialStackFirst = 0;
+static constexpr int MaterialStackLast = 0;
+static constexpr int MaterialStackSize = 1;
+
+// Set when reaching a closesthit program. Unused in this demo
+static constexpr int FLAG_HIT = 0x00000001;
 // Set when reaching the __anyhit__shadow program. Indicates visibility test failed.
-#define FLAG_SHADOW 0x00000002
-
+static constexpr int FLAG_SHADOW = 0x00000002;
 // Set by BSDFs which support direct lighting. Not set means specular interaction. Cleared in the closesthit program.
 // Used to decide when to do direct lighting and multuiple importance sampling on implicit light hits.
-#define FLAG_DIFFUSE 0x00000004
-
+static constexpr int FLAG_DIFFUSE = 0x00000004;
 // Set if (0.0f <= wo_dot_ng), means looking onto the front face. (Edge-on is explicitly handled as frontface for the material stack.)
-#define FLAG_FRONTFACE 0x00000010
+static constexpr int FLAG_FRONTFACE = 0x00000010;
 // Pass down material.flags through to the BSDFs.
-#define FLAG_THINWALLED 0x00000020
-
+static constexpr int FLAG_THINWALLED = 0x00000020;
 // FLAG_TRANSMISSION is set if there is a transmission. (Can't happen when FLAG_THINWALLED is set.)
-#define FLAG_TRANSMISSION 0x00000100
+static constexpr int FLAG_TRANSMISSION = 0x00000100;
 // Set if the material stack is not empty.
-#define FLAG_VOLUME 0x00001000
-
+static constexpr int FLAG_VOLUME = 0x00001000;
 // Highest bit set means terminate path.
-#define FLAG_TERMINATE 0x80000000
-
+static constexpr int FLAG_TERMINATE = 0x80000000;
 // Keep flags active in a path segment which need to be tracked along the path.
 // In this case only the last surface interaction is kept.
 // It's needed to track the last bounce's diffuse state in case a ray hits a light implicitly for multiple importance sampling.
 // FLAG_DIFFUSE is reset in the closesthit program.
-#define FLAG_CLEAR_MASK FLAG_DIFFUSE
+static constexpr int FLAG_CLEAR_MASK = FLAG_DIFFUSE;
 
 // Currently only containing some vertex attributes in world coordinates.
 struct State
@@ -108,7 +80,7 @@ typedef union
     uint2 dat;
 } Payload;
 
-__forceinline__ __device__ uint2 splitPointer(PerRayData* ptr)
+INL_DEVICE uint2 splitPointer(PerRayData* ptr)
 {
     Payload payload;
 
@@ -117,7 +89,7 @@ __forceinline__ __device__ uint2 splitPointer(PerRayData* ptr)
     return payload.dat;
 }
 
-__forceinline__ __device__ PerRayData* mergePointer(unsigned int p0, unsigned int p1)
+INL_DEVICE PerRayData* mergePointer(unsigned int p0, unsigned int p1)
 {
     Payload payload;
 
@@ -126,5 +98,3 @@ __forceinline__ __device__ PerRayData* mergePointer(unsigned int p0, unsigned in
 
     return payload.ptr;
 }
-
-#endif // PER_RAY_DATA_H

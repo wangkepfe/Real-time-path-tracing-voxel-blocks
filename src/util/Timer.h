@@ -4,6 +4,9 @@
 #include <ctime>
 #include <iostream>
 
+namespace jazzfusion
+{
+
 struct Timer
 {
     Timer() {
@@ -102,3 +105,5 @@ struct ScopeTimer
     std::string name;
     std::chrono::steady_clock::time_point startTime;
 };
+
+}

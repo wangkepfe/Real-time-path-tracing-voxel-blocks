@@ -1,40 +1,7 @@
-/*
- * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  * Neither the name of NVIDIA CORPORATION nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-#include "app_config.h"
-
 #include <optix.h>
-
-#include "system_parameter.h"
-#include "per_ray_data.h"
-#include "shader_common.h"
-#include "random_number_generators.h"
-
+#include "SystemParameter.h"
+#include "ShaderCommon.h"
+#include "RngUtils.h"
 #include "ShaderDebugUtils.h"
 
 extern "C" __constant__ SystemParameter sysParameter;
@@ -52,16 +19,16 @@ __device__ __inline__ bool TraceNextPath(PerRayData& prd, float4* absorptionStac
 {
     prd.wo = -prd.wi;              // Direction to observer.
     prd.ior = make_float2(1.0f);   // Reset the volume IORs.
-    prd.distance = RT_DEFAULT_MAX; // Shoot the next ray with maximum length.
+    prd.distance = RayMax; // Shoot the next ray with maximum length.
     prd.flags &= FLAG_CLEAR_MASK;  // Clear all non-persistent flags. In this demo only the last diffuse surface interaction stays.
 
     // Handle volume absorption of nested materials.
-    if (MATERIAL_STACK_FIRST <= stackIdx) // Inside a volume?
+    if (MaterialStackFirst <= stackIdx) // Inside a volume?
     {
         prd.flags |= FLAG_VOLUME;                                // Indicate that we're inside a volume. => At least absorption calculation needs to happen.
         prd.extinction = make_float3(absorptionStack[stackIdx]); // There is only volume absorption in this demo, no volume scattering.
         prd.ior.x = absorptionStack[stackIdx].w;                 // The IOR of the volume we're inside. Needed for eta calculations in transparent materials.
-        if (MATERIAL_STACK_FIRST <= stackIdx - 1)
+        if (MaterialStackFirst <= stackIdx - 1)
         {
             prd.ior.y = absorptionStack[stackIdx - 1].w; // The IOR of the surrounding volume. Needed when potentially leaving a volume to calculate eta in transparent materials.
         }
@@ -108,16 +75,16 @@ __device__ __inline__ bool TraceNextPath(PerRayData& prd, float4* absorptionStac
         if (prd.flags & FLAG_FRONTFACE) // Entered a new volume?
         {
             // Push the entered material's volume properties onto the volume stack.
-            // rtAssert((stackIdx < MATERIAL_STACK_LAST), 1); // Overflow?
-            stackIdx = min(stackIdx + 1, MATERIAL_STACK_LAST);
+            // rtAssert((stackIdx < MaterialStackLast), 1); // Overflow?
+            stackIdx = min(stackIdx + 1, MaterialStackLast);
             absorptionStack[stackIdx] = prd.absorption_ior;
         }
         else // Exited the current volume?
         {
             // Pop the top of stack material volume.
             // This assert fires and is intended because I tuned the frontface checks so that there are more exits than enters at silhouettes.
-            // rtAssert((MATERIAL_STACK_EMPTY < stackIdx), 0); // Underflow?
-            stackIdx = max(stackIdx - 1, MATERIAL_STACK_EMPTY);
+            // rtAssert((MaterialStackEmpty < stackIdx), 0); // Underflow?
+            stackIdx = max(stackIdx - 1, MaterialStackEmpty);
         }
     }
 
@@ -144,18 +111,17 @@ extern "C" __global__ void __raygen__pathtracer()
     const float2 sample = rng2(prd.seed);
 
     // Lens shaders
-    // optixDirectCall<void, const float2, const float2, const float2, float3 &, float3 &>(sysParameter.cameraType, );
     PinholeCamera(screen, pixel, sample, prd.pos, prd.wi);
 
     // This renderer supports nested volumes. Four levels is plenty enough for most cases.
     // The absorption coefficient and IOR of the volume the ray is currently inside.
-    float4 absorptionStack[MATERIAL_STACK_SIZE]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
+    float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
 
     float3 radiance = make_float3(1.0f);
 
     float3 throughput = make_float3(1.0f); // The throughput for the next radiance, starts with 1.0f.
 
-    int stackIdx = MATERIAL_STACK_EMPTY; // Start with empty nested materials stack.
+    int stackIdx = MaterialStackEmpty; // Start with empty nested materials stack.
 
     // Russian Roulette path termination after a specified number of bounces needs the current depth.
     int depth = 0; // Path segment index. Primary ray is 0.

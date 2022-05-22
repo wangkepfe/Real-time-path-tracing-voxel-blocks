@@ -1,9 +1,8 @@
 
 
-#include "shaders/app_config.h"
+#include "shaders/ShaderCommon.h"
 
-#include "core/Options.h"
-#include "core/Application.h"
+#include "core/UI.h"
 #include "core/Backend.h"
 #include "core/OptixRenderer.h"
 
@@ -13,13 +12,13 @@ int main(int argc, char* argv[])
 {
     auto& backend = jazzfusion::Backend::Get();
     auto& optix = jazzfusion::OptixRenderer::Get();
-    auto& app = Application::Get();
+    auto& ui = jazzfusion::UI::Get();
 
     try
     {
         backend.init();
         optix.init();
-        app.init(backend.getWindow());
+        ui.init();
 
         backend.mainloop();
     }
@@ -28,7 +27,9 @@ int main(int argc, char* argv[])
         std::cerr << e.what() << std::endl;
     }
 
+    ui.clear();
     optix.clear();
     backend.clear();
+
     return 0;
 }

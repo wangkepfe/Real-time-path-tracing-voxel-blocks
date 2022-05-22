@@ -49,12 +49,13 @@ public:
     CUstream getCudaStream() const { return m_cudaStream; }
     GLFWwindow* getWindow() { return m_window; }
     CUcontext getCudaContext() const { return m_cudaContext; }
+    float* getToneMapGain() { return &m_toneMapGain; }
+    float* getToneMapMaxWhite() { return &m_toneMapMaxWhite; }
 
 private:
     Backend() {}
 
     void initOpenGL();
-    void reshape();
     void initInterop();
     void mapInteropBuffer();
     void unmapInteropBuffer();
@@ -87,20 +88,9 @@ private:
     // buffer
     float4* m_interopBuffer;
 
-    // // Frame number
-    // int m_frames;
-
-    // // Timer
-    // Timer m_timer;
-
     // tone mapping
-    float m_gamma;
-    float3 m_colorBalance;
-    float m_whitePoint;
-    float m_burnHighlights;
-    float m_crushBlacks;
-    float m_saturation;
-    float m_brightness;
+    float m_toneMapGain = 1.0f;
+    float m_toneMapMaxWhite = 100.0f;
 
     std::vector<cudaDeviceProp> m_deviceProperties;
 };
