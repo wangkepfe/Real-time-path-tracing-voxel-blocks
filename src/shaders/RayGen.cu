@@ -140,6 +140,5 @@ extern "C" __global__ void __raygen__pathtracer()
         radiance = make_float3(10000.0f, 0.0f, 0.0f);
     }
 
-    const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
-    sysParameter.outputBuffer[index] = make_float4(radiance, 1.0f);
+    surf2Dwrite(make_float4(radiance, 1.0f), sysParameter.outputBuffer, theLaunchIndex.x * sizeof(float4), theLaunchIndex.y, cudaBoundaryModeClamp);
 }

@@ -68,7 +68,7 @@ struct SystemParameter
     // 8 byte alignment
     OptixTraversableHandle topObject;
 
-    float4* outputBuffer;
+    cudaSurfaceObject_t outputBuffer;
 
     LightDefinition* lightDefinitions;
 

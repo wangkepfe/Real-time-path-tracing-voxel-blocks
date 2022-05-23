@@ -2,6 +2,7 @@
 #include "util/DebugUtils.h"
 #include "core/OptixRenderer.h"
 #include "core/UI.h"
+#include "postprocessing/PostProcessor.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -54,6 +55,7 @@ void Backend::mainloop()
 {
     auto& ui = UI::Get();
     auto& optix = OptixRenderer::Get();
+    auto& postProcessor = PostProcessor::Get();
 
     while (!glfwWindowShouldClose(m_window))
     {
@@ -61,7 +63,8 @@ void Backend::mainloop()
 
         mapInteropBuffer();
 
-        optix.render(m_interopBuffer);
+        optix.render(); // TODO: connect output to post processor and then to the interop buffer
+        postProcessor.render(m_interopBuffer);
 
         unmapInteropBuffer();
 

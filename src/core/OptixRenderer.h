@@ -95,6 +95,9 @@ private:
 
     std::vector<LightDefinition>               m_lightDefinitions;
     std::vector<MaterialParameter>             m_materialParameters;
+
+    cudaSurfaceObject_t m_outputBuffer;
+    cudaArray_t m_outputBufferArray;
 };
 
 }
