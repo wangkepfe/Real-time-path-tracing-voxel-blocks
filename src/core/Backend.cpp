@@ -3,12 +3,14 @@
 #include "core/OptixRenderer.h"
 #include "core/UI.h"
 #include "postprocessing/PostProcessor.h"
+#include "core/InputHandler.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
-namespace jazzfusion {
+namespace jazzfusion
+{
 
 static void errorCallback(int error, const char* description)
 {
@@ -17,8 +19,8 @@ static void errorCallback(int error, const char* description)
 
 void Backend::init()
 {
-    m_width = 1920;
-    m_height = 1080;
+    m_width = 3840;
+    m_height = 2160;
 
     glfwSetErrorCallback(errorCallback);
     if (!glfwInit())
@@ -30,6 +32,14 @@ void Backend::init()
     if (!m_window)
     {
         throw std::runtime_error("glfwCreateWindow() failed.");
+    }
+
+    glfwSetKeyCallback(m_window, InputHandler::SetKeyCallback);
+    glfwSetCursorPosCallback(m_window, InputHandler::SetCursorPosCallback);
+    glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if (glfwRawMouseMotionSupported())
+    {
+        glfwSetInputMode(m_window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     }
 
     glfwMakeContextCurrent(m_window);
@@ -54,23 +64,29 @@ void Backend::init()
 void Backend::mainloop()
 {
     auto& ui = UI::Get();
-    auto& optix = OptixRenderer::Get();
+    auto& renderer = OptixRenderer::Get();
     auto& postProcessor = PostProcessor::Get();
+    auto& inputHandler = InputHandler::Get();
 
     while (!glfwWindowShouldClose(m_window))
     {
         glfwPollEvents();
 
+        inputHandler.update();
+
+        renderer.render();
+
         mapInteropBuffer();
 
-        optix.render(); // TODO: connect output to post processor and then to the interop buffer
-        postProcessor.render(m_interopBuffer);
+        postProcessor.init(renderer.getWidth(), renderer.getHeight(), m_width, m_height);
+        postProcessor.render(m_interopBuffer, renderer.getOutputBuffer(), renderer.getOutputTexture());
 
         unmapInteropBuffer();
 
         ui.update();
-        ui.eventHandler();
+
         display();
+
         ui.render();
 
         glfwSwapBuffers(m_window);

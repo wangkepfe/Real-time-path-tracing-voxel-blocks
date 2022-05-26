@@ -25,15 +25,6 @@
 namespace jazzfusion
 {
 
-enum GuiState
-{
-    GUI_STATE_NONE,
-    GUI_STATE_ORBIT,
-    GUI_STATE_PAN,
-    GUI_STATE_DOLLY,
-    GUI_STATE_FOCUS
-};
-
 class UI
 {
 public:
@@ -53,10 +44,6 @@ public:
 
 private:
     UI() {}
-
-    GuiState m_guiState;
-    bool m_isVisibleGUI;
-    float m_mouseSpeedRatio;
 };
 
 }

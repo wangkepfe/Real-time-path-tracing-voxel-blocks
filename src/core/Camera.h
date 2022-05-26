@@ -6,53 +6,83 @@
 namespace jazzfusion
 {
 
-class Camera
+struct __align__(16) Camera
 {
-public:
-    Camera();
-    ~Camera();
+    Float3 pos;
+    float  pitch;
+    Float3 dir;
+    float  focal;
+    Float3 left;
+    float  aperture;
+    Float3 up;
+    float  yaw;
+    Float2 resolution;
+    Float2 inversedResolution;
+    Float2 fov;
+    Float2 tanHalfFov;
+    Float3 adjustedLeft;
+    float  unused3;
+    Float3 adjustedUp;
+    float  unused4;
+    Float3 adjustedFront;
+    float  unused5;
+    Float3 apertureLeft;
+    float  unused6;
+    Float3 apertureUp;
+    float  unused7;
 
-    void setViewport(int w, int h);
-    void setBaseCoordinates(int x, int y);
-    void setSpeedRatio(float f);
-    void setFocusDistance(float f);
+    void update()
+    {
+        dir = Float3(sinf(yaw) * cosf(pitch), sinf(pitch), cosf(yaw) * cosf(pitch));
 
-    void orbit(int x, int y);
-    void pan(int x, int y);
-    void dolly(int x, int y);
-    void focus(int x, int y);
-    void zoom(float x);
+        inversedResolution = 1.0f / resolution;
+        fov.y = fov.x / resolution.x * resolution.y;
+        tanHalfFov = Float2(tanf(fov.x / 2), tanf(fov.y / 2));
 
-    bool  getFrustum(float3& pos, float3& u, float3& v, float3& w);
-    float getAspectRatio() const;
+        up = Float3(0, 1, 0);
+        left = normalize(cross(up, dir));
+        up = normalize(cross(dir, left));
 
-public: // public just to be able to load and save them easily.
-    float3 m_center;   // Center of interest point, around which is orbited (and the sharp plane of a depth of field camera).
-    float  m_distance; // Distance of the camera from the center of interest.
-    float  m_phi;      // Range [0.0f, 1.0f] from positive x-axis 360 degrees around the latitudes.
-    float  m_theta;    // Range [0.0f, 1.0f] from negative to positive y-axis.
-    float  m_fov;      // In degrees. Default is 60.0f
+        adjustedFront = dir * focal;
+        adjustedLeft = left * tanHalfFov.x * focal;
+        adjustedUp = up * tanHalfFov.y * focal;
 
-private:
-    bool setDelta(int x, int y);
+        apertureLeft = left * aperture;
+        apertureUp = up * aperture;
+    }
 
-private:
-    int   m_width;    // Viewport width.
-    int   m_height;   // Viewport height.
-    float m_aspect;   // m_width / m_height
-    int   m_baseX;
-    int   m_baseY;
-    float m_speedRatio;
+    inline __device__ __host__ Float2 WorldToScreenSpace(Float3 worldPos)
+    {
+        Mat3 invCamMat(left, up, dir);                                   // build view matrix
+        invCamMat.transpose();                                           // orthogonal matrix, inverse is transpose
+        Float3 viewSpacePos = invCamMat * (worldPos - pos);            // transform world pos to view space
+        Float2 screenPlanePos = viewSpacePos.xy / viewSpacePos.z;        // projection onto plane
+        Float2 ndcSpacePos = screenPlanePos / tanHalfFov;             // [-1, 1]
+        Float2 screenSpacePos = Float2(0.5) - ndcSpacePos * Float2(0.5); // [0, 1]
+        return screenSpacePos;
+    }
+};
 
-    // Derived values:
-    int  m_dx;
-    int  m_dy;
-    bool m_changed;
+struct __align__(16) HistoryCamera
+{
+    inline __device__ __host__ void Setup(const Camera & cam)
+    {
+        invCamMat = Mat3(cam.left, cam.up, cam.dir);  // build view matrix
+        invCamMat.transpose();                      // orthogonal matrix, inverse is transpose
+        pos = cam.pos;
+    }
 
-    float3 m_cameraPosition;
-    float3 m_cameraU;
-    float3 m_cameraV;
-    float3 m_cameraW;
+    inline __device__ __host__ Float2 WorldToScreenSpace(Float3 worldPos, Float2 tanHalfFov)
+    {
+        Float3 viewSpacePos = invCamMat * (worldPos - pos);            // transform world pos to view space
+        Float2 screenPlanePos = viewSpacePos.xy / viewSpacePos.z;        // projection onto plane
+        Float2 ndcSpacePos = screenPlanePos / tanHalfFov;             // [-1, 1]
+        Float2 screenSpacePos = Float2(0.5) - ndcSpacePos * Float2(0.5); // [0, 1]
+        return screenSpacePos;
+    }
+
+    Mat3 invCamMat;
+    Float3 pos;
 };
 
 }

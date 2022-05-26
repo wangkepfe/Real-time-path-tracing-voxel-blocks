@@ -2946,8 +2946,7 @@ struct TBN
 {
     // Default constructor to be able to include it into other structures when needed.
     INL_HOST_DEVICE TBN()
-    {
-    }
+    {}
 
     INL_HOST_DEVICE TBN(const float3& n)
         : normal(n)
@@ -2971,8 +2970,7 @@ struct TBN
     // Constructor for cases where tangent, bitangent, and normal are given as ortho-normal basis.
     INL_HOST_DEVICE TBN(const float3& t, const float3& b, const float3& n)
         : tangent(t), bitangent(b), normal(n)
-    {
-    }
+    {}
 
     // Normal is kept, tangent and bitangent are calculated.
     // Normal must be normalized.

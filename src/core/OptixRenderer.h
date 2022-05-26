@@ -17,7 +17,8 @@
 
 #include "Camera.h"
 
-namespace jazzfusion {
+namespace jazzfusion
+{
 
 struct SbtRecordHeader
 {
@@ -46,13 +47,19 @@ public:
 
     void init();
     void clear();
-    void render(float4* interopBuffer);
+    void render();
 
     Camera& getCamera() { return m_camera; }
     SystemParameter& getSystemParameter() { return m_systemParameter; }
 
     void setWidth(int width) { m_width = width; }
     void setHeight(int height) { m_height = height; }
+
+    int getWidth() const { return m_width; }
+    int getHeight() const { return m_height; }
+
+    SurfObj getOutputBuffer() const { return m_outputBuffer; }
+    TexObj getOutputTexture() const { return m_outputTexture; }
 
 private:
     OptixRenderer() {}
@@ -96,7 +103,9 @@ private:
     std::vector<LightDefinition>               m_lightDefinitions;
     std::vector<MaterialParameter>             m_materialParameters;
 
-    cudaSurfaceObject_t m_outputBuffer;
+    TexObj m_outputTexture;
+    SurfObj m_outputBuffer;
+    cudaTextureDesc m_outputTexDesc;
     cudaArray_t m_outputBufferArray;
 };
 

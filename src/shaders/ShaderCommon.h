@@ -2,9 +2,7 @@
 
 #include <optix.h>
 #include <cuda_runtime.h>
-
-#define INL_HOST_DEVICE __forceinline__ __host__ __device__
-#define INL_DEVICE __forceinline__ __device__
+#include "Common.h"
 
 static constexpr int BounceLimit = 6;
 static constexpr float RayMax = 1.e27f;

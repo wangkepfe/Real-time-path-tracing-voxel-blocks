@@ -1,0 +1,31 @@
+#include "postprocessing/PostProcessor.h"
+#include "postprocessing/ScalingFilter.h"
+#include "postprocessing/BicubicFilter.h"
+#include "util/KernelHelper.h"
+#include "util/DebugUtils.h"
+
+#define KERNEL_ARGS2(grid, block) <<< grid, block >>>
+#define KERNEL_ARGS3(grid, block, sh_mem) <<< grid, block, sh_mem >>>
+#define KERNEL_ARGS4(grid, block, sh_mem, stream) <<< grid, block, sh_mem, stream >>>
+
+namespace jazzfusion
+{
+
+void PostProcessor::init(int inputWidthIn, int inputHeightIn, int outputWidthIn, int outputHeightIn)
+{
+    inputWidth = inputWidthIn;
+    inputHeight = inputHeightIn;
+    outputWidth = outputWidthIn;
+    outputHeight = outputHeightIn;
+}
+
+void PostProcessor::render(float4* interopBuffer, SurfObj colorBuffer, TexObj colorTex)
+{
+    BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))
+        (interopBuffer, colorBuffer, Int2(inputWidth, inputHeight), Int2(outputWidth, outputHeight));
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+}
+
+}

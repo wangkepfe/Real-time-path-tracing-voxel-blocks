@@ -1,5 +1,12 @@
 #pragma once
 
+#ifndef SurfObj
+#define SurfObj cudaSurfaceObject_t
+#endif
+#ifndef TexObj
+#define TexObj cudaTextureObject_t
+#endif
+
 enum FunctionIndexSpecular
 {
     INDEX_BSDF_SPECULAR_REFLECTION = 0,
@@ -17,7 +24,7 @@ enum FunctionIndexDiffuse
 struct __align__(16) MaterialParameter
 {
     // 8 byte alignment.
-    cudaTextureObject_t textureAlbedo;
+    TexObj textureAlbedo;
 
     // 4 byte alignment.
     int indexBSDF;      // BSDF index to use in the closest hit program
@@ -68,13 +75,13 @@ struct SystemParameter
     // 8 byte alignment
     OptixTraversableHandle topObject;
 
-    cudaSurfaceObject_t outputBuffer;
+    SurfObj outputBuffer;
 
     LightDefinition* lightDefinitions;
 
     MaterialParameter* materialParameters;
 
-    cudaTextureObject_t envTexture;
+    TexObj envTexture;
 
     float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
     float* envCDF_V; // 1D, size (envHeight + 1)
@@ -91,11 +98,7 @@ struct SystemParameter
 
     int numLights;
 
-    int cameraType;
-    float3 cameraPosition;
-    float3 cameraU;
-    float3 cameraV;
-    float3 cameraW;
+    // todo camera
 };
 
 struct VertexAttributes

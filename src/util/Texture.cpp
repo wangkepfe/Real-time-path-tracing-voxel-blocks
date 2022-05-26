@@ -1315,7 +1315,7 @@ unsigned int Texture::getDepth() const
     return m_depth;
 }
 
-cudaTextureObject_t Texture::getTextureObject() const
+TexObj Texture::getTextureObject() const
 {
     return m_textureObject;
 }

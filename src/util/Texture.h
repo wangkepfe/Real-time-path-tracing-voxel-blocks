@@ -8,6 +8,13 @@
 #include <string>
 #include <vector>
 
+#ifndef SurfObj
+#define SurfObj cudaSurfaceObject_t
+#endif
+#ifndef TexObj
+#define TexObj cudaTextureObject_t
+#endif
+
 namespace jazzfusion
 {
 
@@ -103,7 +110,7 @@ public:
     unsigned int getHeight() const;
     unsigned int getDepth() const;
 
-    cudaTextureObject_t getTextureObject() const;
+    TexObj getTextureObject() const;
 
     // Specific to spherical environment map.
 
@@ -132,7 +139,7 @@ private:
     size_t m_sizeBytesPerElement;
 
     cudaTextureDesc m_textureDescription; // This contains all texture parameters which can be set individually or as a whole.
-    cudaTextureObject_t m_textureObject;
+    TexObj m_textureObject;
 
     cudaArray_t m_d_array;
     cudaMipmappedArray_t m_d_mipmappedArray;

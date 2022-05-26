@@ -65,8 +65,7 @@ public:
     OptixLogger() : m_stream(std::cout) {}
     OptixLogger(std::ostream& s)
         : m_stream(s)
-    {
-    }
+    {}
 
     static void callback(unsigned int level, const char* tag, const char* message, void* cbdata)
     {
@@ -118,16 +117,13 @@ void OptixRenderer::clear()
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
 
     CUDA_CHECK(cudaDestroySurfaceObject(m_outputBuffer));
+    CUDA_CHECK(cudaDestroyTextureObject(m_outputTexture));
     CUDA_CHECK(cudaFreeArray(m_outputBufferArray));
 }
 
-void OptixRenderer::render(float4* interopBuffer)
+void OptixRenderer::render()
 {
     auto& backend = jazzfusion::Backend::Get();
-    bool cameraChanged = m_camera.getFrustum(m_systemParameter.cameraPosition,
-        m_systemParameter.cameraU,
-        m_systemParameter.cameraV,
-        m_systemParameter.cameraW);
 
     static int iterationIndex = 0;
     m_systemParameter.iterationIndex = iterationIndex++;
@@ -269,7 +265,6 @@ void OptixRenderer::init()
     {
         m_width = 1920;
         m_height = 1080;
-        m_camera.setViewport(m_width, m_height);
 
         m_systemParameter.topObject = 0;
         m_systemParameter.outputBuffer = 0;
@@ -286,11 +281,6 @@ void OptixRenderer::init()
         m_systemParameter.iterationIndex = 0;
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = 0;
-        m_systemParameter.cameraType = 0;
-        m_systemParameter.cameraPosition = make_float3(0.0f, 0.0f, 1.0f);
-        m_systemParameter.cameraU = make_float3(1.0f, 0.0f, 0.0f);
-        m_systemParameter.cameraV = make_float3(0.0f, 1.0f, 0.0f);
-        m_systemParameter.cameraW = make_float3(0.0f, 0.0f, -1.0f);
 
         m_textureEnvironment = nullptr;
         m_textureAlbedo = nullptr;
@@ -889,12 +879,6 @@ void OptixRenderer::init()
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
         m_systemParameter.iterationIndex = 0;
-        m_systemParameter.cameraType = 0; // @TODO: remove this
-
-        m_camera.getFrustum(m_systemParameter.cameraPosition,
-            m_systemParameter.cameraU,
-            m_systemParameter.cameraV,
-            m_systemParameter.cameraW);
 
         CUDA_CHECK(cudaMalloc((void**)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
@@ -906,15 +890,39 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixModuleDestroy(module));
     }
 
-    // Output surface object
+    // Output object
     {
         auto format = cudaCreateChannelDesc<float4>();
-        CUDA_CHECK(cudaMallocArray(&m_outputBufferArray, &format, m_width, m_height, cudaArraySurfaceLoadStore));
+        CUDA_CHECK(cudaMallocArray(&m_outputBufferArray, &format, m_width, m_height, cudaArraySurfaceLoadStore | cudaArrayTextureGather));
 
         cudaResourceDesc resDesc = {};
         resDesc.resType = cudaResourceTypeArray;
         resDesc.res.array.array = m_outputBufferArray;
+
+        memset(&m_outputTexDesc, 0, sizeof(cudaTextureDesc));
+
+        m_outputTexDesc.addressMode[0] = cudaAddressModeWrap;
+        m_outputTexDesc.addressMode[1] = cudaAddressModeWrap;
+        m_outputTexDesc.addressMode[2] = cudaAddressModeWrap;
+        m_outputTexDesc.filterMode = cudaFilterModePoint;
+        m_outputTexDesc.readMode = cudaReadModeElementType;
+        m_outputTexDesc.sRGB = 0;
+        m_outputTexDesc.borderColor[0] = 0.0f;
+        m_outputTexDesc.borderColor[1] = 0.0f;
+        m_outputTexDesc.borderColor[2] = 0.0f;
+        m_outputTexDesc.borderColor[3] = 0.0f;
+        m_outputTexDesc.normalizedCoords = 1;
+        m_outputTexDesc.maxAnisotropy = 1;
+        m_outputTexDesc.mipmapFilterMode = cudaFilterModePoint;
+        m_outputTexDesc.mipmapLevelBias = 0.0f;
+        m_outputTexDesc.minMipmapLevelClamp = 0.0f;
+        m_outputTexDesc.maxMipmapLevelClamp = 0.0f;
+
         CUDA_CHECK(cudaCreateSurfaceObject(&m_outputBuffer, &resDesc));
+
+        CUDA_CHECK(cudaCreateTextureObject(&m_outputTexture, &resDesc, &m_outputTexDesc, nullptr));
+
+        m_systemParameter.outputBuffer = m_outputBuffer;
     }
 }
 
