@@ -2,7 +2,7 @@
 #include "core/UI.h"
 #include "core/OptixRenderer.h"
 #include "core/Backend.h"
-#include "util/LinearMath.h"
+#include "shaders/LinearMath.h"
 #include "core/GlobalSettings.h"
 
 #include <iostream>
@@ -83,6 +83,7 @@ void InputHandler::SetCursorPosCallback(GLFWwindow* window, double xpos, double 
 void InputHandler::update()
 {
     Camera& camera = OptixRenderer::Get().getCamera();
+    Backend& backend = Backend::Get();
 
     if (moveW || moveS || moveA || moveD || moveC || moveX)
     {
@@ -96,7 +97,7 @@ void InputHandler::update()
         if (moveC) movingDir += Float3(0, 1, 0);
         if (moveX) movingDir -= Float3(0, 1, 0);
 
-        camera.pos += movingDir * deltaTime * moveSpeed;
+        camera.pos += movingDir * backend.getTimer().getDeltaTime() * moveSpeed;
 
         camera.update();
     }

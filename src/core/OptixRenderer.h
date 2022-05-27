@@ -15,7 +15,7 @@
 #include "util/DebugUtils.h"
 #include "core/Scene.h"
 
-#include "Camera.h"
+#include "shaders/Camera.h"
 
 namespace jazzfusion
 {

@@ -68,9 +68,13 @@ void Backend::mainloop()
     auto& postProcessor = PostProcessor::Get();
     auto& inputHandler = InputHandler::Get();
 
+    m_timer.init();
+
     while (!glfwWindowShouldClose(m_window))
     {
         glfwPollEvents();
+
+        m_timer.update();
 
         inputHandler.update();
 

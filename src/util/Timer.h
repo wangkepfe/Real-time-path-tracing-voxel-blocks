@@ -57,12 +57,11 @@ struct Timer
         }
     }
 
-    float getDeltaTime() {
+    float getDeltaTime() const {
         return static_cast<float>(deltaTime);
     }
 
-    float getTime() {
-        currentTime = std::chrono::high_resolution_clock::now();
+    float getTime() const {
         return std::chrono::duration<float, std::milli>(currentTime - startTime).count();
     }
 

@@ -1,10 +1,10 @@
-#include "util/LinearMath.h"
+#include "shaders/LinearMath.h"
 
 namespace jazzfusion
 {
 
 __global__ void BicubicFilter(
-    float4* out,
+    Float4* out,
     SurfObj colorBuffer,
     Int2 texSize,
     Int2 outSize)
@@ -62,7 +62,7 @@ __global__ void BicubicFilter(
 
     outColor /= sumWeight;
 
-    out[linearId] = (float4)outColor;
+    out[linearId] = Float4(outColor, 0);
 }
 
 }

@@ -1,19 +1,20 @@
-#include <optix.h>
 #include "SystemParameter.h"
-#include "MathUtils.h"
-#include "RngUtils.h"
+#include "OptixShaderCommon.h"
 
-__forceinline__ __device__ void alignVector(float3 const& axis, float3& w)
+namespace jazzfusion
+{
+
+__forceinline__ __device__ void alignVector(Float3 const& axis, Float3& w)
 {
     // Align w with axis.
     const float s = copysignf(1.0f, axis.z);
     w.z *= s;
-    const float3 h = make_float3(axis.x, axis.y, axis.z + s);
+    const Float3 h = Float3(axis.x, axis.y, axis.z + s);
     const float k = dot(w, h) / (1.0f + fabsf(axis.z));
     w = k * h - w;
 }
 
-__forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample, float3 const& axis, float3& w, float& pdf)
+__forceinline__ __device__ void unitSquareToCosineHemisphere(const Float2 sample, Float3 const& axis, Float3& w, float& pdf)
 {
     // Choose a point on the local hemisphere coordinates about +z.
     const float theta = 2.0f * M_PIf * sample.x;
@@ -29,7 +30,7 @@ __forceinline__ __device__ void unitSquareToCosineHemisphere(const float2 sample
     alignVector(axis, w);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, float3 & wi, float3 & f_over_pdf, float& pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, Float3 & wi, Float3 & f_over_pdf, float& pdf)
 {
     unitSquareToCosineHemisphere(rng2(prd->seed), state.normal, wi, pdf);
 
@@ -43,18 +44,18 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(Mat
 }
 
 // The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction prd.wi (indirect lighting).
-extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const Float3 wiL)
 {
-    const float3 f = state.albedo * M_1_PIf;
+    const Float3 f = state.albedo * M_1_PIf;
     const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);
 
-    return make_float4(f, pdf);
+    return Float4(f, pdf);
 }
 
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, float3 & wi, float3 & f_over_pdf, float& pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, Float3 & wi, Float3 & f_over_pdf, float& pdf)
 {
-    wi = reflect(-prd->wo, state.normal);
+    wi = reflect3f(-prd->wo, state.normal);
 
     if (dot(wi, state.normalGeo) <= 0.0f) // Do not sample opaque materials below the geometric surface.
     {
@@ -97,10 +98,10 @@ __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const
     return (result <= 1.0f) ? result : 1.0f;
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const& parameters, State const& state, PerRayData * prd, float3 & wi, float3 & f_over_pdf, float& pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const& parameters, State const& state, PerRayData * prd, Float3 & wi, Float3 & f_over_pdf, float& pdf)
 {
     // Return the current material's absorption coefficient and ior to the integrator to be able to support nested materials.
-    prd->absorption_ior = make_float4(parameters.absorption, parameters.ior);
+    prd->absorption_ior = Float4(parameters.absorption, parameters.ior);
 
     // Need to figure out here which index of refraction to use if the ray is already inside some refractive medium.
     // This needs to happen with the original FLAG_FRONTFACE condition to find out from which side of the geometry we're looking!
@@ -110,7 +111,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
         ? prd->absorption_ior.w / prd->ior.x
         : prd->ior.y / prd->absorption_ior.w;
 
-    const float3 R = reflect(-prd->wo, state.normal);
+    const Float3 R = reflect3f(-prd->wo, state.normal);
 
     float reflective = 1.0f;
 
@@ -137,4 +138,6 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
     // No Fresnel factor here. The probability to pick one or the other side took care of that.
     f_over_pdf = state.albedo;
     pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
+}
+
 }

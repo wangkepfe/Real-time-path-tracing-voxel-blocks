@@ -2,23 +2,57 @@
 
 #include <math.h>
 #include <cuda_runtime.h>
-#include "shaders/Common.h"
-
-#define uint unsigned int
-#define ushort unsigned short
-#define uint64 unsigned long long int
-#define ushort unsigned short
+#include "Common.h"
 
 #define PI_OVER_4               0.7853981633974483096156608458198757210492f
 #define PI_OVER_2               1.5707963267948966192313216916397514420985f
 #define SQRT_OF_ONE_THIRD       0.5773502691896257645091487805019574556476f
-#ifndef M_PI
-#define M_PI                    3.1415926535897932384626422832795028841971f
-#endif
 #define TWO_PI                  6.2831853071795864769252867665590057683943f
 #define Pi_over_180             0.01745329251f
 #define INV_PI                  0.31830988618f
 #define INV_TWO_PI              0.15915494309f
+#ifndef M_PI
+#define M_PI                    3.1415926535897932384626422832795028841971f
+#endif
+#ifndef M_Ef
+#define M_Ef 2.71828182845904523536f
+#endif
+#ifndef M_LOG2Ef
+#define M_LOG2Ef 1.44269504088896340736f
+#endif
+#ifndef M_LOG10Ef
+#define M_LOG10Ef 0.434294481903251827651f
+#endif
+#ifndef M_LN2f
+#define M_LN2f 0.693147180559945309417f
+#endif
+#ifndef M_LN10f
+#define M_LN10f 2.30258509299404568402f
+#endif
+#ifndef M_PIf
+#define M_PIf 3.14159265358979323846f
+#endif
+#ifndef M_PI_2f
+#define M_PI_2f 1.57079632679489661923f
+#endif
+#ifndef M_PI_4f
+#define M_PI_4f 0.785398163397448309616f
+#endif
+#ifndef M_1_PIf
+#define M_1_PIf 0.318309886183790671538f
+#endif
+#ifndef M_2_PIf
+#define M_2_PIf 0.636619772367581343076f
+#endif
+#ifndef M_2_SQRTPIf
+#define M_2_SQRTPIf 1.12837916709551257390f
+#endif
+#ifndef M_SQRT2f
+#define M_SQRT2f 1.41421356237309504880f
+#endif
+#ifndef M_SQRT1_2f
+#define M_SQRT1_2f 0.707106781186547524401f
+#endif
 
 namespace jazzfusion
 {
@@ -117,6 +151,7 @@ struct Float2
     INL_HOST_DEVICE Float2() : x(0), y(0) {}
     INL_HOST_DEVICE Float2(float _x, float _y) : x(_x), y(_y) {}
     INL_HOST_DEVICE Float2(float _x) : x(_x), y(_x) {}
+    INL_HOST_DEVICE Float2(const float2& v) : x(v.x), y(v.y) {}
 
     INL_HOST_DEVICE Float2  operator+(const Float2& v) const { return Float2(x + v.x, y + v.y); }
     INL_HOST_DEVICE Float2  operator-(const Float2& v) const { return Float2(x - v.x, y - v.y); }
@@ -145,6 +180,8 @@ struct Float2
 
     INL_HOST_DEVICE float& operator[](int i) { return _v[i]; }
     INL_HOST_DEVICE float  operator[](int i) const { return _v[i]; }
+
+    INL_HOST_DEVICE explicit operator float2() const { return make_float2(x, y); }
 
     INL_HOST_DEVICE float length() const { return sqrtf(x * x + y * y); }
     INL_HOST_DEVICE float length2() const { return x * x + y * y; }
@@ -197,19 +234,21 @@ struct UInt2
 {
     union
     {
-        struct { unsigned int x, y; };
-        unsigned int _v[2];
+        struct { uint x, y; };
+        uint _v[2];
     };
 
     INL_HOST_DEVICE UInt2() : x{ 0 }, y{ 0 } {}
-    INL_HOST_DEVICE UInt2(unsigned int a) : x{ a }, y{ a } {}
-    INL_HOST_DEVICE UInt2(unsigned int x, unsigned int y) : x{ x }, y{ y } {}
+    INL_HOST_DEVICE UInt2(uint a) : x{ a }, y{ a } {}
+    INL_HOST_DEVICE UInt2(uint x, uint y) : x{ x }, y{ y } {}
+    INL_HOST_DEVICE UInt2(const uint2& v) : x{ v.x }, y{ v.y } {}
+    INL_HOST_DEVICE UInt2(const uint3& v) : x{ v.x }, y{ v.y } {}
 
-    INL_HOST_DEVICE UInt2 operator + (unsigned int a) const { return UInt2(x + a, y + a); }
-    INL_HOST_DEVICE UInt2 operator - (unsigned int a) const { return UInt2(x - a, y - a); }
+    INL_HOST_DEVICE UInt2 operator + (uint a) const { return UInt2(x + a, y + a); }
+    INL_HOST_DEVICE UInt2 operator - (uint a) const { return UInt2(x - a, y - a); }
 
-    INL_HOST_DEVICE UInt2 operator += (unsigned int a) { x += a; y += a; return *this; }
-    INL_HOST_DEVICE UInt2 operator -= (unsigned int a) { x -= a; y -= a; return *this; }
+    INL_HOST_DEVICE UInt2 operator += (uint a) { x += a; y += a; return *this; }
+    INL_HOST_DEVICE UInt2 operator -= (uint a) { x -= a; y -= a; return *this; }
 
     INL_HOST_DEVICE UInt2 operator + (const UInt2& v) const { return UInt2(x + v.x, y + v.y); }
     INL_HOST_DEVICE UInt2 operator - (const UInt2& v) const { return UInt2(x - v.x, y - v.y); }
@@ -220,8 +259,8 @@ struct UInt2
     INL_HOST_DEVICE bool operator == (const UInt2& v) { return x == v.x && y == v.y; }
     INL_HOST_DEVICE bool operator != (const UInt2& v) { return x != v.x || y != v.y; }
 
-    INL_HOST_DEVICE unsigned int& operator[] (unsigned int i) { return _v[i]; }
-    INL_HOST_DEVICE unsigned int  operator[] (unsigned int i) const { return _v[i]; }
+    INL_HOST_DEVICE uint& operator[] (uint i) { return _v[i]; }
+    INL_HOST_DEVICE uint  operator[] (uint i) const { return _v[i]; }
 
     INL_HOST_DEVICE operator Int2() const { return Int2((int)x, (int)y); }
 };
@@ -267,6 +306,7 @@ struct Float3
     INL_HOST_DEVICE Float3() : x(0), y(0), z(0) {}
     INL_HOST_DEVICE Float3(float _x) : x(_x), y(_x), z(_x) {}
     INL_HOST_DEVICE Float3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+    INL_HOST_DEVICE Float3(const float3& v) : x(v.x), y(v.y), z(v.z) {}
     INL_HOST_DEVICE Float3(const float4& v) : x(v.x), y(v.y), z(v.z) {}
 
     INL_HOST_DEVICE Float2 xz() const { return Float2(x, z); }
@@ -304,15 +344,15 @@ struct Float3
     INL_HOST_DEVICE float& operator[](int i) { return _v[i]; }
     INL_HOST_DEVICE float  operator[](int i) const { return _v[i]; }
 
-    INL_HOST_DEVICE operator float4() { return make_float4(x, y, z, 0); }
+    INL_HOST_DEVICE explicit operator float3() const { return make_float3(x, y, z); }
 
-    INL_HOST_DEVICE float   length() const { return sqrtf(x * x + y * y + z * z); }
-    INL_HOST_DEVICE float   length2() const { return x * x + y * y + z * z; }
+    INL_HOST_DEVICE float   length2() const { return (float)InnerProduct(x, x, y, y, z, z); }
+    INL_HOST_DEVICE float   length() const { return sqrtf(length2()); }
     INL_HOST_DEVICE float   getmax() const { return max(max(x, y), z); }
     INL_HOST_DEVICE float   getmin() const { return min(min(x, y), z); }
-    INL_HOST_DEVICE float   norm() const { float norm = sqrtf(x * x + y * y + z * z); return norm; }
-    INL_HOST_DEVICE Float3& normalize() { float norm = sqrtf(x * x + y * y + z * z); x /= norm; y /= norm; z /= norm; return *this; }
-    INL_HOST_DEVICE Float3  normalized() const { float norm = sqrtf(x * x + y * y + z * z); return Float3(x / norm, y / norm, z / norm); }
+    INL_HOST_DEVICE float   norm() const { return length(); }
+    INL_HOST_DEVICE Float3& normalize() { float n = norm(); x /= n; y /= n; z /= n; return *this; }
+    INL_HOST_DEVICE Float3  normalized() const { float n = norm(); return Float3(x / n, y / n, z / n); }
 };
 
 struct Float3Hasher
@@ -390,6 +430,7 @@ struct UInt3
     INL_HOST_DEVICE UInt3() : x{ 0 }, y{ 0 }, z{ 0 } {}
     INL_HOST_DEVICE UInt3(uint a) : x{ a }, y{ a }, z{ a } {}
     INL_HOST_DEVICE UInt3(uint x, uint y, uint z) : x{ x }, y{ y }, z{ z } {}
+    INL_HOST_DEVICE UInt3(const uint3& v) : x{ v.x }, y{ v.y }, z{ v.z } {}
 
     INL_HOST_DEVICE UInt3 operator + (uint a) const { return UInt3(x + a, y + a, z + a); }
     INL_HOST_DEVICE UInt3 operator - (uint a) const { return UInt3(x - a, y - a, z - a); }
@@ -397,17 +438,50 @@ struct UInt3
     INL_HOST_DEVICE UInt3 operator += (uint a) { x += a; y += a; z += a; return *this; }
     INL_HOST_DEVICE UInt3 operator -= (uint a) { x -= a; y -= a; z -= a; return *this; }
 
-    INL_HOST_DEVICE UInt3 operator + (const UInt3& v) const { return UInt3(x + v.x, y + v.y, z + v.y); }
-    INL_HOST_DEVICE UInt3 operator - (const UInt3& v) const { return UInt3(x - v.x, y - v.y, z - v.y); }
+    INL_HOST_DEVICE UInt3 operator + (const UInt3& v) const { return UInt3(x + v.x, y + v.y, z + v.z); }
+    INL_HOST_DEVICE UInt3 operator - (const UInt3& v) const { return UInt3(x - v.x, y - v.y, z - v.z); }
 
-    INL_HOST_DEVICE UInt3 operator += (const UInt3& v) { x += v.x; y += v.y; z += v.y; return *this; }
-    INL_HOST_DEVICE UInt3 operator -= (const UInt3& v) { x -= v.x; y -= v.y; z -= v.y; return *this; }
+    INL_HOST_DEVICE UInt3 operator += (const UInt3& v) { x += v.x; y += v.y; z += v.z; return *this; }
+    INL_HOST_DEVICE UInt3 operator -= (const UInt3& v) { x -= v.x; y -= v.y; z -= v.z; return *this; }
 
     INL_HOST_DEVICE bool operator == (const UInt3& v) { return x == v.x && y == v.y && z == v.z; }
     INL_HOST_DEVICE bool operator != (const UInt3& v) { return x != v.x || y != v.y || z != v.z; }
 
     INL_HOST_DEVICE uint& operator[] (uint i) { return _v[i]; }
     INL_HOST_DEVICE uint  operator[] (uint i) const { return _v[i]; }
+};
+
+struct Int4
+{
+    union
+    {
+        struct { int x, y, z, w; };
+        int _v[4];
+    };
+
+    INL_HOST_DEVICE Int4() : x{ 0 }, y{ 0 }, z{ 0 }, w{ 0 } {}
+    INL_HOST_DEVICE Int4(int a) : x{ a }, y{ a }, z{ a }, w{ a } {}
+    INL_HOST_DEVICE Int4(int x, int y, int z, int w) : x{ x }, y{ y }, z{ z }, w{ w } {}
+
+    INL_HOST_DEVICE Int4 operator + (int a) const { return Int4(x + a, y + a, z + a, w + a); }
+    INL_HOST_DEVICE Int4 operator - (int a) const { return Int4(x - a, y - a, z - a, w + a); }
+
+    INL_HOST_DEVICE Int4 operator += (int a) { x += a; y += a; z += a; w += a; return *this; }
+    INL_HOST_DEVICE Int4 operator -= (int a) { x -= a; y -= a; z -= a; w += a; return *this; }
+
+    INL_HOST_DEVICE Int4 operator + (const Int4& v) const { return Int4(x + v.x, y + v.y, z + v.z, w + v.w); }
+    INL_HOST_DEVICE Int4 operator - (const Int4& v) const { return Int4(x - v.x, y - v.y, z - v.z, w - v.w); }
+
+    INL_HOST_DEVICE Int4 operator += (const Int4& v) { x += v.x; y += v.y; z += v.y; w += v.w; return *this; }
+    INL_HOST_DEVICE Int4 operator -= (const Int4& v) { x -= v.x; y -= v.y; z -= v.y; w -= v.w; return *this; }
+
+    INL_HOST_DEVICE Int4 operator - () const { return Int4(-x, -y, -z, -w); }
+
+    INL_HOST_DEVICE bool operator == (const Int4& v) { return x == v.x && y == v.y && z == v.z && w == v.w; }
+    INL_HOST_DEVICE bool operator != (const Int4& v) { return x != v.x || y != v.y || z != v.z || w != v.w; }
+
+    INL_HOST_DEVICE int& operator[] (int i) { return _v[i]; }
+    INL_HOST_DEVICE int  operator[] (int i) const { return _v[i]; }
 };
 
 struct Float4
@@ -495,6 +569,7 @@ INL_HOST_DEVICE float  lerpf(float a, float b, float w) { return a + w * (b - a)
 INL_HOST_DEVICE Float3 reflect3f(Float3 i, Float3 n) { return i - 2.0f * n * dot(n, i); }
 INL_HOST_DEVICE float  pow2(float a) { return a * a; }
 INL_HOST_DEVICE float  pow3(float a) { return a * a * a; }
+INL_HOST_DEVICE float  length(const Float3& v) { return sqrtf(dot(v, v)); }
 
 INL_HOST_DEVICE float smoothstep1f(float a, float b, float w) { return a + (w * w * (3.0f - 2.0f * w)) * (b - a); }
 INL_HOST_DEVICE Float3 smoothstep3f(Float3 a, Float3 b, float w) { return a + (w * w * (3.0f - 2.0f * w)) * (b - a); }
@@ -718,9 +793,214 @@ INL_DEVICE void LocalizeSample(
     v = cross(n, u);
 }
 
-INL_DEVICE float luminance(Float3 v)
+/**
+ *  Calculates refraction direction
+ *  r   : refraction vector
+ *  i   : incident vector
+ *  n   : surface normal
+ *  ior : index of refraction ( n2 / n1 )
+ *  returns false in case of total internal reflection, in that case r is initialized to (0,0,0).
+ */
+INL_HOST_DEVICE bool refract(Float3& r, Float3 const& i, Float3 const& n, const float ior)
 {
-    return dot(v, Float3(0.2126f, 0.7152f, 0.0722f));
+    Float3 nn = n;
+    float negNdotV = dot(i, nn);
+    float eta;
+
+    if (negNdotV > 0.0f)
+    {
+        eta = ior;
+        nn = -n;
+        negNdotV = -negNdotV;
+    }
+    else
+    {
+        eta = 1.f / ior;
+    }
+
+    const float k = 1.f - eta * eta * (1.f - negNdotV * negNdotV);
+
+    if (k < 0.0f)
+    {
+        // Initialize this value, so that r always leaves this function initialized.
+        r = Float3(0.f);
+        return false;
+    }
+    else
+    {
+        r = normalize(eta * i - (eta * negNdotV + sqrtf(k)) * nn);
+        return true;
+    }
+}
+
+// Tangent-Bitangent-Normal orthonormal space.
+struct TBN
+{
+    // Default constructor to be able to include it into other structures when needed.
+    INL_HOST_DEVICE TBN()
+    {}
+
+    INL_HOST_DEVICE TBN(const Float3& n)
+        : normal(n)
+    {
+        if (fabsf(normal.z) < fabsf(normal.x))
+        {
+            tangent.x = normal.z;
+            tangent.y = 0.0f;
+            tangent.z = -normal.x;
+        }
+        else
+        {
+            tangent.x = 0.0f;
+            tangent.y = normal.z;
+            tangent.z = -normal.y;
+        }
+        tangent = normalize(tangent);
+        bitangent = cross(normal, tangent);
+    }
+
+    // Constructor for cases where tangent, bitangent, and normal are given as ortho-normal basis.
+    INL_HOST_DEVICE TBN(const Float3& t, const Float3& b, const Float3& n)
+        : tangent(t), bitangent(b), normal(n)
+    {}
+
+    // Normal is kept, tangent and bitangent are calculated.
+    // Normal must be normalized.
+    // Must not be used with degenerated vectors!
+    INL_HOST_DEVICE TBN(const Float3& tangent_reference, const Float3& n)
+        : normal(n)
+    {
+        bitangent = normalize(cross(normal, tangent_reference));
+        tangent = cross(bitangent, normal);
+    }
+
+    INL_HOST_DEVICE void negate()
+    {
+        tangent = -tangent;
+        bitangent = -bitangent;
+        normal = -normal;
+    }
+
+    INL_HOST_DEVICE Float3 transformToLocal(const Float3& p) const
+    {
+        return Float3(dot(p, tangent),
+            dot(p, bitangent),
+            dot(p, normal));
+    }
+
+    INL_HOST_DEVICE Float3 transformToWorld(const Float3& p) const
+    {
+        return p.x * tangent + p.y * bitangent + p.z * normal;
+    }
+
+    Float3 tangent;
+    Float3 bitangent;
+    Float3 normal;
+};
+
+INL_HOST_DEVICE float luminance(const Float3& rgb)
+{
+    const Float3 ntsc_luminance = { 0.30f, 0.59f, 0.11f };
+    return dot(rgb, ntsc_luminance);
+}
+
+INL_HOST_DEVICE float intensity(const Float3& rgb)
+{
+    return (rgb.x + rgb.y + rgb.z) * 0.3333333333f;
+}
+
+INL_HOST_DEVICE float cube(const float x)
+{
+    return x * x * x;
+}
+
+INL_HOST_DEVICE bool isNull(const Float3& v)
+{
+    return (v.x == 0.0f && v.y == 0.0f && v.z == 0.0f);
+}
+
+INL_HOST_DEVICE bool isNotNull(const Float3& v)
+{
+    return (v.x != 0.0f || v.y != 0.0f || v.z != 0.0f);
+}
+
+// Used for Multiple Importance Sampling.
+INL_HOST_DEVICE float powerHeuristic(const float a, const float b)
+{
+    const float t = a * a;
+    return t / (t + b * b);
+}
+
+INL_HOST_DEVICE float balanceHeuristic(const float a, const float b)
+{
+    return a / (a + b);
+}
+
+// Tiny Encryption Algorithm (TEA) to calculate a the seed per launch index and iteration.
+// This results in a ton of integer instructions! Use the smallest N necessary.
+template<uint N>
+INL_DEVICE uint tea(const uint val0, const uint val1)
+{
+    uint v0 = val0;
+    uint v1 = val1;
+    uint s0 = 0;
+
+    for (uint n = 0; n < N; ++n)
+    {
+        s0 += 0x9e3779b9;
+        v0 += ((v1 << 4) + 0xA341316C) ^ (v1 + s0) ^ ((v1 >> 5) + 0xC8013EA4);
+        v1 += ((v0 << 4) + 0xAD90777D) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7E95761E);
+    }
+    return v0;
+}
+
+INL_DEVICE float rng(uint& previous)
+{
+    previous = previous * 1664525u + 1013904223u;
+
+    return float(previous & 0x00FFFFFF) / float(0x01000000u);
+}
+
+INL_DEVICE Float2 rng2(uint& previous)
+{
+    Float2 s;
+
+    previous = previous * 1664525u + 1013904223u;
+    s.x = float(previous & 0x00FFFFFF) / float(0x01000000u);
+
+    previous = previous * 1664525u + 1013904223u;
+    s.y = float(previous & 0x00FFFFFF) / float(0x01000000u);
+
+    return s;
+}
+
+INL_DEVICE Float2 ConcentricSampleDisk(Float2 u)
+{
+    // Map uniform random numbers to [-1, 1]
+    Float2 uOffset = 2.0 * u - 1.0;
+
+    // Handle degeneracy at the origin
+    if (abs(uOffset.x) < 1e-10f && abs(uOffset.y) < 1e-10f)
+    {
+        return Float2(0, 0);
+    }
+
+    // Apply concentric mapping to point
+    float theta;
+    float r;
+
+    if (abs(uOffset.x) > abs(uOffset.y))
+    {
+        r = uOffset.x;
+        theta = PI_OVER_4 * (uOffset.y / uOffset.x);
+    }
+    else
+    {
+        r = uOffset.y;
+        theta = PI_OVER_2 - PI_OVER_4 * (uOffset.x / uOffset.y);
+    }
+
+    return r * Float2(cosf(theta), sinf(theta));
 }
 
 }

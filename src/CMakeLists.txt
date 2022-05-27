@@ -26,33 +26,39 @@ set( IMGUI
 )
 
 set( HEADERS
-  util/DebugUtils.h
-  util/Picture.h
-  core/Camera.h
-  util/Texture.h
-  util/Timer.h
   core/Backend.h
   core/OptixRenderer.h
   core/Scene.h
   core/UI.h
-  util/LinearMath.h
+  core/InputHandler.h
+
   postprocessing/BicubicFilter.h
   postprocessing/ScalingFilter.h
   postprocessing/PostProcessor.h
+
   util/KernelHelper.h
+  util/DebugUtils.h
+  util/Picture.h
+  util/Texture.h
+  util/Timer.h
+
+  shaders/LinearMath.h
   shaders/Common.h
+  shaders/Camera.h
 )
 
 set( SOURCES
   core/main.cpp
-  util/Picture.cpp
-  core/Camera.cpp
-  util/Texture.cpp
   core/Backend.cpp
   core/OptixRenderer.cpp
   core/Scene.cpp
   core/UI.cpp
+  core/InputHandler.cpp
+
   postprocessing/PostProcessor.cu
+
+  util/Picture.cpp
+  util/Texture.cpp
 )
 
 set( SHADERS
@@ -64,13 +70,12 @@ set( SHADERS
 )
 
 set( SHADERS_HEADERS
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderCommon.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RngUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/OptixShaderCommon.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/SystemParameter.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderCommon.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/MathUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/LinearMath.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderDebugUtils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Common.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Camera.h
 )
 
 set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")

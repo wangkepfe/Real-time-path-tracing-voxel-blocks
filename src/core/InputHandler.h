@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+struct GLFWwindow;
+
 namespace jazzfusion
 {
 
@@ -29,6 +31,7 @@ public:
     static void LoadCameraFromFile(const std::string& camFileName);
 
     void update();
+    AppMode getAppMode() const { return appmode; }
 
 private:
     InputHandler() {}

@@ -273,7 +273,6 @@ void OptixRenderer::init()
         m_systemParameter.envTexture = 0;
         m_systemParameter.envCDF_U = nullptr;
         m_systemParameter.envCDF_V = nullptr;
-        m_systemParameter.pathLengths = make_int2(2, 5);
         m_systemParameter.envWidth = 0;
         m_systemParameter.envHeight = 0;
         m_systemParameter.envIntegral = 1.0f;
@@ -365,46 +364,46 @@ void OptixRenderer::init()
         // The order in this array matches the instance ID in the root IAS!
         // Lambert material for the floor.
         parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
-        parameters.albedo = make_float3(0.8f, 0.8f, 0.8f);    // Grey. Modulates the albedo texture.
+        parameters.albedo = Float3(0.8f, 0.8f, 0.8f);    // Grey. Modulates the albedo texture.
         parameters.textureAlbedo = m_textureAlbedo->getTextureObject();
-        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.5f;
         parameters.flags = 0;                       // FLAG_THINWALLED;
         m_materialParameters.push_back(parameters); // 0
 
         // Glass material
         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-        parameters.albedo = make_float3(1.0f, 1.0f, 1.0f);
+        parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
         parameters.flags = 0;
-        parameters.absorption = make_float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
+        parameters.absorption = Float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
         parameters.ior = 1.52f;                                                             // Flint glass. Higher IOR than the surrounding box.
         m_materialParameters.push_back(parameters);                                         // 1
 
         // Lambert material
         parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
-        parameters.albedo = make_float3(0.75f, 1.0f, 1.0f);
+        parameters.albedo = Float3(0.75f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
         parameters.flags = 0;
-        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.5f;
         m_materialParameters.push_back(parameters); // 2
 
         // Tinted mirror material.
         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo = make_float3(0.9f, 0.9f, 0.9f);
+        parameters.albedo = Float3(0.9f, 0.9f, 0.9f);
         parameters.textureAlbedo = 0;
         parameters.flags = 0;
-        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.33f;
         m_materialParameters.push_back(parameters); // 3
 
         // Black BSDF for the light. This last material will not be shown inside the GUI!
         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo = make_float3(0.0f, 1.0f, 1.0f);
+        parameters.albedo = Float3(0.0f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
         parameters.flags = 0;
-        parameters.absorption = make_float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.0f;
         m_materialParameters.push_back(parameters); // 4
     }
@@ -506,12 +505,12 @@ void OptixRenderer::init()
         LightDefinition light;
 
         // Unused in environment lights.
-        light.position = make_float3(0.0f, 0.0f, 0.0f);
-        light.vecU = make_float3(1.0f, 0.0f, 0.0f);
-        light.vecV = make_float3(0.0f, 1.0f, 0.0f);
-        light.normal = make_float3(0.0f, 0.0f, 1.0f);
+        light.position = Float3(0.0f, 0.0f, 0.0f);
+        light.vecU = Float3(1.0f, 0.0f, 0.0f);
+        light.vecV = Float3(0.0f, 1.0f, 0.0f);
+        light.normal = Float3(0.0f, 0.0f, 1.0f);
         light.area = 1.0f;
-        light.emission = make_float3(1.0f, 1.0f, 1.0f);
+        light.emission = Float3(1.0f, 1.0f, 1.0f);
 
         m_textureEnvironment = new Texture(); // Allocate an empty environment texture to be able to initialize the sysParameters unconditionally.
 
@@ -538,13 +537,13 @@ void OptixRenderer::init()
         if (g_useGeometrySquareLight)
         {
             light.type = LIGHT_PARALLELOGRAM;                 // A geometric area light with diffuse emission distribution function.
-            light.position = make_float3(-2.0f, 4.0f, -2.0f); // Corner position.
-            light.vecU = make_float3(4.0f, 0.0f, 0.0f);       // To the right.
-            light.vecV = make_float3(0.0f, 0.0f, 4.0f);       // To the front.
-            float3 n = cross(light.vecU, light.vecV);         // Length of the cross product is the area.
-            light.area = length(n);                           // Calculate the world space area of that rectangle, unit is [m^2]
+            light.position = Float3(-2.0f, 4.0f, -2.0f); // Corner position.
+            light.vecU = Float3(4.0f, 0.0f, 0.0f);       // To the right.
+            light.vecV = Float3(0.0f, 0.0f, 4.0f);       // To the front.
+            Float3 n = cross(light.vecU, light.vecV);         // Length of the cross product is the area.
+            light.area = n.length();                           // Calculate the world space area of that rectangle, unit is [m^2]
             light.normal = n / light.area;                    // Normalized normal
-            light.emission = make_float3(10.0f);              // Radiant exitance in Watt/m^2.
+            light.emission = Float3(10.0f);              // Radiant exitance in Watt/m^2.
 
             m_lightDefinitions.push_back(light);
 
@@ -628,7 +627,7 @@ void OptixRenderer::init()
     pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
     pipelineCompileOptions.numPayloadValues = 2;   // I need two to encode a 64-bit pointer to the per ray payload structure.
     pipelineCompileOptions.numAttributeValues = 2; // The minimum is two, for the barycentrics.
-    pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
+    pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParam";
 
     OptixProgramGroupOptions programGroupOptions = {};
 
@@ -806,7 +805,7 @@ void OptixRenderer::init()
         {
             const int idx = i;
             memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-            m_sbtRecordGeometryInstanceData[idx].data.indices = (int3*)m_geometries[i].indices;
+            m_sbtRecordGeometryInstanceData[idx].data.indices = (Int3*)m_geometries[i].indices;
             m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes*)m_geometries[i].attributes;
             m_sbtRecordGeometryInstanceData[idx].data.materialIndex = i;
             m_sbtRecordGeometryInstanceData[idx].data.lightIndex = -1;
@@ -815,7 +814,7 @@ void OptixRenderer::init()
         if (g_useGeometrySquareLight)
         {
             const int idx = (numInstances - 1); // HACK The last instance is the parallelogram light.
-            const int lightIndex = 1;           // HACK If there is any environment light that is in sysParameter.lightDefinitions[0] and the area light in index [1] then.
+            const int lightIndex = 1;           // HACK If there is any environment light that is in sysParam.lightDefinitions[0] and the area light in index [1] then.
             m_sbtRecordGeometryInstanceData[idx].data.lightIndex = lightIndex;
             m_sbtRecordGeometryInstanceData[idx + 1].data.lightIndex = lightIndex;
         }
@@ -856,7 +855,7 @@ void OptixRenderer::init()
         m_sbt.callablesRecordCount = (unsigned int)sbtRecordCallables.size();
     }
 
-    // Setup "sysParameter" data.
+    // Setup "sysParam" data.
     {
         m_systemParameter.topObject = m_root;
 
@@ -874,8 +873,6 @@ void OptixRenderer::init()
         m_systemParameter.envWidth = m_textureEnvironment->getWidth();
         m_systemParameter.envHeight = m_textureEnvironment->getHeight();
         m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
-
-        m_systemParameter.pathLengths = make_int2(2, 10);
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
         m_systemParameter.iterationIndex = 0;

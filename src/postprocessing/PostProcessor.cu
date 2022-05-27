@@ -19,7 +19,7 @@ void PostProcessor::init(int inputWidthIn, int inputHeightIn, int outputWidthIn,
     outputHeight = outputHeightIn;
 }
 
-void PostProcessor::render(float4* interopBuffer, SurfObj colorBuffer, TexObj colorTex)
+void PostProcessor::render(Float4* interopBuffer, SurfObj colorBuffer, TexObj colorTex)
 {
     BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))
         (interopBuffer, colorBuffer, Int2(inputWidth, inputHeight), Int2(outputWidth, outputHeight));

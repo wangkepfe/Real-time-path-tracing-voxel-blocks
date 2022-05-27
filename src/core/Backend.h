@@ -1,10 +1,9 @@
 #pragma once
 
-// Always include this before any OptiX headers!
 #include <cuda_runtime.h>
-
 #include <optix.h>
 
+#include "shaders/LinearMath.h"
 
 #if defined(_WIN32)
 
@@ -14,7 +13,6 @@
 
 #include <windows.h>
 #endif
-
 
 #ifndef __APPLE__
 #include <GL/glew.h>
@@ -28,6 +26,8 @@
 
 #include <GLFW/glfw3.h>
 #include <vector>
+
+#include "util/Timer.h"
 
 namespace jazzfusion
 {
@@ -51,6 +51,7 @@ public:
     CUcontext getCudaContext() const { return m_cudaContext; }
     float* getToneMapGain() { return &m_toneMapGain; }
     float* getToneMapMaxWhite() { return &m_toneMapMaxWhite; }
+    const Timer& getTimer() const { return m_timer; }
 
 private:
     Backend() {}
@@ -86,13 +87,15 @@ private:
     cudaGraphicsResource* m_cudaGraphicsResource;
 
     // buffer
-    float4* m_interopBuffer;
+    Float4* m_interopBuffer;
 
     // tone mapping
     float m_toneMapGain = 1.0f;
     float m_toneMapMaxWhite = 100.0f;
 
     std::vector<cudaDeviceProp> m_deviceProperties;
+
+    Timer m_timer;
 };
 
 }

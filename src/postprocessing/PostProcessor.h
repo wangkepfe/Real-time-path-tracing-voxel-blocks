@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cuda_runtime.h>
+#include "shaders/LinearMath.h"
 
 #ifndef SurfObj
 #define SurfObj cudaSurfaceObject_t
@@ -24,7 +24,7 @@ public:
     void operator=(PostProcessor const&) = delete;
 
     void init(int inputWidth, int inputHeight, int outputWidth, int outputHeight);
-    void render(float4* interopBuffer, SurfObj colorBuffer, TexObj colorTex);
+    void render(Float4* interopBuffer, SurfObj colorBuffer, TexObj colorTex);
 
 private:
     PostProcessor() {}

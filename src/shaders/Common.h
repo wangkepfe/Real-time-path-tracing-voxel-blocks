@@ -15,3 +15,7 @@
 #ifndef TexObj
 #define TexObj cudaTextureObject_t
 #endif
+
+#define uint unsigned int
+#define ushort unsigned short
+#define uint64 unsigned long long int

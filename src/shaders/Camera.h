@@ -8,28 +8,38 @@ namespace jazzfusion
 
 struct __align__(16) Camera
 {
-    Float3 pos;
-    float  pitch;
-    Float3 dir;
-    float  focal;
-    Float3 left;
-    float  aperture;
-    Float3 up;
-    float  yaw;
-    Float2 resolution;
     Float2 inversedResolution;
+    Float2 resolution;
+
     Float2 fov;
     Float2 tanHalfFov;
+
     Float3 adjustedLeft;
-    float  unused3;
+    float unused2;
+
     Float3 adjustedUp;
-    float  unused4;
+    float unused3;
+
     Float3 adjustedFront;
-    float  unused5;
+    float unused4;
+
     Float3 apertureLeft;
-    float  unused6;
+    float unused5;
+
     Float3 apertureUp;
-    float  unused7;
+    float unused6;
+
+    Float3 pos;
+    float  pitch;
+
+    Float3 dir;
+    float  focal;
+
+    Float3 left;
+    float  aperture;
+
+    Float3 up;
+    float  yaw;
 
     void update()
     {
