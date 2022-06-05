@@ -24,11 +24,6 @@ void UI::update()
 {
     ImGui_ImplGlfwGL3_NewFrame();
 
-    if (InputHandler::Get().getAppMode() != AppMode::Menu)
-    {
-        return;
-    }
-
     ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiSetCond_FirstUseEver);
 
     auto& backend = Backend::Get();

@@ -41,9 +41,22 @@ struct __align__(16) Camera
     Float3 up;
     float  yaw;
 
+    void init(int width, int height)
+    {
+        pos = Float3(5.0f, 5.0f, 0.0f);
+        Float2 yawPitch = DirToYawPitch(-pos);
+        yaw = yawPitch.x;
+        pitch = yawPitch.y;
+        up = Float3{ 0.0f, 1.0f, 0.0f };
+        focal = 5.0f;
+        aperture = 0.001f;
+        resolution = Float2{ (float)width, (float)height };
+        fov.x = 90.0f * Pi_over_180;
+    }
+
     void update()
     {
-        dir = Float3(sinf(yaw) * cosf(pitch), sinf(pitch), cosf(yaw) * cosf(pitch));
+        dir = YawPitchToDir(yaw, pitch);
 
         inversedResolution = 1.0f / resolution;
         fov.y = fov.x / resolution.x * resolution.y;
@@ -55,7 +68,7 @@ struct __align__(16) Camera
 
         adjustedFront = dir * focal;
         adjustedLeft = left * tanHalfFov.x * focal;
-        adjustedUp = up * tanHalfFov.y * focal;
+        adjustedUp = -up * tanHalfFov.y * focal;
 
         apertureLeft = left * aperture;
         apertureUp = up * aperture;

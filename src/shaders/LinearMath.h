@@ -1003,4 +1003,15 @@ INL_DEVICE Float2 ConcentricSampleDisk(Float2 u)
     return r * Float2(cosf(theta), sinf(theta));
 }
 
+INL_DEVICE Float3 YawPitchToDir(float yaw, float pitch)
+{
+    return Float3(sinf(yaw) * cosf(pitch), sinf(pitch), cosf(yaw) * cosf(pitch));
+}
+
+INL_DEVICE Float2 DirToYawPitch(Float3 dir)
+{
+    dir.normalize();
+    return Float2(atan2f(dir.x, dir.z), asinf(dir.y));
+}
+
 }

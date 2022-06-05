@@ -17,17 +17,7 @@ void InputHandler::SetKeyCallback(GLFWwindow* window, int key, int scancode, int
 
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
-        if (inputHandler.appmode == AppMode::Menu)
-        {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            inputHandler.appmode = AppMode::Gameplay;
-            inputHandler.cursorReset = 1;
-        }
-        else if (inputHandler.appmode == AppMode::Gameplay)
-        {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            inputHandler.appmode = AppMode::Menu;
-        }
+        // exit
     }
 
     if (mods == GLFW_MOD_CONTROL)
@@ -54,30 +44,25 @@ void InputHandler::SetCursorPosCallback(GLFWwindow* window, double xpos, double 
 {
     auto& inputHandler = InputHandler::Get();
 
-    if (inputHandler.appmode == AppMode::Gameplay)
+    if (inputHandler.cursorReset)
     {
-        if (inputHandler.cursorReset)
-        {
-            inputHandler.cursorReset = false;
-            inputHandler.xpos = xpos;
-            inputHandler.ypos = ypos;
-            return;
-        }
-
-        inputHandler.deltax = (float)(xpos - inputHandler.xpos);
-        inputHandler.deltay = (float)(ypos - inputHandler.ypos);
-
+        inputHandler.cursorReset = false;
         inputHandler.xpos = xpos;
         inputHandler.ypos = ypos;
-
-        Camera& camera = OptixRenderer::Get().getCamera();
-
-        camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
-        camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
-        camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
-
-        camera.update();
+        return;
     }
+
+    inputHandler.deltax = (float)(xpos - inputHandler.xpos);
+    inputHandler.deltay = (float)(ypos - inputHandler.ypos);
+
+    inputHandler.xpos = xpos;
+    inputHandler.ypos = ypos;
+
+    Camera& camera = OptixRenderer::Get().getCamera();
+
+    camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
+    camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
+    camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
 }
 
 void InputHandler::update()
@@ -98,8 +83,6 @@ void InputHandler::update()
         if (moveX) movingDir -= Float3(0, 1, 0);
 
         camera.pos += movingDir * backend.getTimer().getDeltaTime() * moveSpeed;
-
-        camera.update();
     }
 }
 

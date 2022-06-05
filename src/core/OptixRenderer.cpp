@@ -130,6 +130,9 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
+    m_camera.update();
+    m_systemParameter.camera = m_camera;
+
     CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
@@ -297,6 +300,8 @@ void OptixRenderer::init()
         m_d_sbtRecordCallables = 0;
 
         m_d_sbtRecordGeometryInstanceData = nullptr;
+
+        m_camera.init(m_width, m_height);
     }
 
     // Create function table
