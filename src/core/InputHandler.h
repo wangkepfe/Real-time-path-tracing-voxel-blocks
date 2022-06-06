@@ -7,6 +7,12 @@ struct GLFWwindow;
 namespace jazzfusion
 {
 
+enum class AppMode
+{
+    Gameplay,
+    Menu,
+};
+
 class InputHandler
 {
 public:
@@ -18,8 +24,8 @@ public:
     InputHandler(InputHandler const&) = delete;
     void operator=(InputHandler const&) = delete;
 
-    static void SetKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-    static void SetCursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+    static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+    static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
 
     static void SaveCameraToFile(const std::string& camFileName);
     static void LoadCameraFromFile(const std::string& camFileName);
@@ -46,6 +52,8 @@ private:
     float deltay = 0;
 
     int cursorReset = 1;
+
+    AppMode appmode = AppMode::Gameplay;
 };
 
 }

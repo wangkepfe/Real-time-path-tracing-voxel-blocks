@@ -28,19 +28,22 @@ void Backend::init()
         throw std::runtime_error("GLFW failed to initialize.");
     }
 
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+
     m_window = glfwCreateWindow(m_width, m_height, "JazzFusion Renderer", NULL, NULL);
     if (!m_window)
     {
         throw std::runtime_error("glfwCreateWindow() failed.");
     }
 
-    glfwSetKeyCallback(m_window, InputHandler::SetKeyCallback);
-    glfwSetCursorPosCallback(m_window, InputHandler::SetCursorPosCallback);
     glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported())
     {
         glfwSetInputMode(m_window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     }
+    glfwSetKeyCallback(m_window, InputHandler::KeyCallback);
+    glfwSetCursorPosCallback(m_window, InputHandler::CursorPosCallback);
 
     glfwMakeContextCurrent(m_window);
     if (glewInit() != GL_NO_ERROR)

@@ -52,6 +52,10 @@ public:
     float* getToneMapGain() { return &m_toneMapGain; }
     float* getToneMapMaxWhite() { return &m_toneMapMaxWhite; }
     const Timer& getTimer() const { return m_timer; }
+    int getWidth() const { return m_width; }
+    int getHeight() const { return m_height; }
+
+    static constexpr char* GlslVersion = "#version 330";
 
 private:
     Backend() {}

@@ -12,18 +12,18 @@ find_package(DevIL_1_8_0 REQUIRED)
 set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
 
 set( IMGUI
-  imgui/imconfig.h
-  imgui/imgui.h
-  imgui/imgui_impl_glfw_gl3.h
-  imgui/imgui_internal.h
-  imgui/stb_rect_pack.h
-  imgui/stb_textedit.h
-  imgui/stb_truetype.h
-  imgui/imgui.cpp
-  imgui/imgui_demo.cpp
-  imgui/imgui_draw.cpp
-  imgui/imgui_impl_glfw_gl3.cpp
-)
+    ext/imgui/imconfig.h
+    ext/imgui/imgui.h
+    ext/imgui/imgui.cpp
+    ext/imgui/imgui_internal.h
+    ext/imgui/imgui_widgets.cpp
+    ext/imgui/imgui_tables.cpp
+    ext/imgui/imgui_draw.cpp
+    ext/imgui/backends/imgui_impl_glfw.cpp
+    ext/imgui/backends/imgui_impl_glfw.h
+    ext/imgui/backends/imgui_impl_opengl3_loader.h
+    ext/imgui/backends/imgui_impl_opengl3.cpp
+    ext/imgui/backends/imgui_impl_opengl3.h)
 
 set( HEADERS
   core/Backend.h
@@ -99,7 +99,8 @@ source_group( "ptx"             FILES ${PTX_SOURCES})
 include_directories(
   "."
   "inc"
-  "imgui"
+  "ext/imgui"
+  "ext/imgui/backends"
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${GLEW_INCLUDE_DIRS}
   ${GLFW_INCLUDE_DIR}

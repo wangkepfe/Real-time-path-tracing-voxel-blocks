@@ -11,58 +11,78 @@
 namespace jazzfusion
 {
 
-void InputHandler::SetKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void InputHandler::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     auto& inputHandler = InputHandler::Get();
 
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
-        // exit
+        glfwSetWindowShouldClose(window, 1);
     }
 
-    if (mods == GLFW_MOD_CONTROL)
+    if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
     {
-        // camera save & load
-        if (key == GLFW_KEY_C && action == GLFW_PRESS) { InputHandler::SaveCameraToFile(GlobalSettings::GetCameraSaveFileName()); }
-        if (key == GLFW_KEY_V && action == GLFW_PRESS) { InputHandler::LoadCameraFromFile(GlobalSettings::GetCameraSaveFileName()); }
+        if (inputHandler.appmode == AppMode::Menu)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            inputHandler.appmode = AppMode::Gameplay;
+            inputHandler.cursorReset = 1;
+        }
+        else if (inputHandler.appmode == AppMode::Gameplay)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            inputHandler.appmode = AppMode::Menu;
+        }
     }
-    else
-    {
-        // movement
-        if (key == GLFW_KEY_W) { if (action == GLFW_PRESS) inputHandler.moveW = 1; else if (action == GLFW_RELEASE) inputHandler.moveW = 0; }
-        if (key == GLFW_KEY_S) { if (action == GLFW_PRESS) inputHandler.moveS = 1; else if (action == GLFW_RELEASE) inputHandler.moveS = 0; }
-        if (key == GLFW_KEY_A) { if (action == GLFW_PRESS) inputHandler.moveA = 1; else if (action == GLFW_RELEASE) inputHandler.moveA = 0; }
-        if (key == GLFW_KEY_D) { if (action == GLFW_PRESS) inputHandler.moveD = 1; else if (action == GLFW_RELEASE) inputHandler.moveD = 0; }
-        if (key == GLFW_KEY_C) { if (action == GLFW_PRESS) inputHandler.moveC = 1; else if (action == GLFW_RELEASE) inputHandler.moveC = 0; }
-        if (key == GLFW_KEY_X) { if (action == GLFW_PRESS) inputHandler.moveX = 1; else if (action == GLFW_RELEASE) inputHandler.moveX = 0; }
 
-        if (key == GLFW_KEY_LEFT_SHIFT) { if (action == GLFW_PRESS) inputHandler.moveSpeed = 0.001f; else if (action == GLFW_RELEASE) inputHandler.moveSpeed = 0.01f; }
+    if (inputHandler.appmode == AppMode::Gameplay)
+    {
+        if (mods == GLFW_MOD_CONTROL)
+        {
+            // camera save & load
+            if (key == GLFW_KEY_C && action == GLFW_PRESS) { InputHandler::SaveCameraToFile(GlobalSettings::GetCameraSaveFileName()); }
+            if (key == GLFW_KEY_V && action == GLFW_PRESS) { InputHandler::LoadCameraFromFile(GlobalSettings::GetCameraSaveFileName()); }
+        }
+        else
+        {
+            // movement
+            if (key == GLFW_KEY_W) { if (action == GLFW_PRESS) inputHandler.moveW = 1; else if (action == GLFW_RELEASE) inputHandler.moveW = 0; }
+            if (key == GLFW_KEY_S) { if (action == GLFW_PRESS) inputHandler.moveS = 1; else if (action == GLFW_RELEASE) inputHandler.moveS = 0; }
+            if (key == GLFW_KEY_A) { if (action == GLFW_PRESS) inputHandler.moveA = 1; else if (action == GLFW_RELEASE) inputHandler.moveA = 0; }
+            if (key == GLFW_KEY_D) { if (action == GLFW_PRESS) inputHandler.moveD = 1; else if (action == GLFW_RELEASE) inputHandler.moveD = 0; }
+            if (key == GLFW_KEY_C) { if (action == GLFW_PRESS) inputHandler.moveC = 1; else if (action == GLFW_RELEASE) inputHandler.moveC = 0; }
+            if (key == GLFW_KEY_X) { if (action == GLFW_PRESS) inputHandler.moveX = 1; else if (action == GLFW_RELEASE) inputHandler.moveX = 0; }
+
+            if (key == GLFW_KEY_LEFT_SHIFT) { if (action == GLFW_PRESS) inputHandler.moveSpeed = 0.001f; else if (action == GLFW_RELEASE) inputHandler.moveSpeed = 0.01f; }
+        }
     }
 }
 
-void InputHandler::SetCursorPosCallback(GLFWwindow* window, double xpos, double ypos)
+void InputHandler::CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
     auto& inputHandler = InputHandler::Get();
-
-    if (inputHandler.cursorReset)
+    if (inputHandler.appmode == AppMode::Gameplay)
     {
-        inputHandler.cursorReset = false;
+        if (inputHandler.cursorReset)
+        {
+            inputHandler.cursorReset = false;
+            inputHandler.xpos = xpos;
+            inputHandler.ypos = ypos;
+            return;
+        }
+
+        inputHandler.deltax = (float)(xpos - inputHandler.xpos);
+        inputHandler.deltay = (float)(ypos - inputHandler.ypos);
+
         inputHandler.xpos = xpos;
         inputHandler.ypos = ypos;
-        return;
+
+        Camera& camera = OptixRenderer::Get().getCamera();
+
+        camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
+        camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
+        camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
     }
-
-    inputHandler.deltax = (float)(xpos - inputHandler.xpos);
-    inputHandler.deltay = (float)(ypos - inputHandler.ypos);
-
-    inputHandler.xpos = xpos;
-    inputHandler.ypos = ypos;
-
-    Camera& camera = OptixRenderer::Get().getCamera();
-
-    camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
-    camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
-    camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
 }
 
 void InputHandler::update()

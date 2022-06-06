@@ -8,23 +8,27 @@ namespace jazzfusion
 
 void UI::init()
 {
+    auto& backend = Backend::Get();
+
     ImGui::CreateContext();
-    ImGui_ImplGlfwGL3_Init(Backend::Get().getWindow(), true);
-    ImGui_ImplGlfwGL3_NewFrame();
-    ImGui::EndFrame();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(backend.getWindow(), true);
+    ImGui_ImplOpenGL3_Init(backend.GlslVersion);
 }
 
 void UI::clear()
 {
-    ImGui_ImplGlfwGL3_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
 
 void UI::update()
 {
-    ImGui_ImplGlfwGL3_NewFrame();
-
-    ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiSetCond_FirstUseEver);
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
 
     auto& backend = Backend::Get();
 
@@ -36,8 +40,8 @@ void UI::update()
 
     if (ImGui::CollapsingHeader("Tone Mapping", 0))
     {
-        ImGui::SliderFloat("Gain", backend.getToneMapGain(), 0.1f, 100.0f, "%.3f", 10.0f);
-        ImGui::SliderFloat("Max White", backend.getToneMapMaxWhite(), 0.1f, 100.0f, "%.3f", 10.0f);
+        ImGui::SliderFloat("Gain", backend.getToneMapGain(), 0.1f, 100.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("Max White", backend.getToneMapMaxWhite(), 0.1f, 100.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
     }
 
     ImGui::End();
@@ -45,8 +49,11 @@ void UI::update()
 
 void UI::render()
 {
+    auto& backend = Backend::Get();
+
     ImGui::Render();
-    ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
+    glViewport(0, 0, backend.getWidth(), backend.getHeight());
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 }
