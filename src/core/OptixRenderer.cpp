@@ -266,9 +266,6 @@ static void* optixLoadWindowsDll(void)
 void OptixRenderer::init()
 {
     {
-        m_width = 1920;
-        m_height = 1080;
-
         m_systemParameter.topObject = 0;
         m_systemParameter.outputBuffer = 0;
         m_systemParameter.lightDefinitions = nullptr;

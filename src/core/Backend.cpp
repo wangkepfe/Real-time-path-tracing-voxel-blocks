@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 
 namespace jazzfusion
 {
@@ -62,6 +63,25 @@ void Backend::init()
     CUDA_CHECK(cudaFree(0));
     cuCtxGetCurrent(&m_cudaContext);
     CUDA_CHECK(cudaStreamCreate(&m_cudaStream));
+
+    m_minRenderWidth = 480;
+    m_minRenderHeight = 270;
+
+    m_maxRenderWidth = 3840;
+    m_maxRenderHeight = 2160;
+
+    auto& renderer = OptixRenderer::Get();
+
+    if (m_dynamicResolution == true)
+    {
+        renderer.setWidth(m_maxRenderWidth);
+        renderer.setHeight(m_maxRenderHeight);
+    }
+    else
+    {
+        renderer.setWidth(1920);
+        renderer.setHeight(1080);
+    }
 }
 
 void Backend::mainloop()
@@ -77,7 +97,10 @@ void Backend::mainloop()
     {
         glfwPollEvents();
 
-        m_timer.update();
+        float minFrameTimeAllowed = 1000.0f / m_maxFpsAllowed;
+        m_timer.updateWithLimiter(minFrameTimeAllowed);
+
+        dynamicResolution();
 
         inputHandler.update();
 
@@ -97,6 +120,49 @@ void Backend::mainloop()
         ui.render();
 
         glfwSwapBuffers(m_window);
+    }
+}
+
+void Backend::dynamicResolution()
+{
+    if (m_dynamicResolution == false)
+        return;
+
+    auto& renderer = OptixRenderer::Get();
+    float deltaTime = m_timer.getDeltaTime();
+
+    int renderWidth = renderer.getWidth();
+    int renderHeight = renderer.getHeight();
+
+    m_historyRenderWidth = renderWidth;
+    m_historyRenderHeight = renderHeight;
+
+    float targetFrameTimeHigh = 1000.0f / (m_targetFPS - 2.0f);
+    float targetFrameTimeLow = 1000.0f / (m_targetFPS + 2.0f);
+
+    if (targetFrameTimeHigh < deltaTime || targetFrameTimeLow > deltaTime)
+    {
+        float ratio = (1000.0f / m_targetFPS) / deltaTime;
+        ratio = sqrtf(ratio);
+        renderWidth *= ratio;
+    }
+
+    // Safe resolution
+    renderWidth = renderWidth + ((renderWidth % 16 < 8) ? (-renderWidth % 16) : (16 - renderWidth % 16));
+    renderWidth = clampi(renderWidth, m_minRenderWidth, m_maxRenderWidth);
+    renderHeight = (renderWidth / 16) * 9;
+
+    renderer.setWidth(renderWidth);
+    renderer.setHeight(renderHeight);
+    renderer.getCamera().resolution = Float2(renderWidth, renderHeight);
+
+    static float timerCounter = 0.0f;
+    timerCounter += deltaTime;
+    if (timerCounter > 1000.0f)
+    {
+        timerCounter -= 1000.0f;
+        m_currentFPS = 1000.0f / deltaTime;
+        m_currentRenderWidth = renderWidth;
     }
 }
 

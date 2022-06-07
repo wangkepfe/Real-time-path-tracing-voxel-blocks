@@ -31,12 +31,21 @@ void UI::update()
     ImGui::NewFrame();
 
     auto& backend = Backend::Get();
+    auto& renderer = OptixRenderer::Get();
 
     if (!ImGui::Begin("Render Settings", nullptr, 0))
     {
         ImGui::End();
         return;
     }
+
+    auto& camera = renderer.getCamera();
+
+    ImGui::Text("ms/frame: %.2f FPS: %.1f", 1000.0f / backend.getCurrentFPS(), backend.getCurrentFPS());
+    ImGui::Text("Resolution: (%d, %d)", backend.getCurrentRenderWidth(), backend.getCurrentRenderWidth() / 16 * 9);
+    ImGui::Text("Scale: %.1f %%", backend.getCurrentRenderWidth() / (float)backend.getWidth() * 100.0f);
+    ImGui::Text("Camera pos=(%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
+    ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
 
     if (ImGui::CollapsingHeader("Tone Mapping", 0))
     {

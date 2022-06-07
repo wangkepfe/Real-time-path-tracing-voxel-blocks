@@ -54,6 +54,8 @@ public:
     const Timer& getTimer() const { return m_timer; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
+    float getCurrentFPS() const { return m_currentFPS; }
+    int getCurrentRenderWidth() const { return m_currentRenderWidth; }
 
     static constexpr char* GlslVersion = "#version 330";
 
@@ -66,6 +68,28 @@ private:
     void unmapInteropBuffer();
     void display();
     void dumpSystemInformation();
+    void dynamicResolution();
+
+    // FPS limiter
+    float m_maxFpsAllowed = 75.0f;
+
+    // Dynamic resolution
+    bool m_dynamicResolution = true;
+
+    float m_targetFPS = 60.0f;
+
+    int m_minRenderWidth;
+    int m_minRenderHeight;
+
+    int m_maxRenderWidth;
+    int m_maxRenderHeight;
+
+    int m_historyRenderWidth;
+    int m_historyRenderHeight;
+
+    // For UI display
+    float m_currentFPS;
+    float m_currentRenderWidth;
 
     // Window
     GLFWwindow* m_window;
