@@ -1,10 +1,9 @@
 #pragma once
 
-// Always include this before any OptiX headers!
 #include <cuda_runtime.h>
-
 #include <optix.h>
 
+#include "shaders/LinearMath.h"
 
 #if defined(_WIN32)
 
@@ -14,7 +13,6 @@
 
 #include <windows.h>
 #endif
-
 
 #ifndef __APPLE__
 #include <GL/glew.h>
@@ -28,6 +26,8 @@
 
 #include <GLFW/glfw3.h>
 #include <vector>
+
+#include "util/Timer.h"
 
 namespace jazzfusion
 {
@@ -51,6 +51,13 @@ public:
     CUcontext getCudaContext() const { return m_cudaContext; }
     float* getToneMapGain() { return &m_toneMapGain; }
     float* getToneMapMaxWhite() { return &m_toneMapMaxWhite; }
+    const Timer& getTimer() const { return m_timer; }
+    int getWidth() const { return m_width; }
+    int getHeight() const { return m_height; }
+    float getCurrentFPS() const { return m_currentFPS; }
+    int getCurrentRenderWidth() const { return m_currentRenderWidth; }
+
+    static constexpr char* GlslVersion = "#version 330";
 
 private:
     Backend() {}
@@ -61,6 +68,28 @@ private:
     void unmapInteropBuffer();
     void display();
     void dumpSystemInformation();
+    void dynamicResolution();
+
+    // FPS limiter
+    float m_maxFpsAllowed = 75.0f;
+
+    // Dynamic resolution
+    bool m_dynamicResolution = true;
+
+    float m_targetFPS = 60.0f;
+
+    int m_minRenderWidth;
+    int m_minRenderHeight;
+
+    int m_maxRenderWidth;
+    int m_maxRenderHeight;
+
+    int m_historyRenderWidth;
+    int m_historyRenderHeight;
+
+    // For UI display
+    float m_currentFPS;
+    float m_currentRenderWidth;
 
     // Window
     GLFWwindow* m_window;
@@ -86,13 +115,15 @@ private:
     cudaGraphicsResource* m_cudaGraphicsResource;
 
     // buffer
-    float4* m_interopBuffer;
+    Float4* m_interopBuffer;
 
     // tone mapping
     float m_toneMapGain = 1.0f;
     float m_toneMapMaxWhite = 100.0f;
 
     std::vector<cudaDeviceProp> m_deviceProperties;
+
+    Timer m_timer;
 };
 
 }

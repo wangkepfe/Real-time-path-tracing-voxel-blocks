@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "shaders/SystemParameter.h"
-#include "shaders/MathUtils.h"
 
 #include "util/DebugUtils.h"
 
@@ -74,10 +73,10 @@ public:
         OptixDeviceContext& context,
         CUstream cudaStream,
         std::vector<GeometryData>& geometries,
-        float3 const& position,
-        float3 const& vecU,
-        float3 const& vecV,
-        float3 const& normal);
+        Float3 const& position,
+        Float3 const& vecU,
+        Float3 const& vecV,
+        Float3 const& normal);
 
     static OptixTraversableHandle createGeometry(
         OptixFunctionTable& api,

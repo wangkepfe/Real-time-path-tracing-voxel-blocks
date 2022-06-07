@@ -1,10 +1,13 @@
-#include <optix.h>
 #include "SystemParameter.h"
-#include "MathUtils.h"
+#include "OptixShaderCommon.h"
 
-extern "C" __constant__ SystemParameter sysParameter;
+namespace jazzfusion
+{
 
-__forceinline__ __device__ void unitSquareToSphere(const float u, const float v, float3& p, float& pdf)
+extern "C" __constant__ SystemParameter sysParam;
+
+
+__forceinline__ __device__ void unitSquareToSphere(const float u, const float v, Float3& p, float& pdf)
 {
     p.z = 1.0f - 2.0f * u;
     float r = 1.0f - p.z * p.z;
@@ -17,36 +20,19 @@ __forceinline__ __device__ void unitSquareToSphere(const float u, const float v,
     pdf = 0.25f * M_1_PIf; // == 1.0f / (4.0f * M_PIf)
 }
 
-// Note that all light sampling routines return lightSample.direction and lightSample.distance in world space!
-
-extern "C" __device__ LightSample __direct_callable__light_env_constant(LightDefinition const& light, const float3 point, const float2 sample)
-{
-    LightSample lightSample;
-
-    unitSquareToSphere(sample.x, sample.y, lightSample.direction, lightSample.pdf);
-
-    // Environment lights do not set the light sample position!
-    lightSample.distance = RayMax; // Environment light.
-
-    // Explicit light sample. White scaled by inverse probabilty to hit this light.
-    lightSample.emission = make_float3(sysParameter.numLights);
-
-    return lightSample;
-}
-
-extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefinition const& light, const float3 point, const float2 sample)
+extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefinition const& light, const Float3 point, const Float2 sample)
 {
     LightSample lightSample;
 
     // Importance-sample the spherical environment light direction.
 
     // Note that the marginal CDF is one bigger than the texture height. As index this is the 1.0f at the end of the CDF.
-    const unsigned int sizeV = sysParameter.envHeight;
+    const unsigned int sizeV = sysParam.envHeight;
 
     unsigned int ilo = 0;     // Use this for full spherical lighting. (This matches the result of indirect environment lighting.)
     unsigned int ihi = sizeV; // Index on the last entry containing 1.0f. Can never be reached with the sample in the range [0.0f, 1.0f).
 
-    const float* cdfV = sysParameter.envCDF_V;
+    const float* cdfV = sysParam.envCDF_V;
 
     // Binary search the row index to look up.
     while (ilo != ihi - 1) // When a pair of limits have been found, the lower index indicates the cell to use.
@@ -65,14 +51,14 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
     const unsigned int vIdx = ilo; // This is the row we found.
 
     // Note that the horizontal CDF is one bigger than the texture width. As index this is the 1.0f at the end of the CDF.
-    const unsigned int sizeU = sysParameter.envWidth; // Note that the horizontal CDFs are one bigger than the texture width.
+    const unsigned int sizeU = sysParam.envWidth; // Note that the horizontal CDFs are one bigger than the texture width.
 
     // Binary search the column index to look up.
     ilo = 0;
     ihi = sizeU; // Index on the last entry containing 1.0f. Can never be reached with the sample in the range [0.0f, 1.0f).
 
     // Pointer to the indexY row!
-    const float* cdfU = &sysParameter.envCDF_U[vIdx * (sizeU + 1)]; // Horizontal CDF is one bigger then the texture width!
+    const float* cdfU = &sysParam.envCDF_U[vIdx * (sizeU + 1)]; // Horizontal CDF is one bigger then the texture width!
 
     while (ilo != ihi - 1) // When a pair of limits have been found, the lower index indicates the cell to use.
     {
@@ -104,29 +90,29 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
 
     // Light sample direction vector polar coordinates. This is where the environment rotation happens!
     // FIXME Use a light.matrix to rotate the resulting vector instead.
-    const float phi = (u - sysParameter.envRotation) * 2.0f * M_PIf;
+    const float phi = (u - sysParam.envRotation) * 2.0f * M_PIf;
     const float theta = v * M_PIf; // theta == 0.0f is south pole, theta == M_PIf is north pole.
 
     const float sinTheta = sinf(theta);
     // The miss program places the 1->0 seam at the positive z-axis and looks from the inside.
-    lightSample.direction = make_float3(-sinf(phi) * sinTheta, // Starting on positive z-axis going around clockwise (to negative x-axis).
+    lightSample.direction = Float3(-sinf(phi) * sinTheta, // Starting on positive z-axis going around clockwise (to negative x-axis).
         -cosf(theta),          // From south pole to north pole.
         cosf(phi) * sinTheta); // Starting on positive z-axis.
 
     // Note that environment lights do not set the light sample position!
     lightSample.distance = RayMax; // Environment light.
 
-    const float3 emission = make_float3(tex2D<float4>(sysParameter.envTexture, u, v));
+    const Float3 emission = Float3(tex2D<float4>(sysParam.envTexture, u, v));
     // Explicit light sample. The returned emission must be scaled by the inverse probability to select this light.
-    lightSample.emission = emission * sysParameter.numLights;
+    lightSample.emission = emission * sysParam.numLights;
     // For simplicity we pretend that we perfectly importance-sampled the actual texture-filtered environment map
     // and not the Gaussian-smoothed one used to actually generate the CDFs and uniform sampling in the texel.
-    lightSample.pdf = intensity(emission) / sysParameter.envIntegral;
+    lightSample.pdf = intensity(emission) / sysParam.envIntegral;
 
     return lightSample;
 }
 
-extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDefinition const& light, const float3 point, const float2 sample)
+extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDefinition const& light, const Float3 point, const Float2 sample)
 {
     LightSample lightSample;
 
@@ -134,7 +120,7 @@ extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDe
 
     lightSample.position = light.position + light.vecU * sample.x + light.vecV * sample.y; // The light sample position in world coordinates.
     lightSample.direction = lightSample.position - point;                                  // Sample direction from surface point to light sample position.
-    lightSample.distance = length(lightSample.direction);
+    lightSample.distance = lightSample.direction.length();
     if (DenominatorEpsilon < lightSample.distance)
     {
         lightSample.direction /= lightSample.distance; // Normalized direction to light.
@@ -143,10 +129,12 @@ extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDe
         if (DenominatorEpsilon < cosTheta) // Only emit light on the front side.
         {
             // Explicit light sample, must scale the emission by inverse probabilty to hit this light.
-            lightSample.emission = light.emission * float(sysParameter.numLights);
+            lightSample.emission = light.emission * float(sysParam.numLights);
             lightSample.pdf = (lightSample.distance * lightSample.distance) / (light.area * cosTheta); // Solid angle pdf. Assumes light.area != 0.0f.
         }
     }
 
     return lightSample;
+}
+
 }

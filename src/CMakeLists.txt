@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.17)
 
-project( jazzfusion )
+project( jazzfusion LANGUAGES CUDA CXX )
 message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 
 find_package(OpenGL REQUIRED)
@@ -12,61 +12,70 @@ find_package(DevIL_1_8_0 REQUIRED)
 set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
 
 set( IMGUI
-  imgui/imconfig.h
-  imgui/imgui.h
-  imgui/imgui_impl_glfw_gl3.h
-  imgui/imgui_internal.h
-  imgui/stb_rect_pack.h
-  imgui/stb_textedit.h
-  imgui/stb_truetype.h
-  imgui/imgui.cpp
-  imgui/imgui_demo.cpp
-  imgui/imgui_draw.cpp
-  imgui/imgui_impl_glfw_gl3.cpp
-)
+    ext/imgui/imconfig.h
+    ext/imgui/imgui.h
+    ext/imgui/imgui.cpp
+    ext/imgui/imgui_internal.h
+    ext/imgui/imgui_widgets.cpp
+    ext/imgui/imgui_tables.cpp
+    ext/imgui/imgui_draw.cpp
+    ext/imgui/backends/imgui_impl_glfw.cpp
+    ext/imgui/backends/imgui_impl_glfw.h
+    ext/imgui/backends/imgui_impl_opengl3_loader.h
+    ext/imgui/backends/imgui_impl_opengl3.cpp
+    ext/imgui/backends/imgui_impl_opengl3.h)
 
 set( HEADERS
-  util/DebugUtils.h
-  util/Picture.h
-  core/Camera.h
-  util/Texture.h
-  util/Timer.h
   core/Backend.h
   core/OptixRenderer.h
   core/Scene.h
   core/UI.h
+  core/InputHandler.h
+
+  postprocessing/BicubicFilter.h
+  postprocessing/ScalingFilter.h
+  postprocessing/PostProcessor.h
+
+  util/KernelHelper.h
+  util/DebugUtils.h
+  util/Picture.h
+  util/Texture.h
+  util/Timer.h
+
+  shaders/LinearMath.h
+  shaders/Common.h
+  shaders/Camera.h
 )
 
 set( SOURCES
   core/main.cpp
-  util/Picture.cpp
-  core/Camera.cpp
-  util/Texture.cpp
   core/Backend.cpp
   core/OptixRenderer.cpp
   core/Scene.cpp
   core/UI.cpp
+  core/InputHandler.cpp
+
+  postprocessing/PostProcessor.cu
+
+  util/Picture.cpp
+  util/Texture.cpp
 )
 
-# Prefix the shaders with the full path name to allow stepping through errors with F8.
 set( SHADERS
-  # Core shaders.
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ClosestHit.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Miss.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RayGen.cu
-
-  # Direct callables
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/LightSample.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Bsdf.cu
 )
 
 set( SHADERS_HEADERS
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderCommon.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RngUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/OptixShaderCommon.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/SystemParameter.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderCommon.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/MathUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/LinearMath.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderDebugUtils.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Common.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Camera.h
 )
 
 set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")
@@ -90,7 +99,9 @@ source_group( "ptx"             FILES ${PTX_SOURCES})
 include_directories(
   "."
   "inc"
-  "imgui"
+  "ext/imgui"
+  "ext/imgui/backends"
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${GLEW_INCLUDE_DIRS}
   ${GLFW_INCLUDE_DIR}
   ${OPTIX_INCLUDE_DIR}
@@ -105,12 +116,11 @@ add_definitions(
 
 add_executable( jazzfusion
   ${IMGUI}
-  ${HEADERS}
   ${SOURCES}
-  ${SHADERS_HEADERS}
-  ${SHADERS}
   ${PTX_SOURCES}
 )
+
+set_property(TARGET jazzfusion PROPERTY CUDA_ARCHITECTURES 75)
 
 target_link_libraries( jazzfusion
   ${OPENGL_gl_LIBRARY}

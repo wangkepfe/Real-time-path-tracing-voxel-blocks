@@ -3,11 +3,8 @@
 #include <cuda_runtime.h>
 
 #include "imgui.h"
-
-#define IMGUI_DEFINE_MATH_OPERATORS 1
-#include "imgui_internal.h"
-
-#include "imgui_impl_glfw_gl3.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 
 #ifndef __APPLE__
 #include <GL/glew.h>
@@ -24,15 +21,6 @@
 
 namespace jazzfusion
 {
-
-enum GuiState
-{
-    GUI_STATE_NONE,
-    GUI_STATE_ORBIT,
-    GUI_STATE_PAN,
-    GUI_STATE_DOLLY,
-    GUI_STATE_FOCUS
-};
 
 class UI
 {
@@ -53,10 +41,6 @@ public:
 
 private:
     UI() {}
-
-    GuiState m_guiState;
-    bool m_isVisibleGUI;
-    float m_mouseSpeedRatio;
 };
 
 }

@@ -1,5 +1,4 @@
-#include "shaders/ShaderCommon.h"
-#include "shaders/MathUtils.h"
+#include "shaders/LinearMath.h"
 #include "util/Texture.h"
 #include "util/DebugUtils.h"
 #include <algorithm>
@@ -1315,7 +1314,7 @@ unsigned int Texture::getDepth() const
     return m_depth;
 }
 
-cudaTextureObject_t Texture::getTextureObject() const
+TexObj Texture::getTextureObject() const
 {
     return m_textureObject;
 }
@@ -1391,7 +1390,7 @@ void Texture::calculateSphericalCDF(const float* rgba)
         }
     }
 
-    // This integral is used inside the light sampling function (see sysParameter.envIntegral).
+    // This integral is used inside the light sampling function (see sysParam.envIntegral).
     m_integral = sum * 2.0f * M_PIf * M_PIf / float(m_width * m_height);
 
     // Now generate the CDF data.

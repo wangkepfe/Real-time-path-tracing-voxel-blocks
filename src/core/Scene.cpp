@@ -1,5 +1,5 @@
 #include "core/Scene.h"
-#include "shaders/MathUtils.h"
+#include "shaders/LinearMath.h"
 
 namespace jazzfusion
 {
@@ -105,123 +105,123 @@ OptixTraversableHandle Scene::createBox(OptixFunctionTable& api,
     VertexAttributes attrib;
 
     // Left.
-    attrib.tangent = make_float3(0.0f, 0.0f, 1.0f);
-    attrib.normal = make_float3(-1.0f, 0.0f, 0.0f);
+    attrib.tangent = Float3(0.0f, 0.0f, 1.0f);
+    attrib.normal = Float3(-1.0f, 0.0f, 0.0f);
 
-    attrib.vertex = make_float3(left, bottom, back);
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(left, bottom, back);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, bottom, front);
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(left, bottom, front);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, top, front);
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(left, top, front);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, top, back);
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(left, top, back);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     // Right.
-    attrib.tangent = make_float3(0.0f, 0.0f, -1.0f);
-    attrib.normal = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.tangent = Float3(0.0f, 0.0f, -1.0f);
+    attrib.normal = Float3(1.0f, 0.0f, 0.0f);
 
-    attrib.vertex = make_float3(right, bottom, front);
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(right, bottom, front);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, bottom, back);
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(right, bottom, back);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, top, back);
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(right, top, back);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, top, front);
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(right, top, front);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     // Back.
-    attrib.tangent = make_float3(-1.0f, 0.0f, 0.0f);
-    attrib.normal = make_float3(0.0f, 0.0f, -1.0f);
+    attrib.tangent = Float3(-1.0f, 0.0f, 0.0f);
+    attrib.normal = Float3(0.0f, 0.0f, -1.0f);
 
-    attrib.vertex = make_float3(right, bottom, back);
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(right, bottom, back);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, bottom, back);
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(left, bottom, back);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, top, back);
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(left, top, back);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, top, back);
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(right, top, back);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     // Front.
-    attrib.tangent = make_float3(1.0f, 0.0f, 0.0f);
-    attrib.normal = make_float3(0.0f, 0.0f, 1.0f);
+    attrib.tangent = Float3(1.0f, 0.0f, 0.0f);
+    attrib.normal = Float3(0.0f, 0.0f, 1.0f);
 
-    attrib.vertex = make_float3(left, bottom, front);
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(left, bottom, front);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, bottom, front);
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(right, bottom, front);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, top, front);
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(right, top, front);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, top, front);
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(left, top, front);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     // Bottom.
-    attrib.tangent = make_float3(1.0f, 0.0f, 0.0f);
-    attrib.normal = make_float3(0.0f, -1.0f, 0.0f);
+    attrib.tangent = Float3(1.0f, 0.0f, 0.0f);
+    attrib.normal = Float3(0.0f, -1.0f, 0.0f);
 
-    attrib.vertex = make_float3(left, bottom, back);
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(left, bottom, back);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, bottom, back);
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(right, bottom, back);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, bottom, front);
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(right, bottom, front);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, bottom, front);
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(left, bottom, front);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     // Top.
-    attrib.tangent = make_float3(1.0f, 0.0f, 0.0f);
-    attrib.normal = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.tangent = Float3(1.0f, 0.0f, 0.0f);
+    attrib.normal = Float3(0.0f, 1.0f, 0.0f);
 
-    attrib.vertex = make_float3(left, top, front);
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(left, top, front);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, top, front);
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.vertex = Float3(right, top, front);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(right, top, back);
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(right, top, back);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
-    attrib.vertex = make_float3(left, top, back);
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.vertex = Float3(left, top, back);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     std::vector<unsigned int> indices;
@@ -284,15 +284,15 @@ OptixTraversableHandle Scene::createSphere(OptixFunctionTable& api,
             float texu = (float)longitude / (float)tessU; // Range [0.0f, 1.0f]
 
             // Unit sphere coordinates are the normals.
-            float3 normal = make_float3(cosPhi * sinTheta,
+            Float3 normal = Float3(cosPhi * sinTheta,
                 -cosTheta, // -y to start at the south pole.
                 -sinPhi * sinTheta);
             VertexAttributes attrib;
 
             attrib.vertex = normal * radius;
-            attrib.tangent = make_float3(-sinPhi, 0.0f, -cosPhi);
+            attrib.tangent = Float3(-sinPhi, 0.0f, -cosPhi);
             attrib.normal = normal;
-            attrib.texcoord = make_float3(texu, texv, 0.0f);
+            attrib.texcoord = Float3(texu, texv, 0.0f);
 
             attributes.push_back(attrib);
         }
@@ -325,7 +325,7 @@ OptixTraversableHandle Scene::createSphere(OptixFunctionTable& api,
 OptixTraversableHandle Scene::createParallelogram(OptixFunctionTable& api,
     OptixDeviceContext& context,
     CUstream cudaStream,
-    std::vector<GeometryData>& geometries, float3 const& position, float3 const& vecU, float3 const& vecV, float3 const& normal)
+    std::vector<GeometryData>& geometries, Float3 const& position, Float3 const& vecU, Float3 const& vecV, Float3 const& normal)
 {
     std::vector<VertexAttributes> attributes;
 
@@ -336,19 +336,19 @@ OptixTraversableHandle Scene::createParallelogram(OptixFunctionTable& api,
     attrib.normal = normal;
 
     attrib.vertex = position; // left bottom
-    attrib.texcoord = make_float3(0.0f, 0.0f, 0.0f);
+    attrib.texcoord = Float3(0.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
     attrib.vertex = position + vecU; // right bottom
-    attrib.texcoord = make_float3(1.0f, 0.0f, 0.0f);
+    attrib.texcoord = Float3(1.0f, 0.0f, 0.0f);
     attributes.push_back(attrib);
 
     attrib.vertex = position + vecU + vecV; // right top
-    attrib.texcoord = make_float3(1.0f, 1.0f, 0.0f);
+    attrib.texcoord = Float3(1.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     attrib.vertex = position + vecV; // left top
-    attrib.texcoord = make_float3(0.0f, 1.0f, 0.0f);
+    attrib.texcoord = Float3(0.0f, 1.0f, 0.0f);
     attributes.push_back(attrib);
 
     std::vector<unsigned int> indices;
@@ -416,10 +416,10 @@ OptixTraversableHandle Scene::createTorus(OptixFunctionTable& api,
 
             VertexAttributes attrib;
 
-            attrib.vertex = make_float3(radius * cosPhi, outerRadius * sinTheta, radius * -sinPhi);
-            attrib.tangent = make_float3(-sinPhi, 0.0f, -cosPhi);
-            attrib.normal = make_float3(cosPhi * cosTheta, sinTheta, -sinPhi * cosTheta);
-            attrib.texcoord = make_float3((float)longitude / u, (float)latitude / v, 0.0f);
+            attrib.vertex = Float3(radius * cosPhi, outerRadius * sinTheta, radius * -sinPhi);
+            attrib.tangent = Float3(-sinPhi, 0.0f, -cosPhi);
+            attrib.normal = Float3(cosPhi * cosTheta, sinTheta, -sinPhi * cosTheta);
+            attrib.texcoord = Float3((float)longitude / u, (float)latitude / v, 0.0f);
 
             attributes.push_back(attrib);
         }
@@ -458,7 +458,7 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
     const float uTile = 2.0f / float(tessU);
     const float vTile = 2.0f / float(tessV);
 
-    float3 corner;
+    Float3 corner;
 
     std::vector<VertexAttributes> attributes;
 
@@ -467,10 +467,10 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
     switch (upAxis)
     {
     case 0:                                      // Positive x-axis is the geometry normal, create geometry on the yz-plane.
-        corner = make_float3(0.0f, -1.0f, 1.0f); // Lower front corner of the plane. texcoord (0.0f, 0.0f).
+        corner = Float3(0.0f, -1.0f, 1.0f); // Lower front corner of the plane. texcoord (0.0f, 0.0f).
 
-        attrib.tangent = make_float3(0.0f, 0.0f, -1.0f);
-        attrib.normal = make_float3(1.0f, 0.0f, 0.0f);
+        attrib.tangent = Float3(0.0f, 0.0f, -1.0f);
+        attrib.normal = Float3(1.0f, 0.0f, 0.0f);
 
         for (unsigned int j = 0; j <= tessV; ++j)
         {
@@ -480,8 +480,8 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
             {
                 const float u = float(i) * uTile;
 
-                attrib.vertex = corner + make_float3(0.0f, v, -u);
-                attrib.texcoord = make_float3(u * 0.5f, v * 0.5f, 0.0f);
+                attrib.vertex = corner + Float3(0.0f, v, -u);
+                attrib.texcoord = Float3(u * 0.5f, v * 0.5f, 0.0f);
 
                 attributes.push_back(attrib);
             }
@@ -489,10 +489,10 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
         break;
 
     case 1:                                      // Positive y-axis is the geometry normal, create geometry on the xz-plane.
-        corner = make_float3(-1.0f, 0.0f, 1.0f); // left front corner of the plane. texcoord (0.0f, 0.0f).
+        corner = Float3(-1.0f, 0.0f, 1.0f); // left front corner of the plane. texcoord (0.0f, 0.0f).
 
-        attrib.tangent = make_float3(1.0f, 0.0f, 0.0f);
-        attrib.normal = make_float3(0.0f, 1.0f, 0.0f);
+        attrib.tangent = Float3(1.0f, 0.0f, 0.0f);
+        attrib.normal = Float3(0.0f, 1.0f, 0.0f);
 
         for (unsigned int j = 0; j <= tessV; ++j)
         {
@@ -502,8 +502,8 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
             {
                 const float u = float(i) * uTile;
 
-                attrib.vertex = corner + make_float3(u, 0.0f, -v);
-                attrib.texcoord = make_float3(u * 0.5f, v * 0.5f, 0.0f);
+                attrib.vertex = corner + Float3(u, 0.0f, -v);
+                attrib.texcoord = Float3(u * 0.5f, v * 0.5f, 0.0f);
 
                 attributes.push_back(attrib);
             }
@@ -511,10 +511,10 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
         break;
 
     case 2:                                       // Positive z-axis is the geometry normal, create geometry on the xy-plane.
-        corner = make_float3(-1.0f, -1.0f, 0.0f); // Lower left corner of the plane. texcoord (0.0f, 0.0f).
+        corner = Float3(-1.0f, -1.0f, 0.0f); // Lower left corner of the plane. texcoord (0.0f, 0.0f).
 
-        attrib.tangent = make_float3(1.0f, 0.0f, 0.0f);
-        attrib.normal = make_float3(0.0f, 0.0f, 1.0f);
+        attrib.tangent = Float3(1.0f, 0.0f, 0.0f);
+        attrib.normal = Float3(0.0f, 0.0f, 1.0f);
 
         for (unsigned int j = 0; j <= tessV; ++j)
         {
@@ -524,8 +524,8 @@ OptixTraversableHandle Scene::createPlane(OptixFunctionTable& api,
             {
                 const float u = float(i) * uTile;
 
-                attrib.vertex = corner + make_float3(u, v, 0.0f);
-                attrib.texcoord = make_float3(u * 0.5f, v * 0.5f, 0.0f);
+                attrib.vertex = corner + Float3(u, v, 0.0f);
+                attrib.texcoord = Float3(u * 0.5f, v * 0.5f, 0.0f);
 
                 attributes.push_back(attrib);
             }

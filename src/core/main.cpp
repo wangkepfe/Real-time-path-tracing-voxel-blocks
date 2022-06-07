@@ -1,6 +1,6 @@
 
 
-#include "shaders/ShaderCommon.h"
+#include "shaders/LinearMath.h"
 
 #include "core/UI.h"
 #include "core/Backend.h"
@@ -11,13 +11,13 @@
 int main(int argc, char* argv[])
 {
     auto& backend = jazzfusion::Backend::Get();
-    auto& optix = jazzfusion::OptixRenderer::Get();
+    auto& renderer = jazzfusion::OptixRenderer::Get();
     auto& ui = jazzfusion::UI::Get();
 
     try
     {
         backend.init();
-        optix.init();
+        renderer.init();
         ui.init();
 
         backend.mainloop();
@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
     }
 
     ui.clear();
-    optix.clear();
+    renderer.clear();
     backend.clear();
 
     return 0;

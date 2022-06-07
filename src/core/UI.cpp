@@ -1,40 +1,37 @@
 #include "core/UI.h"
 #include "core/OptixRenderer.h"
 #include "core/Backend.h"
+#include "core/InputHandler.h"
 
 namespace jazzfusion
 {
 
 void UI::init()
 {
-    m_guiState = GUI_STATE_NONE;
-    m_isVisibleGUI = true;
-    m_mouseSpeedRatio = 10.0f;
+    auto& backend = Backend::Get();
 
     ImGui::CreateContext();
-    ImGui_ImplGlfwGL3_Init(Backend::Get().getWindow(), true);
-    ImGui_ImplGlfwGL3_NewFrame();
-    ImGui::EndFrame();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(backend.getWindow(), true);
+    ImGui_ImplOpenGL3_Init(backend.GlslVersion);
 }
 
 void UI::clear()
 {
-    ImGui_ImplGlfwGL3_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
 
 void UI::update()
 {
-    ImGui_ImplGlfwGL3_NewFrame();
-
-    if (!m_isVisibleGUI)
-    {
-        return;
-    }
-
-    ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiSetCond_FirstUseEver);
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
 
     auto& backend = Backend::Get();
+    auto& renderer = OptixRenderer::Get();
 
     if (!ImGui::Begin("Render Settings", nullptr, 0))
     {
@@ -42,10 +39,18 @@ void UI::update()
         return;
     }
 
+    auto& camera = renderer.getCamera();
+
+    ImGui::Text("ms/frame: %.2f FPS: %.1f", 1000.0f / backend.getCurrentFPS(), backend.getCurrentFPS());
+    ImGui::Text("Resolution: (%d, %d)", backend.getCurrentRenderWidth(), backend.getCurrentRenderWidth() / 16 * 9);
+    ImGui::Text("Scale: %.1f %%", backend.getCurrentRenderWidth() / (float)backend.getWidth() * 100.0f);
+    ImGui::Text("Camera pos=(%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
+    ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
+
     if (ImGui::CollapsingHeader("Tone Mapping", 0))
     {
-        ImGui::SliderFloat("Gain", backend.getToneMapGain(), 0.1f, 100.0f, "%.3f", 10.0f);
-        ImGui::SliderFloat("Max White", backend.getToneMapMaxWhite(), 0.1f, 100.0f, "%.3f", 10.0f);
+        ImGui::SliderFloat("Gain", backend.getToneMapGain(), 0.1f, 100.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+        ImGui::SliderFloat("Max White", backend.getToneMapMaxWhite(), 0.1f, 100.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
     }
 
     ImGui::End();
@@ -53,85 +58,11 @@ void UI::update()
 
 void UI::render()
 {
+    auto& backend = Backend::Get();
+
     ImGui::Render();
-    ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
-}
-
-void UI::eventHandler()
-{
-    ImGuiIO const& io = ImGui::GetIO();
-
-    if (ImGui::IsKeyPressed(' ', false))
-    {
-        m_isVisibleGUI = !m_isVisibleGUI;
-    }
-
-    const ImVec2 mousePosition = ImGui::GetMousePos();
-    const int x = int(mousePosition.x);
-    const int y = int(mousePosition.y);
-
-    Camera& camera = OptixRenderer::Get().getCamera();
-
-    switch (m_guiState)
-    {
-    case GUI_STATE_NONE:
-        if (!io.WantCaptureMouse)
-        {
-            if (ImGui::IsMouseDown(0))
-            {
-                camera.setBaseCoordinates(x, y);
-                m_guiState = GUI_STATE_ORBIT;
-            }
-            else if (ImGui::IsMouseDown(1))
-            {
-                camera.setBaseCoordinates(x, y);
-                m_guiState = GUI_STATE_DOLLY;
-            }
-            else if (ImGui::IsMouseDown(2))
-            {
-                camera.setBaseCoordinates(x, y);
-                m_guiState = GUI_STATE_PAN;
-            }
-            else if (io.MouseWheel != 0.0f)
-            {
-                camera.zoom(io.MouseWheel);
-            }
-        }
-        break;
-
-    case GUI_STATE_ORBIT:
-        if (ImGui::IsMouseReleased(0))
-        {
-            m_guiState = GUI_STATE_NONE;
-        }
-        else
-        {
-            camera.orbit(x, y);
-        }
-        break;
-
-    case GUI_STATE_DOLLY:
-        if (ImGui::IsMouseReleased(1))
-        {
-            m_guiState = GUI_STATE_NONE;
-        }
-        else
-        {
-            camera.dolly(x, y);
-        }
-        break;
-
-    case GUI_STATE_PAN:
-        if (ImGui::IsMouseReleased(2))
-        {
-            m_guiState = GUI_STATE_NONE;
-        }
-        else
-        {
-            camera.pan(x, y);
-        }
-        break;
-    }
+    glViewport(0, 0, backend.getWidth(), backend.getHeight());
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 }

@@ -2,12 +2,16 @@
 #include "util/DebugUtils.h"
 #include "core/OptixRenderer.h"
 #include "core/UI.h"
+#include "postprocessing/PostProcessor.h"
+#include "core/InputHandler.h"
 
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
 
-namespace jazzfusion {
+namespace jazzfusion
+{
 
 static void errorCallback(int error, const char* description)
 {
@@ -16,8 +20,8 @@ static void errorCallback(int error, const char* description)
 
 void Backend::init()
 {
-    m_width = 1920;
-    m_height = 1080;
+    m_width = 3840;
+    m_height = 2160;
 
     glfwSetErrorCallback(errorCallback);
     if (!glfwInit())
@@ -25,11 +29,22 @@ void Backend::init()
         throw std::runtime_error("GLFW failed to initialize.");
     }
 
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+
     m_window = glfwCreateWindow(m_width, m_height, "JazzFusion Renderer", NULL, NULL);
     if (!m_window)
     {
         throw std::runtime_error("glfwCreateWindow() failed.");
     }
+
+    glfwSetInputMode(m_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if (glfwRawMouseMotionSupported())
+    {
+        glfwSetInputMode(m_window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    }
+    glfwSetKeyCallback(m_window, InputHandler::KeyCallback);
+    glfwSetCursorPosCallback(m_window, InputHandler::CursorPosCallback);
 
     glfwMakeContextCurrent(m_window);
     if (glewInit() != GL_NO_ERROR)
@@ -48,29 +63,106 @@ void Backend::init()
     CUDA_CHECK(cudaFree(0));
     cuCtxGetCurrent(&m_cudaContext);
     CUDA_CHECK(cudaStreamCreate(&m_cudaStream));
+
+    m_minRenderWidth = 480;
+    m_minRenderHeight = 270;
+
+    m_maxRenderWidth = 3840;
+    m_maxRenderHeight = 2160;
+
+    auto& renderer = OptixRenderer::Get();
+
+    if (m_dynamicResolution == true)
+    {
+        renderer.setWidth(m_maxRenderWidth);
+        renderer.setHeight(m_maxRenderHeight);
+    }
+    else
+    {
+        renderer.setWidth(1920);
+        renderer.setHeight(1080);
+    }
 }
 
 void Backend::mainloop()
 {
     auto& ui = UI::Get();
-    auto& optix = OptixRenderer::Get();
+    auto& renderer = OptixRenderer::Get();
+    auto& postProcessor = PostProcessor::Get();
+    auto& inputHandler = InputHandler::Get();
+
+    m_timer.init();
 
     while (!glfwWindowShouldClose(m_window))
     {
         glfwPollEvents();
 
+        float minFrameTimeAllowed = 1000.0f / m_maxFpsAllowed;
+        m_timer.updateWithLimiter(minFrameTimeAllowed);
+
+        dynamicResolution();
+
+        inputHandler.update();
+
+        renderer.render();
+
         mapInteropBuffer();
 
-        optix.render(m_interopBuffer);
+        postProcessor.init(renderer.getWidth(), renderer.getHeight(), m_width, m_height);
+        postProcessor.render(m_interopBuffer, renderer.getOutputBuffer(), renderer.getOutputTexture());
 
         unmapInteropBuffer();
 
         ui.update();
-        ui.eventHandler();
+
         display();
+
         ui.render();
 
         glfwSwapBuffers(m_window);
+    }
+}
+
+void Backend::dynamicResolution()
+{
+    if (m_dynamicResolution == false)
+        return;
+
+    auto& renderer = OptixRenderer::Get();
+    float deltaTime = m_timer.getDeltaTime();
+
+    int renderWidth = renderer.getWidth();
+    int renderHeight = renderer.getHeight();
+
+    m_historyRenderWidth = renderWidth;
+    m_historyRenderHeight = renderHeight;
+
+    float targetFrameTimeHigh = 1000.0f / (m_targetFPS - 2.0f);
+    float targetFrameTimeLow = 1000.0f / (m_targetFPS + 2.0f);
+
+    if (targetFrameTimeHigh < deltaTime || targetFrameTimeLow > deltaTime)
+    {
+        float ratio = (1000.0f / m_targetFPS) / deltaTime;
+        ratio = sqrtf(ratio);
+        renderWidth *= ratio;
+    }
+
+    // Safe resolution
+    renderWidth = renderWidth + ((renderWidth % 16 < 8) ? (-renderWidth % 16) : (16 - renderWidth % 16));
+    renderWidth = clampi(renderWidth, m_minRenderWidth, m_maxRenderWidth);
+    renderHeight = (renderWidth / 16) * 9;
+
+    renderer.setWidth(renderWidth);
+    renderer.setHeight(renderHeight);
+    renderer.getCamera().resolution = Float2(renderWidth, renderHeight);
+
+    static float timerCounter = 0.0f;
+    timerCounter += deltaTime;
+    if (timerCounter > 1000.0f)
+    {
+        timerCounter -= 1000.0f;
+        m_currentFPS = 1000.0f / deltaTime;
+        m_currentRenderWidth = renderWidth;
     }
 }
 

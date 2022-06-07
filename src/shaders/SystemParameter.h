@@ -1,5 +1,12 @@
 #pragma once
 
+#include "LinearMath.h"
+#include "Camera.h"
+#include <optix.h>
+
+namespace jazzfusion
+{
+
 enum FunctionIndexSpecular
 {
     INDEX_BSDF_SPECULAR_REFLECTION = 0,
@@ -17,14 +24,14 @@ enum FunctionIndexDiffuse
 struct __align__(16) MaterialParameter
 {
     // 8 byte alignment.
-    cudaTextureObject_t textureAlbedo;
+    TexObj textureAlbedo;
 
     // 4 byte alignment.
     int indexBSDF;      // BSDF index to use in the closest hit program
-    float3 albedo;      // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
-    float3 absorption;  // Absorption coefficient
+    Float3 albedo;      // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
+    Float3 absorption;  // Absorption coefficient
     float ior;          // Index of refraction
-    unsigned int flags; // Thin-walled on/off
+    uint flags; // Thin-walled on/off
 };
 
 enum LightType
@@ -41,12 +48,12 @@ struct __align__(16) LightDefinition
 
     // Rectangle lights are defined in world coordinates as footpoint and two vectors spanning a parallelogram.
     // All in world coordinates with no scaling.
-    float3 position;
-    float3 vecU;
-    float3 vecV;
-    float3 normal;
+    Float3 position;
+    Float3 vecU;
+    Float3 vecV;
+    Float3 normal;
     float  area;
-    float3 emission;
+    Float3 emission;
 
     // Manual padding to float4 alignment goes here.
     float unused0;
@@ -56,33 +63,32 @@ struct __align__(16) LightDefinition
 
 struct LightSample
 {
-    float3 position;
+    Float3 position;
     float  distance;
-    float3 direction;
-    float3 emission;
+    Float3 direction;
+    Float3 emission;
     float  pdf;
 };
 
 struct SystemParameter
 {
-    // 8 byte alignment
+    Camera camera;
+
     OptixTraversableHandle topObject;
 
-    float4* outputBuffer;
+    SurfObj outputBuffer;
 
     LightDefinition* lightDefinitions;
 
     MaterialParameter* materialParameters;
 
-    cudaTextureObject_t envTexture;
+    TexObj envTexture;
 
     float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
     float* envCDF_V; // 1D, size (envHeight + 1)
 
-    int2 pathLengths;
-
-    unsigned int envWidth; // The original size of the environment texture.
-    unsigned int envHeight;
+    uint envWidth; // The original size of the environment texture.
+    uint envHeight;
     float envIntegral;
     float envRotation;
 
@@ -90,28 +96,24 @@ struct SystemParameter
     float sceneEpsilon;
 
     int numLights;
-
-    int cameraType;
-    float3 cameraPosition;
-    float3 cameraU;
-    float3 cameraV;
-    float3 cameraW;
 };
 
 struct VertexAttributes
 {
-    float3 vertex;
-    float3 tangent;
-    float3 normal;
-    float3 texcoord;
+    Float3 vertex;
+    Float3 tangent;
+    Float3 normal;
+    Float3 texcoord;
 };
 
 // SBT Record data for the hit group.
 struct GeometryInstanceData
 {
-    int3* indices;
+    Int3* indices;
     VertexAttributes* attributes;
 
     int materialIndex;
     int lightIndex; // Negative means not a light.
 };
+
+}
