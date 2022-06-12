@@ -36,6 +36,8 @@ set( HEADERS
   postprocessing/ScalingFilter.h
   postprocessing/PostProcessor.h
 
+  denoising/Denoiser.h
+
   util/KernelHelper.h
   util/DebugUtils.h
   util/Picture.h
@@ -56,6 +58,8 @@ set( SOURCES
   core/InputHandler.cpp
 
   postprocessing/PostProcessor.cu
+
+  denoising/Denoiser.cu
 
   util/Picture.cpp
   util/Texture.cpp
