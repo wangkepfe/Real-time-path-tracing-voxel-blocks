@@ -49,7 +49,7 @@ __global__ void SpatialFilter7x7(
     int x = threadIdx.x + blockIdx.x * 16;
     int y = threadIdx.y + blockIdx.y * 16;
 
-    if (0)
+    if (ENABLE_DENOISING_NOISE_CALCULATION)
     {
         float noiseLevel = Load2DHalf1(noiseLevelBuffer16, Int2(blockIdx.x, blockIdx.y));
         if (noiseLevel < params.noise_threshold_local)

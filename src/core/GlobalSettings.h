@@ -5,6 +5,8 @@
 #include <string>
 #include <tuple>
 
+#define ENABLE_DENOISING_NOISE_CALCULATION 0
+
 namespace jazzfusion
 {
 

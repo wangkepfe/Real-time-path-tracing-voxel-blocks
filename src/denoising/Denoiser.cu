@@ -72,7 +72,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     if (renderPassSettings.enableLocalSpatialFilter)
     {
-        if (0)
+        if (ENABLE_DENOISING_NOISE_CALCULATION)
         {
             CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
                 bufferManager.GetBuffer2D(RenderColorBuffer),
@@ -117,7 +117,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     if (renderPassSettings.enableWideSpatialFilter)
     {
-        if (0)
+        if (ENABLE_DENOISING_NOISE_CALCULATION)
         {
             CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
                 bufferManager.GetBuffer2D(RenderColorBuffer),

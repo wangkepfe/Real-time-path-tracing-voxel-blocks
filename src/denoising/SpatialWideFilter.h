@@ -17,7 +17,7 @@ __global__ void SpatialWideFilter5x5(
     DenoisingParams params,
     Int2    size)
 {
-    if (0)
+    if (ENABLE_DENOISING_NOISE_CALCULATION)
     {
         float noiseLevel = Load2DHalf1(noiseLevelBuffer, Int2(blockIdx.x, blockIdx.y));
         if (noiseLevel < params.noise_threshold_large)
