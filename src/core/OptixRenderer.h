@@ -58,9 +58,6 @@ public:
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
 
-    SurfObj getOutputBuffer() const { return m_outputBuffer; }
-    TexObj getOutputTexture() const { return m_outputTexture; }
-
 private:
     OptixRenderer() {}
 
@@ -102,11 +99,6 @@ private:
 
     std::vector<LightDefinition>               m_lightDefinitions;
     std::vector<MaterialParameter>             m_materialParameters;
-
-    TexObj m_outputTexture;
-    SurfObj m_outputBuffer;
-    cudaTextureDesc m_outputTexDesc;
-    cudaArray_t m_outputBufferArray;
 };
 
 }

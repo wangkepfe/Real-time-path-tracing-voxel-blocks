@@ -2,6 +2,7 @@
 #include "core/OptixRenderer.h"
 #include "core/Backend.h"
 #include "core/InputHandler.h"
+#include "core/GlobalSettings.h"
 
 namespace jazzfusion
 {
@@ -14,7 +15,7 @@ void UI::init()
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(backend.getWindow(), true);
-    ImGui_ImplOpenGL3_Init(backend.GlslVersion);
+    ImGui_ImplOpenGL3_Init(backend.GlslVersion.c_str());
 }
 
 void UI::clear()
@@ -33,6 +34,8 @@ void UI::update()
     auto& backend = Backend::Get();
     auto& renderer = OptixRenderer::Get();
 
+    auto& renderPassSettings = GlobalSettings::GetRenderPassSettings();
+
     if (!ImGui::Begin("Render Settings", nullptr, 0))
     {
         ImGui::End();
@@ -46,6 +49,31 @@ void UI::update()
     ImGui::Text("Scale: %.1f %%", backend.getCurrentRenderWidth() / (float)backend.getWidth() * 100.0f);
     ImGui::Text("Camera pos=(%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
     ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
+
+    if (ImGui::CollapsingHeader("Render Passes", 0))
+    {
+        auto& list = renderPassSettings.GetValueList();
+        for (auto& itempair : list)
+        {
+            ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Temporal Denoising", 0))
+    {
+        DenoisingParams& denoisingParams = GlobalSettings::GetDenoisingParams();
+        for (auto& item : denoisingParams.GetValueList())
+        {
+            if (ImGui::InputFloat(item.second.c_str(), item.first))
+            {
+                *item.first = max(*item.first, 0.00001f);
+            }
+        }
+        for (auto& itempair : denoisingParams.GetBooleanValueList())
+        {
+            ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+        }
+    }
 
     if (ImGui::CollapsingHeader("Tone Mapping", 0))
     {

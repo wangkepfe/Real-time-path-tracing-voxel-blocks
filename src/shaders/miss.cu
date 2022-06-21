@@ -23,6 +23,7 @@ extern "C" __global__ void __miss__env_sphere()
 
     thePrd->radiance = emission;
     thePrd->flags |= FLAG_TERMINATE;
+    thePrd->material = SkyMaterialID;
 }
 
 }

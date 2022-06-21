@@ -16,14 +16,13 @@ public:
     Denoiser(Denoiser const&) = delete;
     void operator=(Denoiser const&) = delete;
 
-    void init(int width, int height, int historyWidth, int historyHeight);
-    void run(SurfObj inColorBuffer, TexObj outColorBuffer);
+    void run(int width, int height, int historyWidth, int historyHeight);
 
 private:
     Denoiser() {}
 
-    Int2 bufferDim;
-    Int2 historyDim;
+    Int2 bufferDim{};
+    Int2 historyDim{};
 };
 
 }

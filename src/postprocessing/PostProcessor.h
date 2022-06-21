@@ -23,8 +23,7 @@ public:
     PostProcessor(PostProcessor const&) = delete;
     void operator=(PostProcessor const&) = delete;
 
-    void init(int inputWidth, int inputHeight, int outputWidth, int outputHeight);
-    void render(Float4* interopBuffer, SurfObj colorBuffer, TexObj colorTex);
+    void run(Float4* interopBuffer, int inputWidth, int inputHeight, int outputWidth, int outputHeight);
 
 private:
     PostProcessor() {}

@@ -73,10 +73,16 @@ struct LightSample
 struct SystemParameter
 {
     Camera camera;
+    HistoryCamera historyCamera;
 
     OptixTraversableHandle topObject;
 
     SurfObj outputBuffer;
+    SurfObj outNormal;
+    SurfObj outDepth;
+    SurfObj outAlbedo;
+    SurfObj outMaterial;
+    SurfObj outMotionVector;
 
     LightDefinition* lightDefinitions;
 

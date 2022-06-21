@@ -68,7 +68,7 @@ struct __align__(16) Camera
 
         adjustedFront = dir * focal;
         adjustedLeft = left * tanHalfFov.x * focal;
-        adjustedUp = -up * tanHalfFov.y * focal;
+        adjustedUp = up * tanHalfFov.y * focal;
 
         apertureLeft = left * aperture;
         apertureUp = up * aperture;
@@ -88,14 +88,14 @@ struct __align__(16) Camera
 
 struct __align__(16) HistoryCamera
 {
-    inline __device__ __host__ void Setup(const Camera & cam)
+    inline __host__ void Setup(const Camera & cam)
     {
-        invCamMat = Mat3(cam.left, cam.up, cam.dir);  // build view matrix
+        invCamMat = Mat3(cam.left, -cam.up, cam.dir);  // build view matrix
         invCamMat.transpose();                      // orthogonal matrix, inverse is transpose
         pos = cam.pos;
     }
 
-    inline __device__ __host__ Float2 WorldToScreenSpace(Float3 worldPos, Float2 tanHalfFov)
+    inline __device__ Float2 WorldToScreenSpace(Float3 worldPos, Float2 tanHalfFov)
     {
         Float3 viewSpacePos = invCamMat * (worldPos - pos);            // transform world pos to view space
         Float2 screenPlanePos = viewSpacePos.xy / viewSpacePos.z;        // projection onto plane
