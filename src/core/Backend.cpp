@@ -3,6 +3,7 @@
 #include "core/OptixRenderer.h"
 #include "core/UI.h"
 #include "postprocessing/PostProcessor.h"
+#include "denoising/Denoiser.h"
 #include "core/InputHandler.h"
 
 #include <algorithm>
@@ -22,6 +23,14 @@ void Backend::init()
 {
     m_width = 3840;
     m_height = 2160;
+
+    m_dynamicResolution = true;
+
+    m_minRenderWidth = 480;
+    m_minRenderHeight = 270;
+
+    m_maxRenderWidth = 3840;
+    m_maxRenderHeight = 2160;
 
     glfwSetErrorCallback(errorCallback);
     if (!glfwInit())
@@ -64,24 +73,12 @@ void Backend::init()
     cuCtxGetCurrent(&m_cudaContext);
     CUDA_CHECK(cudaStreamCreate(&m_cudaStream));
 
-    m_minRenderWidth = 480;
-    m_minRenderHeight = 270;
-
-    m_maxRenderWidth = 3840;
-    m_maxRenderHeight = 2160;
-
     auto& renderer = OptixRenderer::Get();
 
-    if (m_dynamicResolution == true)
-    {
-        renderer.setWidth(m_maxRenderWidth);
-        renderer.setHeight(m_maxRenderHeight);
-    }
-    else
-    {
-        renderer.setWidth(1920);
-        renderer.setHeight(1080);
-    }
+    renderer.setWidth(m_maxRenderWidth);
+    renderer.setHeight(m_maxRenderHeight);
+
+    m_frameNum = 0;
 }
 
 void Backend::mainloop()
@@ -89,6 +86,7 @@ void Backend::mainloop()
     auto& ui = UI::Get();
     auto& renderer = OptixRenderer::Get();
     auto& postProcessor = PostProcessor::Get();
+    auto& denoiser = Denoiser::Get();
     auto& inputHandler = InputHandler::Get();
 
     m_timer.init();
@@ -106,11 +104,10 @@ void Backend::mainloop()
 
         renderer.render();
 
+        denoiser.run(renderer.getWidth(), renderer.getHeight(), m_historyRenderWidth, m_historyRenderHeight);
+
         mapInteropBuffer();
-
-        postProcessor.init(renderer.getWidth(), renderer.getHeight(), m_width, m_height);
-        postProcessor.render(m_interopBuffer, renderer.getOutputBuffer(), renderer.getOutputTexture());
-
+        postProcessor.run(m_interopBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height);
         unmapInteropBuffer();
 
         ui.update();
@@ -120,14 +117,13 @@ void Backend::mainloop()
         ui.render();
 
         glfwSwapBuffers(m_window);
+
+        m_frameNum++;
     }
 }
 
 void Backend::dynamicResolution()
 {
-    if (m_dynamicResolution == false)
-        return;
-
     auto& renderer = OptixRenderer::Get();
     float deltaTime = m_timer.getDeltaTime();
 
@@ -137,20 +133,28 @@ void Backend::dynamicResolution()
     m_historyRenderWidth = renderWidth;
     m_historyRenderHeight = renderHeight;
 
-    float targetFrameTimeHigh = 1000.0f / (m_targetFPS - 2.0f);
-    float targetFrameTimeLow = 1000.0f / (m_targetFPS + 2.0f);
-
-    if (targetFrameTimeHigh < deltaTime || targetFrameTimeLow > deltaTime)
+    if (m_dynamicResolution == false)
     {
-        float ratio = (1000.0f / m_targetFPS) / deltaTime;
-        ratio = sqrtf(ratio);
-        renderWidth *= ratio;
+        renderWidth = m_maxRenderWidth;
+        renderHeight = m_maxRenderHeight;
     }
+    else
+    {
+        float targetFrameTimeHigh = 1000.0f / (m_targetFPS - 2.0f);
+        float targetFrameTimeLow = 1000.0f / (m_targetFPS + 2.0f);
 
-    // Safe resolution
-    renderWidth = renderWidth + ((renderWidth % 16 < 8) ? (-renderWidth % 16) : (16 - renderWidth % 16));
-    renderWidth = clampi(renderWidth, m_minRenderWidth, m_maxRenderWidth);
-    renderHeight = (renderWidth / 16) * 9;
+        if (targetFrameTimeHigh < deltaTime || targetFrameTimeLow > deltaTime)
+        {
+            float ratio = (1000.0f / m_targetFPS) / deltaTime;
+            ratio = sqrtf(ratio);
+            renderWidth *= ratio;
+        }
+
+        // Safe resolution
+        renderWidth = renderWidth + ((renderWidth % 16 < 8) ? (-renderWidth % 16) : (16 - renderWidth % 16));
+        renderWidth = clampi(renderWidth, m_minRenderWidth, m_maxRenderWidth);
+        renderHeight = (renderWidth / 16) * 9;
+    }
 
     renderer.setWidth(renderWidth);
     renderer.setHeight(renderHeight);

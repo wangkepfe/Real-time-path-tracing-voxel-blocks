@@ -134,6 +134,8 @@ extern "C" __global__ void __closesthit__radiance()
         state.normal = -state.normal;
     }
 
+    rayData->normal = state.normal;
+
     rayData->radiance = Float3(0.0f);
     rayData->f_over_pdf = Float3(0.0f);
     rayData->pdf = 0.0f;
@@ -148,8 +150,10 @@ extern "C" __global__ void __closesthit__radiance()
         state.albedo *= texColor;
     }
 
-    rayData->flags = (rayData->flags & ~FLAG_DIFFUSE); // Only the last diffuse hit is tracked for multiple importance sampling of implicit light hits.
     rayData->flags = rayData->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
+
+    rayData->material = parameters.indexBSDF;
+    rayData->albedo *= state.albedo;
 
     const int indexBsdfSample = NUM_LIGHT_TYPES + parameters.indexBSDF;
 
@@ -163,8 +167,6 @@ extern "C" __global__ void __closesthit__radiance()
 
     if (isDiffuse)
     {
-        rayData->flags |= FLAG_DIFFUSE;
-
         const int numLights = sysParam.numLights;
         const Float2 randNum = rng2(rayData->seed);
         const int indexLight = (1 < numLights) ? clampi(static_cast<int>(floorf(rng(rayData->seed) * numLights)), 0, numLights - 1) : 0;

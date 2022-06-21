@@ -92,7 +92,7 @@ void InputHandler::update()
 
     if (moveW || moveS || moveA || moveD || moveC || moveX)
     {
-        Float3 movingDir = 0;
+        Float3 movingDir{ 0 };
         Float3 strafeDir = cross(camera.dir, Float3(0, 1, 0)).normalize();
 
         if (moveW) movingDir += camera.dir;

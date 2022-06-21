@@ -31,10 +31,19 @@ set( HEADERS
   core/Scene.h
   core/UI.h
   core/InputHandler.h
+  core/GlobalSettings.h
+  core/BufferManager.h
 
   postprocessing/BicubicFilter.h
   postprocessing/ScalingFilter.h
   postprocessing/PostProcessor.h
+
+  denoising/Denoiser.h
+  denoising/DenoisingUtils.h
+  denoising/NoiseVisualization.h
+  denoising/SpatialFilter.h
+  denoising/SpatialWideFilter.h
+  denoising/TemporalFilter.h
 
   util/KernelHelper.h
   util/DebugUtils.h
@@ -45,6 +54,9 @@ set( HEADERS
   shaders/LinearMath.h
   shaders/Common.h
   shaders/Camera.h
+  shaders/HalfPrecision.h
+  shaders/Sampler.h
+  shaders/SystemParameter.h
 )
 
 set( SOURCES
@@ -54,8 +66,11 @@ set( SOURCES
   core/Scene.cpp
   core/UI.cpp
   core/InputHandler.cpp
+  core/BufferManager.cpp
 
   postprocessing/PostProcessor.cu
+
+  denoising/Denoiser.cu
 
   util/Picture.cpp
   util/Texture.cpp
@@ -76,6 +91,8 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/ShaderDebugUtils.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Common.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Camera.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/HalfPrecision.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Sampler.h
 )
 
 set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")
@@ -117,6 +134,7 @@ add_definitions(
 add_executable( jazzfusion
   ${IMGUI}
   ${SOURCES}
+  ${HEADERS}
   ${PTX_SOURCES}
 )
 

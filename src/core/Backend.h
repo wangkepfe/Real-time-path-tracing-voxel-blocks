@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cuda.h>
 #include <cuda_runtime.h>
 #include <optix.h>
 
@@ -54,10 +55,13 @@ public:
     const Timer& getTimer() const { return m_timer; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
+    int getMaxRenderWidth() const { return m_maxRenderWidth; }
+    int getMaxRenderHeight() const { return m_maxRenderHeight; }
     float getCurrentFPS() const { return m_currentFPS; }
     int getCurrentRenderWidth() const { return m_currentRenderWidth; }
+    int getFrameNum() const { return m_frameNum; }
 
-    static constexpr char* GlslVersion = "#version 330";
+    const std::string GlslVersion{ "#version 330" };
 
 private:
     Backend() {}
@@ -124,6 +128,8 @@ private:
     std::vector<cudaDeviceProp> m_deviceProperties;
 
     Timer m_timer;
+
+    int m_frameNum;
 };
 
 }

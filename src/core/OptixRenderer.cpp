@@ -2,6 +2,7 @@
 #include "util/DebugUtils.h"
 #include "OptixRenderer.h"
 #include "core/Scene.h"
+#include "core/BufferManager.h"
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -115,10 +116,6 @@ void OptixRenderer::clear()
 
     OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
-
-    CUDA_CHECK(cudaDestroySurfaceObject(m_outputBuffer));
-    CUDA_CHECK(cudaDestroyTextureObject(m_outputTexture));
-    CUDA_CHECK(cudaFreeArray(m_outputBufferArray));
 }
 
 void OptixRenderer::render()
@@ -131,6 +128,11 @@ void OptixRenderer::render()
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
     m_camera.update();
+    if (backend.getFrameNum() == 0)
+    {
+        m_systemParameter.historyCamera.Setup(m_camera);
+    }
+
     m_systemParameter.camera = m_camera;
 
     CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
@@ -138,6 +140,8 @@ void OptixRenderer::render()
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+
+    m_systemParameter.historyCamera.Setup(m_camera);
 }
 
 #ifdef _WIN32
@@ -891,37 +895,43 @@ void OptixRenderer::init()
 
     // Output object
     {
-        auto format = cudaCreateChannelDesc<float4>();
-        CUDA_CHECK(cudaMallocArray(&m_outputBufferArray, &format, m_width, m_height, cudaArraySurfaceLoadStore | cudaArrayTextureGather));
+        // auto format = cudaCreateChannelDesc<float4>();
+        // CUDA_CHECK(cudaMallocArray(&m_outputBufferArray, &format, m_width, m_height, cudaArraySurfaceLoadStore | cudaArrayTextureGather));
 
-        cudaResourceDesc resDesc = {};
-        resDesc.resType = cudaResourceTypeArray;
-        resDesc.res.array.array = m_outputBufferArray;
+        // cudaResourceDesc resDesc = {};
+        // resDesc.resType = cudaResourceTypeArray;
+        // resDesc.res.array.array = m_outputBufferArray;
 
-        memset(&m_outputTexDesc, 0, sizeof(cudaTextureDesc));
+        // memset(&m_outputTexDesc, 0, sizeof(cudaTextureDesc));
 
-        m_outputTexDesc.addressMode[0] = cudaAddressModeWrap;
-        m_outputTexDesc.addressMode[1] = cudaAddressModeWrap;
-        m_outputTexDesc.addressMode[2] = cudaAddressModeWrap;
-        m_outputTexDesc.filterMode = cudaFilterModePoint;
-        m_outputTexDesc.readMode = cudaReadModeElementType;
-        m_outputTexDesc.sRGB = 0;
-        m_outputTexDesc.borderColor[0] = 0.0f;
-        m_outputTexDesc.borderColor[1] = 0.0f;
-        m_outputTexDesc.borderColor[2] = 0.0f;
-        m_outputTexDesc.borderColor[3] = 0.0f;
-        m_outputTexDesc.normalizedCoords = 1;
-        m_outputTexDesc.maxAnisotropy = 1;
-        m_outputTexDesc.mipmapFilterMode = cudaFilterModePoint;
-        m_outputTexDesc.mipmapLevelBias = 0.0f;
-        m_outputTexDesc.minMipmapLevelClamp = 0.0f;
-        m_outputTexDesc.maxMipmapLevelClamp = 0.0f;
+        // m_outputTexDesc.addressMode[0] = cudaAddressModeWrap;
+        // m_outputTexDesc.addressMode[1] = cudaAddressModeWrap;
+        // m_outputTexDesc.addressMode[2] = cudaAddressModeWrap;
+        // m_outputTexDesc.filterMode = cudaFilterModePoint;
+        // m_outputTexDesc.readMode = cudaReadModeElementType;
+        // m_outputTexDesc.sRGB = 0;
+        // m_outputTexDesc.borderColor[0] = 0.0f;
+        // m_outputTexDesc.borderColor[1] = 0.0f;
+        // m_outputTexDesc.borderColor[2] = 0.0f;
+        // m_outputTexDesc.borderColor[3] = 0.0f;
+        // m_outputTexDesc.normalizedCoords = 1;
+        // m_outputTexDesc.maxAnisotropy = 1;
+        // m_outputTexDesc.mipmapFilterMode = cudaFilterModePoint;
+        // m_outputTexDesc.mipmapLevelBias = 0.0f;
+        // m_outputTexDesc.minMipmapLevelClamp = 0.0f;
+        // m_outputTexDesc.maxMipmapLevelClamp = 0.0f;
 
-        CUDA_CHECK(cudaCreateSurfaceObject(&m_outputBuffer, &resDesc));
+        // CUDA_CHECK(cudaCreateSurfaceObject(&m_outputBuffer, &resDesc));
 
-        CUDA_CHECK(cudaCreateTextureObject(&m_outputTexture, &resDesc, &m_outputTexDesc, nullptr));
+        // CUDA_CHECK(cudaCreateTextureObject(&m_outputTexture, &resDesc, &m_outputTexDesc, nullptr));
 
-        m_systemParameter.outputBuffer = m_outputBuffer;
+        auto& bufferManager = BufferManager::Get();
+        m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
+        m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalBuffer);
+        m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
+        m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
+        m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
+        m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
     }
 }
 

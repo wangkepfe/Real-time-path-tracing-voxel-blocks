@@ -150,8 +150,8 @@ struct Float2
 
     INL_HOST_DEVICE Float2() : x(0), y(0) {}
     INL_HOST_DEVICE Float2(float _x, float _y) : x(_x), y(_y) {}
-    INL_HOST_DEVICE Float2(float _x) : x(_x), y(_x) {}
-    INL_HOST_DEVICE Float2(const float2& v) : x(v.x), y(v.y) {}
+    INL_HOST_DEVICE explicit Float2(float _x) : x(_x), y(_x) {}
+    INL_HOST_DEVICE explicit Float2(const float2& v) : x(v.x), y(v.y) {}
 
     INL_HOST_DEVICE Float2  operator+(const Float2& v) const { return Float2(x + v.x, y + v.y); }
     INL_HOST_DEVICE Float2  operator-(const Float2& v) const { return Float2(x - v.x, y - v.y); }
@@ -204,7 +204,7 @@ struct Int2
     };
 
     INL_HOST_DEVICE Int2() : x{ 0 }, y{ 0 } {}
-    INL_HOST_DEVICE Int2(int a) : x{ a }, y{ a } {}
+    INL_HOST_DEVICE explicit Int2(int a) : x{ a }, y{ a } {}
     INL_HOST_DEVICE Int2(int x, int y) : x{ x }, y{ y } {}
 
     INL_HOST_DEVICE Int2 operator + (int a) const { return Int2(x + a, y + a); }
@@ -239,7 +239,7 @@ struct UInt2
     };
 
     INL_HOST_DEVICE UInt2() : x{ 0 }, y{ 0 } {}
-    INL_HOST_DEVICE UInt2(uint a) : x{ a }, y{ a } {}
+    INL_HOST_DEVICE explicit UInt2(uint a) : x{ a }, y{ a } {}
     INL_HOST_DEVICE UInt2(uint x, uint y) : x{ x }, y{ y } {}
     INL_HOST_DEVICE UInt2(const uint2& v) : x{ v.x }, y{ v.y } {}
     INL_HOST_DEVICE UInt2(const uint3& v) : x{ v.x }, y{ v.y } {}
@@ -304,10 +304,11 @@ struct Float3
     };
 
     INL_HOST_DEVICE Float3() : x(0), y(0), z(0) {}
-    INL_HOST_DEVICE Float3(float _x) : x(_x), y(_x), z(_x) {}
+    INL_HOST_DEVICE explicit Float3(float _x) : x(_x), y(_x), z(_x) {}
     INL_HOST_DEVICE Float3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-    INL_HOST_DEVICE Float3(const float3& v) : x(v.x), y(v.y), z(v.z) {}
-    INL_HOST_DEVICE Float3(const float4& v) : x(v.x), y(v.y), z(v.z) {}
+    INL_HOST_DEVICE explicit Float3(const Float2& v, float z) : x(v.x), y(v.y), z(z) {}
+    INL_HOST_DEVICE explicit Float3(const float3& v) : x(v.x), y(v.y), z(v.z) {}
+    INL_HOST_DEVICE explicit Float3(const float4& v) : x(v.x), y(v.y), z(v.z) {}
 
     INL_HOST_DEVICE Float2 xz() const { return Float2(x, z); }
 
@@ -395,7 +396,7 @@ struct Int3
     };
 
     INL_HOST_DEVICE Int3() : x{ 0 }, y{ 0 }, z{ 0 } {}
-    INL_HOST_DEVICE Int3(int a) : x{ a }, y{ a }, z{ a } {}
+    INL_HOST_DEVICE explicit Int3(int a) : x{ a }, y{ a }, z{ a } {}
     INL_HOST_DEVICE Int3(int x, int y, int z) : x{ x }, y{ y }, z{ z } {}
 
     INL_HOST_DEVICE Int3 operator + (int a) const { return Int3(x + a, y + a, z + a); }
@@ -428,7 +429,7 @@ struct UInt3
     };
 
     INL_HOST_DEVICE UInt3() : x{ 0 }, y{ 0 }, z{ 0 } {}
-    INL_HOST_DEVICE UInt3(uint a) : x{ a }, y{ a }, z{ a } {}
+    INL_HOST_DEVICE explicit UInt3(uint a) : x{ a }, y{ a }, z{ a } {}
     INL_HOST_DEVICE UInt3(uint x, uint y, uint z) : x{ x }, y{ y }, z{ z } {}
     INL_HOST_DEVICE UInt3(const uint3& v) : x{ v.x }, y{ v.y }, z{ v.z } {}
 
@@ -460,7 +461,7 @@ struct Int4
     };
 
     INL_HOST_DEVICE Int4() : x{ 0 }, y{ 0 }, z{ 0 }, w{ 0 } {}
-    INL_HOST_DEVICE Int4(int a) : x{ a }, y{ a }, z{ a }, w{ a } {}
+    INL_HOST_DEVICE explicit Int4(int a) : x{ a }, y{ a }, z{ a }, w{ a } {}
     INL_HOST_DEVICE Int4(int x, int y, int z, int w) : x{ x }, y{ y }, z{ z }, w{ w } {}
 
     INL_HOST_DEVICE Int4 operator + (int a) const { return Int4(x + a, y + a, z + a, w + a); }
@@ -495,12 +496,11 @@ struct Float4
     };
 
     INL_HOST_DEVICE Float4() : x(0), y(0), z(0), w(0) {}
-    INL_HOST_DEVICE Float4(float _x) : x(_x), y(_x), z(_x), w(_x) {}
+    INL_HOST_DEVICE explicit Float4(float _x) : x(_x), y(_x), z(_x), w(_x) {}
     INL_HOST_DEVICE Float4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
-    INL_HOST_DEVICE Float4(const Float2& v1, const Float2& v2) : x(v1.x), y(v1.y), z(v2.x), w(v2.y) {}
-    INL_HOST_DEVICE Float4(const Float3& v) : x(v.x), y(v.y), z(v.z), w(0) {}
-    INL_HOST_DEVICE Float4(const Float3& v, float a) : x(v.x), y(v.y), z(v.z), w(a) {}
-    INL_HOST_DEVICE Float4(const Float4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
+    INL_HOST_DEVICE explicit Float4(const Float2& v1, const Float2& v2) : x(v1.x), y(v1.y), z(v2.x), w(v2.y) {}
+    INL_HOST_DEVICE explicit Float4(const Float3& v) : x(v.x), y(v.y), z(v.z), w(0) {}
+    INL_HOST_DEVICE explicit Float4(const Float3& v, float a) : x(v.x), y(v.y), z(v.z), w(a) {}
 
     INL_HOST_DEVICE Float4  operator+(const Float4& v) const { return Float4(x + v.x, y + v.y, z + v.z, z + v.z); }
     INL_HOST_DEVICE Float4  operator-(const Float4& v) const { return Float4(x - v.x, y - v.y, z - v.z, z - v.z); }
@@ -536,6 +536,7 @@ INL_HOST_DEVICE Float4 operator - (float a, const Float4& v) { return Float4(a -
 INL_HOST_DEVICE Float4 operator * (float a, const Float4& v) { return Float4(v.x * a, v.y * a, v.z * a, v.w * a); }
 INL_HOST_DEVICE Float4 operator / (float a, const Float4& v) { return Float4(a / v.x, a / v.y, a / v.z, a / v.w); }
 
+INL_HOST_DEVICE float abs(float v) { return fabsf(v); }
 INL_HOST_DEVICE Float3 abs(const Float3& v) { return Float3(fabsf(v.x), fabsf(v.y), fabsf(v.z)); }
 INL_HOST_DEVICE Float2 normalize(const Float2& v) { float norm = sqrtf(v.x * v.x + v.y * v.y); return Float2(v.x / norm, v.y / norm); }
 INL_HOST_DEVICE Float3 normalize(const Float3& v) { float norm = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z); return Float3(v.x / norm, v.y / norm, v.z / norm); }
@@ -1003,15 +1004,39 @@ INL_DEVICE Float2 ConcentricSampleDisk(Float2 u)
     return r * Float2(cosf(theta), sinf(theta));
 }
 
-INL_DEVICE Float3 YawPitchToDir(float yaw, float pitch)
+INL_HOST_DEVICE Float3 YawPitchToDir(float yaw, float pitch)
 {
-    return Float3(sinf(yaw) * cosf(pitch), sinf(pitch), cosf(yaw) * cosf(pitch));
+    return normalize(Float3(sinf(yaw) * cosf(pitch), sinf(pitch), cosf(yaw) * cosf(pitch)));
 }
 
-INL_DEVICE Float2 DirToYawPitch(Float3 dir)
+INL_HOST_DEVICE Float2 DirToYawPitch(Float3 dir)
 {
     dir.normalize();
     return Float2(atan2f(dir.x, dir.z), asinf(dir.y));
+}
+
+INL_DEVICE Float3 RgbToYcocg(const Float3& rgb)
+{
+    float tmp1 = rgb.x + rgb.z;
+    float tmp2 = rgb.y * 2.0f;
+    return Float3(tmp1 + tmp2, (rgb.x - rgb.z) * 2.0f, tmp2 - tmp1);
+}
+
+INL_DEVICE Float3 YcocgToRgb(const Float3& ycocg)
+{
+    float tmp = ycocg.x - ycocg.z;
+    return Float3(tmp + ycocg.y, ycocg.x + ycocg.z, tmp - ycocg.y) * 0.25f;
+}
+
+template<typename T>
+INL_DEVICE void WarpReduceSum(T& v)
+{
+    const int warpSize = 32;
+#pragma unroll
+    for (uint offset = warpSize / 2; offset > 0; offset /= 2)
+    {
+        v += __shfl_down_sync(0xffffffff, v, offset);
+    }
 }
 
 }
