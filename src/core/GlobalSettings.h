@@ -30,10 +30,10 @@ struct RenderPassSettings
     }
 
     bool enableTemporalDenoising = true;
-    bool enableLocalSpatialFilter = false;
+    bool enableLocalSpatialFilter = true;
     bool enableNoiseLevelVisualize = false;
-    bool enableWideSpatialFilter = false;
-    bool enableTemporalDenoising2 = false;
+    bool enableWideSpatialFilter = true;
+    bool enableTemporalDenoising2 = true;
 
     bool enablePostProcess = true;
     bool enableDownScalePasses = true;

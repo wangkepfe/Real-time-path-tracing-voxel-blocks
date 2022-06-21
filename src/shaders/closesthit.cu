@@ -142,18 +142,18 @@ extern "C" __global__ void __closesthit__radiance()
 
     MaterialParameter parameters = sysParam.materialParameters[theData->materialIndex]; // Use a const reference, not all BSDFs need all values.
 
-    state.albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
+    Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
     if (parameters.textureAlbedo != 0)
     {
         const Float3 texColor = Float3(tex2D<float4>(parameters.textureAlbedo, state.texcoord.x, state.texcoord.y));
-        state.albedo *= texColor;
+        albedo *= texColor;
     }
 
     rayData->flags = rayData->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 
     rayData->material = parameters.indexBSDF;
-    rayData->albedo *= state.albedo;
+    rayData->albedo *= albedo;
 
     const int indexBsdfSample = NUM_LIGHT_TYPES + parameters.indexBSDF;
 
@@ -167,6 +167,8 @@ extern "C" __global__ void __closesthit__radiance()
 
     if (isDiffuse)
     {
+        rayData->flags |= FLAG_DIFFUSED;
+
         const int numLights = sysParam.numLights;
         const Float2 randNum = rng2(rayData->seed);
         const int indexLight = (1 < numLights) ? clampi(static_cast<int>(floorf(rng(rayData->seed) * numLights)), 0, numLights - 1) : 0;

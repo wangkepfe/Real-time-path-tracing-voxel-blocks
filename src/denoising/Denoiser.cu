@@ -72,25 +72,28 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     if (renderPassSettings.enableLocalSpatialFilter)
     {
-        CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer),
-            bufferDim);
-
-        TileNoiseLevel8x8to16x16 KERNEL_ARGS2(GetGridDim(noiseLevel16x16Dim.x, noiseLevel16x16Dim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-            bufferManager.GetBuffer2D(NoiseLevelBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer16x16));
-
-        if (renderPassSettings.enableNoiseLevelVisualize)
+        if (0)
         {
-            TileNoiseLevelVisualize<1> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+            CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
                 bufferManager.GetBuffer2D(RenderColorBuffer),
-                bufferManager.GetBuffer2D(NormalBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                bufferDim,
-                denoisingParams);
+                bufferManager.GetBuffer2D(NoiseLevelBuffer),
+                bufferDim);
+
+            TileNoiseLevel8x8to16x16 KERNEL_ARGS2(GetGridDim(noiseLevel16x16Dim.x, noiseLevel16x16Dim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+                bufferManager.GetBuffer2D(NoiseLevelBuffer),
+                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16));
+
+            if (renderPassSettings.enableNoiseLevelVisualize)
+            {
+                TileNoiseLevelVisualize<1> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+                    bufferManager.GetBuffer2D(RenderColorBuffer),
+                    bufferManager.GetBuffer2D(NormalBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+                    bufferDim,
+                    denoisingParams);
+            }
         }
 
         SpatialFilter7x7 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
@@ -114,25 +117,28 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     if (renderPassSettings.enableWideSpatialFilter)
     {
-        CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer),
-            bufferDim);
-
-        TileNoiseLevel8x8to16x16 KERNEL_ARGS2(GetGridDim(noiseLevel16x16Dim.x, noiseLevel16x16Dim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-            bufferManager.GetBuffer2D(NoiseLevelBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer16x16));
-
-        if (renderPassSettings.enableNoiseLevelVisualize)
+        if (0)
         {
-            TileNoiseLevelVisualize<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+            CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
                 bufferManager.GetBuffer2D(RenderColorBuffer),
-                bufferManager.GetBuffer2D(NormalBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                bufferDim,
-                denoisingParams);
+                bufferManager.GetBuffer2D(NoiseLevelBuffer),
+                bufferDim);
+
+            TileNoiseLevel8x8to16x16 KERNEL_ARGS2(GetGridDim(noiseLevel16x16Dim.x, noiseLevel16x16Dim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+                bufferManager.GetBuffer2D(NoiseLevelBuffer),
+                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16));
+
+            if (renderPassSettings.enableNoiseLevelVisualize)
+            {
+                TileNoiseLevelVisualize<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+                    bufferManager.GetBuffer2D(RenderColorBuffer),
+                    bufferManager.GetBuffer2D(NormalBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+                    bufferDim,
+                    denoisingParams);
+            }
         }
 
         SpatialWideFilter5x5<3> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
@@ -166,10 +172,10 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferDim);
     }
 
-    // RecoupleAlbedo KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(AlbedoBuffer),
-    //     bufferDim);
+    RecoupleAlbedo KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+        bufferManager.GetBuffer2D(RenderColorBuffer),
+        bufferManager.GetBuffer2D(AlbedoBuffer),
+        bufferDim);
 
     if (renderPassSettings.enableTemporalDenoising2)
     {

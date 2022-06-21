@@ -40,13 +40,13 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(Mat
         return;
     }
 
-    f_over_pdf = state.albedo;
+    f_over_pdf = Float3(1.0f);
 }
 
 // The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction prd.wi (indirect lighting).
 extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const Float3 wiL)
 {
-    const Float3 f = state.albedo * M_1_PIf;
+    const Float3 f = Float3(1.0f) * M_1_PIf;
     const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);
 
     return Float4(f, pdf);
@@ -63,7 +63,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(Ma
         return;
     }
 
-    f_over_pdf = state.albedo;
+    f_over_pdf = Float3(1.0f);
     pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
 }
 
@@ -136,7 +136,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
     }
 
     // No Fresnel factor here. The probability to pick one or the other side took care of that.
-    f_over_pdf = state.albedo;
+    f_over_pdf = Float3(1.0f);
     pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
 }
 

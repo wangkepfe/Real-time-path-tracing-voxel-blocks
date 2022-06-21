@@ -17,10 +17,13 @@ __global__ void SpatialWideFilter5x5(
     DenoisingParams params,
     Int2    size)
 {
-    float noiseLevel = Load2DHalf1(noiseLevelBuffer, Int2(blockIdx.x, blockIdx.y));
-    if (noiseLevel < params.noise_threshold_large)
+    if (0)
     {
-        return;
+        float noiseLevel = Load2DHalf1(noiseLevelBuffer, Int2(blockIdx.x, blockIdx.y));
+        if (noiseLevel < params.noise_threshold_large)
+        {
+            return;
+        }
     }
 
     int x = threadIdx.x + blockIdx.x * blockDim.x;
@@ -30,7 +33,7 @@ __global__ void SpatialWideFilter5x5(
 
     Float3 normalValue = Load2DHalf4(normalBuffer, Int2(x, y)).xyz;
     Float3 colorValue = Load2DHalf4(colorBuffer, Int2(x, y)).xyz;
-    ushort maskValue = surf2Dread<ushort1>(materialBuffer, x * sizeof(ushort), y, cudaBoundaryModeClamp).x;
+    ushort maskValue = Load2DUshort1(materialBuffer, Int2(x, y));
     float depthValue = Load2DHalf1(depthBuffer, Int2(x, y));
 
     if (isnan(colorValue.x) || isnan(colorValue.y) || isnan(colorValue.z))
@@ -38,7 +41,7 @@ __global__ void SpatialWideFilter5x5(
         colorValue = Float3(0.5f);
     }
 
-    if (depthValue >= RayMax) return;
+    if (depthValue >= RayMaxLowerBound) return;
 
     Float3 sumOfColor{ 0 };
     float sumOfWeight = 0;
