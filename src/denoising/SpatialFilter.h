@@ -49,10 +49,13 @@ __global__ void SpatialFilter7x7(
     int x = threadIdx.x + blockIdx.x * 16;
     int y = threadIdx.y + blockIdx.y * 16;
 
-    float noiseLevel = Load2DHalf1(noiseLevelBuffer16, Int2(blockIdx.x, blockIdx.y));
-    if (noiseLevel < params.noise_threshold_local)
+    if (ENABLE_DENOISING_NOISE_CALCULATION)
     {
-        return;
+        float noiseLevel = Load2DHalf1(noiseLevelBuffer16, Int2(blockIdx.x, blockIdx.y));
+        if (noiseLevel < params.noise_threshold_local)
+        {
+            return;
+        }
     }
 
     struct AtrousLDS
@@ -89,8 +92,8 @@ __global__ void SpatialFilter7x7(
     Half3 halfColor1 = Load2DHalf4<Half3>(colorBuffer, Int2(x1, y1));
     Half3 halfColor2 = Load2DHalf4<Half3>(colorBuffer, Int2(x2, y2));
 
-    ushort mask1 = surf2Dread<ushort1>(materialBuffer, x1 * sizeof(ushort), y1, cudaBoundaryModeClamp).x;
-    ushort mask2 = surf2Dread<ushort1>(materialBuffer, x2 * sizeof(ushort), y2, cudaBoundaryModeClamp).x;
+    ushort mask1 = Load2DUshort1(materialBuffer, Int2(x1, y1));
+    ushort mask2 = Load2DUshort1(materialBuffer, Int2(x2, y2));
 
     // Early Nan color check
     Float3 color1 = half3ToFloat3(halfColor1);
@@ -138,7 +141,7 @@ __global__ void SpatialFilter7x7(
     Float3 normalValue = half3ToFloat3(center.normal);
     ushort maskValue = center.mask;
 
-    if (depthValue >= RayMax) return;
+    if (depthValue >= RayMaxLowerBound) return;
 
     // -------------------------------- atrous filter --------------------------------
     Float3 sumOfColor = Float3(0.0f);

@@ -11,6 +11,7 @@ static constexpr float DenominatorEpsilon = 1.0e-6f;
 
 
 static constexpr int FLAG_SHADOW = 0x00000001;
+static constexpr int FLAG_DIFFUSED = 0x00000002;
 
 static constexpr int FLAG_FRONTFACE = 0x00000010;
 static constexpr int FLAG_THINWALLED = 0x00000020;
@@ -19,7 +20,7 @@ static constexpr int FLAG_VOLUME = 0x00001000;
 
 static constexpr int FLAG_TERMINATE = 0x80000000;
 
-static constexpr int FLAG_CLEAR_MASK = 0x00000000;
+static constexpr int FLAG_CLEAR_MASK = FLAG_DIFFUSED;
 
 // Currently only containing some vertex attributes in world coordinates.
 struct State
@@ -27,7 +28,6 @@ struct State
     Float3 normalGeo;
     Float3 normal;
     Float3 texcoord;
-    Float3 albedo;
 };
 
 // Note that the fields are ordered by CUDA alignment restrictions.

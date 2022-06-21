@@ -31,6 +31,8 @@ namespace jazzfusion
 {
 
 static constexpr float RayMax = 1.0e27f;
+static constexpr float RayMaxLowerBound = 1.0e26f;
 static constexpr int SkyMaterialID = 10;
+static constexpr int MirrorMaterialID = 9;
 
 }

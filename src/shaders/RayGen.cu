@@ -188,35 +188,39 @@ extern "C" __global__ void __raygen__pathtracer()
 
     bool pathTerminated = false;
 
+    Float2 outMotionVector = Float2(0.5f);
+    Float3 outNormal = Float3(0.0f, -1.0f, 0.0f);
+    float outDepth = RayMax;
+    ushort outMaterial = SkyMaterialID;
     while (depth < BounceLimit && !pathTerminated)
     {
         pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx, depth);
 
         if (depth == 0)
         {
-            Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormal, idx);
-            Store2DHalf1(rayData->distance, sysParam.outDepth, idx);
-            Store2DUshort1(rayData->material, sysParam.outMaterial, idx);
-
-            Float2 motionVector = Float2(0.5f);
+            outNormal = rayData->normal;
+            outDepth = rayData->distance;
+            outMaterial = rayData->material;
             if (!pathTerminated)
             {
                 Float2 lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos, sysParam.camera.tanHalfFov);
-                motionVector += lastFrameSampleUv - sampleUv;
+                outMotionVector += lastFrameSampleUv - sampleUv;
             }
-            Store2DHalf2(motionVector, sysParam.outMotionVector, idx);
         }
 
         ++depth; // Next path segment.
     }
-
-    Store2DHalf4(Float4(rayData->albedo, 1.0f), sysParam.outAlbedo, idx);
 
     if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
     {
         radiance = Float3(0.5f);
     }
 
+    Store2DHalf4(Float4(outNormal, 1.0f), sysParam.outNormal, idx);
+    Store2DHalf1(outDepth, sysParam.outDepth, idx);
+    Store2DUshort1(outMaterial, sysParam.outMaterial, idx);
+    Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
+    Store2DHalf4(Float4(rayData->albedo, 1.0f), sysParam.outAlbedo, idx);
     Store2DHalf4(Float4(radiance, 1.0f), sysParam.outputBuffer, idx);
 }
 
