@@ -35,4 +35,16 @@ static constexpr float RayMaxLowerBound = 1.0e26f;
 static constexpr int SkyMaterialID = 10;
 static constexpr int MirrorMaterialID = 9;
 
+enum FunctionIndexSpecular
+{
+    INDEX_BSDF_SPECULAR_REFLECTION = 0,
+    INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 1,
+    NUM_SPECULAR_BSDF = 2,
+};
+
+enum FunctionIndexDiffuse
+{
+    INDEX_BSDF_DIFFUSE_REFLECTION = 2,
+};
+
 }

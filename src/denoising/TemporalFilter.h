@@ -85,8 +85,8 @@ __global__ void TemporalFilter(
     // Settings
     constexpr int stride = 1;
     bool useSoftMax = params.temporal_denoise_use_softmax;
-    constexpr float baseBlendingFactor = 1.0f / 8.0f;
-    constexpr float antiFlickeringWeight = 0.8f;
+    float baseBlendingFactor = params.temporal_denoise_baseBlendingFactor;
+    float antiFlickeringWeight = params.temporal_denoise_antiFlickeringWeight;
     float depthDiffLimit = params.temporal_denoise_depth_diff_threshold;
 
     constexpr bool enableAntiFlickering = true;

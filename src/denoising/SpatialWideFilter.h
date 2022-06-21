@@ -41,7 +41,7 @@ __global__ void SpatialWideFilter5x5(
         colorValue = Float3(0.5f);
     }
 
-    if (depthValue >= RayMaxLowerBound) return;
+    if (depthValue >= RayMaxLowerBound || maskValue < NUM_SPECULAR_BSDF) return;
 
     Float3 sumOfColor{ 0 };
     float sumOfWeight = 0;

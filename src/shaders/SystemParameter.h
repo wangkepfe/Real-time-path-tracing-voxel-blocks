@@ -7,18 +7,6 @@
 namespace jazzfusion
 {
 
-enum FunctionIndexSpecular
-{
-    INDEX_BSDF_SPECULAR_REFLECTION = 0,
-    INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 1,
-    NUM_SPECULAR_BSDF = 2,
-};
-
-enum FunctionIndexDiffuse
-{
-    INDEX_BSDF_DIFFUSE_REFLECTION = 2,
-};
-
 // Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
 // Alignment of all data types used here is 4 bytes.
 struct __align__(16) MaterialParameter
