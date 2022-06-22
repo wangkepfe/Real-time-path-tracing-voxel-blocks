@@ -50,14 +50,6 @@ struct Buffer2D
     cudaArray_t bufferArray;
 };
 
-struct Texture2D
-{
-    TexObj texture;
-    SurfObj buffer;
-    cudaTextureDesc texDesc;
-    cudaArray_t bufferArray;
-};
-
 class BufferManager
 {
 public:
@@ -75,7 +67,6 @@ public:
 
 private:
     std::vector<Buffer2D> m_buffers{};
-    std::vector<Texture2D> m_textures{};
 
     BufferManager() {}
 };

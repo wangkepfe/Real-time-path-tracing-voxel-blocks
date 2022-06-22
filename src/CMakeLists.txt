@@ -8,6 +8,7 @@ find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
+find_package(NVTT REQUIRED)
 
 set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
 
@@ -50,6 +51,7 @@ set( HEADERS
   util/Picture.h
   util/Texture.h
   util/Timer.h
+  util/TextureUtils.h
 
   shaders/LinearMath.h
   shaders/Common.h
@@ -74,6 +76,7 @@ set( SOURCES
 
   util/Picture.cpp
   util/Texture.cpp
+  util/TextureUtils.cpp
 )
 
 set( SHADERS
@@ -124,6 +127,7 @@ include_directories(
   ${OPTIX_INCLUDE_DIR}
   ${CUDAToolkit_INCLUDE_DIRS}
   ${IL_INCLUDE_DIR}
+  ${NVTT_INCLUDE_DIR}
 )
 
 add_definitions(
@@ -149,6 +153,7 @@ target_link_libraries( jazzfusion
   ${IL_LIBRARIES}
   ${ILU_LIBRARIES}
   ${ILUT_LIBRARIES}
+  ${NVTT_LIBRARIES}
 )
 
 set_target_properties( jazzfusion PROPERTIES FOLDER "src")

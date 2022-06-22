@@ -501,6 +501,7 @@ struct Float4
     INL_HOST_DEVICE explicit Float4(const Float2& v1, const Float2& v2) : x(v1.x), y(v1.y), z(v2.x), w(v2.y) {}
     INL_HOST_DEVICE explicit Float4(const Float3& v) : x(v.x), y(v.y), z(v.z), w(0) {}
     INL_HOST_DEVICE explicit Float4(const Float3& v, float a) : x(v.x), y(v.y), z(v.z), w(a) {}
+    INL_HOST_DEVICE explicit Float4(const float4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
 
     INL_HOST_DEVICE Float4  operator+(const Float4& v) const { return Float4(x + v.x, y + v.y, z + v.z, z + v.z); }
     INL_HOST_DEVICE Float4  operator-(const Float4& v) const { return Float4(x - v.x, y - v.y, z - v.z, z - v.z); }
@@ -544,10 +545,13 @@ INL_HOST_DEVICE Float3 sqrt3f(const Float3& v) { return Float3(sqrtf(v.x), sqrtf
 INL_HOST_DEVICE Float3 rsqrt3f(const Float3& v) { return Float3(1.0f / sqrtf(v.x), 1.0f / sqrtf(v.y), 1.0f / sqrtf(v.z)); }
 INL_HOST_DEVICE Float3 min3f(const Float3& v1, const Float3& v2) { return Float3(min(v1.x, v2.x), min(v1.y, v2.y), min(v1.z, v2.z)); }
 INL_HOST_DEVICE Float3 max3f(const Float3& v1, const Float3& v2) { return Float3(max(v1.x, v2.x), max(v1.y, v2.y), max(v1.z, v2.z)); }
+INL_HOST_DEVICE Float4 min4f(const Float4& v1, const Float4& v2) { return Float4(min(v1.x, v2.x), min(v1.y, v2.y), min(v1.z, v2.z), min(v1.w, v2.w)); }
+INL_HOST_DEVICE Float4 max4f(const Float4& v1, const Float4& v2) { return Float4(max(v1.x, v2.x), max(v1.y, v2.y), max(v1.z, v2.z), max(v1.w, v2.w)); }
 INL_HOST_DEVICE Float3 cross(const Float3& v1, const Float3& v2) { return Float3(dop(v1.y, v2.z, v1.z, v2.y), dop(v1.z, v2.x, v1.x, v2.z), dop(v1.x, v2.y, v1.y, v2.x)); /*Float3(v1.y * v2.z - v1.z * v2.y, v1.z * v2.x - v1.x * v2.z, v1.x * v2.y - v1.y * v2.x);*/ }
 INL_HOST_DEVICE Float3 pow3f(const Float3& v1, const Float3& v2) { return Float3(powf(v1.x, v2.x), powf(v1.y, v2.y), powf(v1.z, v2.z)); }
 INL_HOST_DEVICE Float3 exp3f(const Float3& v) { return Float3(expf(v.x), expf(v.y), expf(v.z)); }
 INL_HOST_DEVICE Float3 pow3f(const Float3& v, float a) { return Float3(powf(v.x, a), powf(v.y, a), powf(v.z, a)); }
+INL_HOST_DEVICE Float4 pow4f(const Float4& v, float a) { return Float4(powf(v.x, a), powf(v.y, a), powf(v.z, a), powf(v.w, a)); }
 INL_HOST_DEVICE Float3 sin3f(const Float3& v) { return Float3(sinf(v.x), sinf(v.y), sinf(v.z)); }
 INL_HOST_DEVICE Float3 cos3f(const Float3& v) { return Float3(cosf(v.x), cosf(v.y), cosf(v.z)); }
 INL_HOST_DEVICE Float3 mixf(const Float3& v1, const Float3& v2, float a) { return v1 * (1.0f - a) + v2 * a; }
