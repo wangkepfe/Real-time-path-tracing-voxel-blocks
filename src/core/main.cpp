@@ -6,6 +6,7 @@
 #include "core/Backend.h"
 #include "core/OptixRenderer.h"
 #include "core/BufferManager.h"
+#include "util/TextureUtils.h"
 
 #include <IL/il.h>
 
@@ -15,11 +16,13 @@ int main(int argc, char* argv[])
     auto& renderer = jazzfusion::OptixRenderer::Get();
     auto& ui = jazzfusion::UI::Get();
     auto& bufferManager = jazzfusion::BufferManager::Get();
+    auto& textureManager = jazzfusion::TextureManager::Get();
 
     try
     {
         backend.init();
         bufferManager.init();
+        textureManager.init();
         renderer.init();
         ui.init();
 

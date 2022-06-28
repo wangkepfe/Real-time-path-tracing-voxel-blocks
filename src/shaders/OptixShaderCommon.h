@@ -39,7 +39,7 @@ struct __align__(16) PerRayData
     float distance; // Distance from the ray origin to the current position, in world space. Needed for absorption of nested materials.
 
     Float3 wo; // Outgoing direction, to observer, in world space.
-    uint seed; // Random number generator input.
+    uint randNumIdx; // Random number generator input.
 
     Float3 wi; // Incoming direction, to light, in world space.
     uint depth;
@@ -55,13 +55,27 @@ struct __align__(16) PerRayData
 
     Float2 ior;            // .x = IOR the ray currently is inside, .y = the IOR of the surrounding volume. The IOR of the current material is in absorption_ior.w!
     uint material;
-    uint padding1;
+    float rayConeWidth;
 
     Float3 normal;
-    uint padding2;
+    float rayConeSpread;
 
     Float3 albedo;
-    uint padding3;
+    float totalDistance;
+
+    float randNums[8];
+
+    INL_DEVICE float rand()
+    {
+        float res = randNums[randNumIdx];
+        randNumIdx = (randNumIdx + 1) % 8;
+        return res;
+    }
+
+    INL_DEVICE Float2 rand2()
+    {
+        return Float2(rand(), rand());
+    }
 };
 
 // Alias the PerRayData pointer and an UInt2 for the payload split and merge operations. Generates just move instructions.

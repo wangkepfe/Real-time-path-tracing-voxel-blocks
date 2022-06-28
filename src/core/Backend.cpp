@@ -24,13 +24,16 @@ void Backend::init()
     m_width = 3840;
     m_height = 2160;
 
-    m_dynamicResolution = true;
+    m_dynamicResolution = false;
 
     m_minRenderWidth = 480;
     m_minRenderHeight = 270;
 
-    m_maxRenderWidth = 3840;
-    m_maxRenderHeight = 2160;
+    m_maxRenderWidth = 1920;
+    m_maxRenderHeight = 1080;
+
+    // m_maxRenderWidth = 3840;
+    // m_maxRenderHeight = 2160;
 
     glfwSetErrorCallback(errorCallback);
     if (!glfwInit())
@@ -119,6 +122,7 @@ void Backend::mainloop()
         glfwSwapBuffers(m_window);
 
         m_frameNum++;
+        m_accumulationCounter++;
     }
 }
 

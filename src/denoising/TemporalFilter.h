@@ -8,12 +8,15 @@ namespace jazzfusion
 {
 
 __global__ void CopyToHistoryColorDepthBuffer(
+    int accuCounter,
     SurfObj colorBuffer,
     SurfObj depthBuffer,
-    SurfObj accumulateBuffer,
+    SurfObj historyColorBuffer,
     SurfObj depthHistoryBuffer,
     SurfObj   materialBuffer,
     SurfObj   materialHistoryBuffer,
+    SurfObj   normalBuffer,
+    SurfObj   normalHistoryBuffer,
     Int2    size)
 {
     int x = threadIdx.x + blockIdx.x * 8;
@@ -23,9 +26,35 @@ __global__ void CopyToHistoryColorDepthBuffer(
 
     Int2 idx(x, y);
 
-    surf2Dwrite(surf2Dread<ushort4>(colorBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp), accumulateBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
-    surf2Dwrite(surf2Dread<ushort1>(depthBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp), depthHistoryBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
-    surf2Dwrite(surf2Dread<ushort1>(materialBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp), materialHistoryBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
+    surf2Dwrite(surf2Dread<ushort4>(colorBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp), historyColorBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
+
+    if (accuCounter == 1)
+    {
+        surf2Dwrite(surf2Dread<ushort1>(depthBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp), depthHistoryBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
+        surf2Dwrite(surf2Dread<ushort1>(materialBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp), materialHistoryBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
+        surf2Dwrite(surf2Dread<ushort4>(normalBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp), normalHistoryBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
+    }
+    else
+    {
+        float factor = 1.0f / (float)accuCounter;
+
+        Float3 normal = Load2DHalf4(normalBuffer, idx).xyz;
+        Float3 normalHistory = Load2DHalf4(normalHistoryBuffer, idx).xyz;
+
+        float depth = Load2DHalf1(depthBuffer, idx);
+        float depthHistory = Load2DHalf1(depthHistoryBuffer, idx);
+
+        ushort mat = Load2DUshort1(materialBuffer, idx);
+        ushort matHistory = Load2DUshort1(materialHistoryBuffer, idx);
+
+        Float3 outNormal = slerp3f(normalHistory, normal, factor);
+        float outdepth = lerpf(depthHistory, depth, factor);
+        ushort outMat = min(mat, matHistory);
+
+        Store2DHalf4(Float4(outNormal, 0.0f), normalHistoryBuffer, idx);
+        Store2DHalf1(outdepth, depthHistoryBuffer, idx);
+        Store2DUshort1(outMat, materialHistoryBuffer, idx);
+    }
 }
 
 __global__ void CopyToHistoryColorBuffer(
@@ -67,6 +96,7 @@ struct AtrousLDS<true>
 template<bool EnableAtrousFilter>
 __global__ void TemporalFilter(
     int frameNum,
+    int accuCounter,
     SurfObj   colorBuffer,
     SurfObj   accumulateBuffer,
     SurfObj   normalBuffer,
@@ -75,6 +105,7 @@ __global__ void TemporalFilter(
     SurfObj   materialBuffer,
     SurfObj   materialHistoryBuffer,
     SurfObj   motionVectorBuffer,
+    SurfObj   historyNormalBuffer,
     DenoisingParams params,
     Int2      size,
     Int2      historySize)
@@ -337,6 +368,8 @@ __global__ void TemporalFilter(
     }
     else
     {
+        Float3 outColor;
+
         if (!EnableAtrousFilter)
         {
             filteredColor = colorValue;
@@ -345,77 +378,86 @@ __global__ void TemporalFilter(
         // sample history
         Float3 colorHistory = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>>(accumulateBuffer, historyUv, historySize);
 
-        // clamp history
-        Float3 colorHistoryYcocg = RgbToYcocg(colorHistory);
-        colorHistoryYcocg = clamp3f(colorHistoryYcocg, neighbourMin, neighbourMax);
-        colorHistory = YcocgToRgb(colorHistoryYcocg);
+        float accumulationBlendFactor = 1 / (float)accuCounter;
 
-        float lumaHistory;
-        float lumaMin;
-        float lumaMax;
-        float lumaCurrent;
+        if (accuCounter)
 
-        if (enableAntiFlickering)
-        {
-            lumaMin = neighbourMin.x;
-            lumaMax = neighbourMax.x;
-            lumaCurrent = RgbToYcocg(colorValue).x;
-        }
+            if (accumulationBlendFactor < baseBlendingFactor)
+            {
+                outColor = colorValue * accumulationBlendFactor + colorHistory * (1.0f - accumulationBlendFactor);
+            }
+            else
+            {
+                // clamp history
+                Float3 colorHistoryYcocg = RgbToYcocg(colorHistory);
+                colorHistoryYcocg = clamp3f(colorHistoryYcocg, neighbourMin, neighbourMax);
+                colorHistory = YcocgToRgb(colorHistoryYcocg);
 
-        // load history material mask and depth for discard history
-        float discardHistory = 0;
-        Int2 historyIdx = Int2(floorf(historyUv.x * historySize.x), floorf(historyUv.y * historySize.y));
+                float lumaHistory;
+                float lumaMin;
+                float lumaMax;
+                float lumaCurrent;
+
+                if (enableAntiFlickering)
+                {
+                    lumaMin = neighbourMin.x;
+                    lumaMax = neighbourMax.x;
+                    lumaCurrent = RgbToYcocg(colorValue).x;
+                }
+
+                // load history material mask and depth for discard history
+                float discardHistory = 0;
+                Int2 historyIdx = Int2(floorf(historyUv.x * historySize.x), floorf(historyUv.y * historySize.y));
 
 #pragma unroll
-        for (int i = 0; i < 4; ++i)
-        {
-            Int2 offset(i % 2, i / 2);
+                for (int i = 0; i < 4; ++i)
+                {
+                    Int2 offset(i % 2, i / 2);
 
-            Int2 historyNeighborIdx = historyIdx + offset;
+                    Int2 historyNeighborIdx = historyIdx + offset;
 
-            float depthHistory = Load2DHalf1(depthHistoryBuffer, historyNeighborIdx);
-            ushort maskHistory = surf2Dread<ushort1>(materialHistoryBuffer, historyNeighborIdx.x * sizeof(ushort1), historyNeighborIdx.y, cudaBoundaryModeClamp).x;
+                    float depthHistory = Load2DHalf1(depthHistoryBuffer, historyNeighborIdx);
+                    ushort maskHistory = surf2Dread<ushort1>(materialHistoryBuffer, historyNeighborIdx.x * sizeof(ushort1), historyNeighborIdx.y, cudaBoundaryModeClamp).x;
 
-            float depthDiff = logf(depthHistory) - logf(depthValue);
+                    float depthDiff = logf(depthHistory) - logf(depthValue);
 
-            discardHistory += (float)((maskValue != maskHistory) || (abs(depthDiff) > depthDiffLimit));
-        }
-        discardHistory /= 4.0f;
+                    discardHistory += (float)((maskValue != maskHistory) || (abs(depthDiff) > depthDiffLimit));
+                }
+                discardHistory /= 4.0f;
 
-        colorHistory = colorHistory * (1.0f - discardHistory) + filteredColor * discardHistory;
+                colorHistory = colorHistory * (1.0f - discardHistory) + filteredColor * discardHistory;
 
-        if (enableAntiFlickering)
-        {
-            lumaHistory = RgbToYcocg(colorHistory).x;
-        }
+                if (enableAntiFlickering)
+                {
+                    lumaHistory = RgbToYcocg(colorHistory).x;
+                }
 
-        Float3 outColor;
+                // base blend factor
+                float blendFactor = baseBlendingFactor;
 
-        // base blend factor
-        float blendFactor = baseBlendingFactor;
+                if (enableAntiFlickering)
+                {
+                    // anti flickering
+                    float antiFlickeringFactor = clampf(0.5f * min(abs(lumaHistory - lumaMin), abs(lumaHistory - lumaMax)) / max3(lumaHistory, lumaCurrent, 1e-4f));
+                    blendFactor *= (1.0f - antiFlickeringWeight) + antiFlickeringWeight * antiFlickeringFactor;
+                }
 
-        if (enableAntiFlickering)
-        {
-            // anti flickering
-            float antiFlickeringFactor = clampf(0.5f * min(abs(lumaHistory - lumaMin), abs(lumaHistory - lumaMax)) / max3(lumaHistory, lumaCurrent, 1e-4f));
-            blendFactor *= (1.0f - antiFlickeringWeight) + antiFlickeringWeight * antiFlickeringFactor;
-        }
+                if (enableBlendUsingLumaHdrFactor)
+                {
+                    // weight with luma hdr factor
+                    float weightA = blendFactor * max(0.0001f, 1.0f / (lumaCurrent + 4.0f));
+                    float weightB = (1.0f - blendFactor) * max(0.0001f, 1.0f / (lumaHistory + 4.0f));
+                    float weightSum = SafeDivide(1.0f, weightA + weightB);
+                    weightA *= weightSum;
+                    weightB *= weightSum;
 
-        if (enableBlendUsingLumaHdrFactor)
-        {
-            // weight with luma hdr factor
-            float weightA = blendFactor * max(0.0001f, 1.0f / (lumaCurrent + 4.0f));
-            float weightB = (1.0f - blendFactor) * max(0.0001f, 1.0f / (lumaHistory + 4.0f));
-            float weightSum = SafeDivide(1.0f, weightA + weightB);
-            weightA *= weightSum;
-            weightB *= weightSum;
-
-            outColor = colorValue * weightA + colorHistory * weightB;
-        }
-        else
-        {
-            outColor = colorValue * blendFactor + colorHistory * (1.0f - blendFactor);
-        }
+                    outColor = colorValue * weightA + colorHistory * weightB;
+                }
+                else
+                {
+                    outColor = colorValue * blendFactor + colorHistory * (1.0f - blendFactor);
+                }
+            }
 
         // store to current
         // Store2DHalf4(Float4((float)maskValue / 10.0f, 0, 0, 0), colorBuffer, Int2(x, y));

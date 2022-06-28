@@ -49,6 +49,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     UInt2 noiseLevel16x16Dim(DivRoundUp(bufferDim.x, 16), DivRoundUp(bufferDim.y, 16));
 
     int frameNum = backend.getFrameNum();
+    int accuCounter = backend.getAccumulationCounter();
 
     if (renderPassSettings.enableTemporalDenoising)
     {
@@ -56,6 +57,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         {
             TemporalFilter<true> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
                 frameNum,
+                accuCounter,
                 bufferManager.GetBuffer2D(RenderColorBuffer),
                 bufferManager.GetBuffer2D(AccumulationColorBuffer),
                 bufferManager.GetBuffer2D(NormalBuffer),
@@ -64,6 +66,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(MaterialBuffer),
                 bufferManager.GetBuffer2D(MaterialHistoryBuffer),
                 bufferManager.GetBuffer2D(MotionVectorBuffer),
+                bufferManager.GetBuffer2D(HistoryNormalBuffer),
                 denoisingParams,
                 bufferDim,
                 historyDim);
@@ -183,6 +186,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         {
             TemporalFilter<false> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
                 frameNum,
+                accuCounter,
                 bufferManager.GetBuffer2D(RenderColorBuffer),
                 bufferManager.GetBuffer2D(HistoryColorBuffer),
                 bufferManager.GetBuffer2D(NormalBuffer),
@@ -191,6 +195,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(MaterialBuffer),
                 bufferManager.GetBuffer2D(MaterialHistoryBuffer),
                 bufferManager.GetBuffer2D(MotionVectorBuffer),
+                bufferManager.GetBuffer2D(HistoryNormalBuffer),
                 denoisingParams,
                 bufferDim,
                 historyDim);
@@ -198,12 +203,15 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     }
 
     CopyToHistoryColorDepthBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+        accuCounter,
         bufferManager.GetBuffer2D(RenderColorBuffer),
         bufferManager.GetBuffer2D(DepthBuffer),
         bufferManager.GetBuffer2D(HistoryColorBuffer),
         bufferManager.GetBuffer2D(HistoryDepthBuffer),
         bufferManager.GetBuffer2D(MaterialBuffer),
         bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+        bufferManager.GetBuffer2D(NormalBuffer),
+        bufferManager.GetBuffer2D(HistoryNormalBuffer),
         bufferDim);
 }
 

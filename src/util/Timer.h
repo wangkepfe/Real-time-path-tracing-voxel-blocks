@@ -9,20 +9,24 @@ namespace jazzfusion
 
 struct Timer
 {
-    Timer() {
+    Timer()
+    {
         init();
     }
 
-    void init() {
+    void init()
+    {
         previousTime = std::chrono::high_resolution_clock::now();
     }
 
-    void restart() {
+    void restart()
+    {
         startTime = std::chrono::high_resolution_clock::now();
         previousTime = std::chrono::high_resolution_clock::now();
     }
 
-    void update() {
+    void update()
+    {
         ++frameCounter;
 
         currentTime = std::chrono::high_resolution_clock::now();
@@ -31,17 +35,20 @@ struct Timer
 
         fpsTimer += static_cast<float>(deltaTime);
 
-        if (fpsTimer > 1000.0f) {
+        if (fpsTimer > 1000.0f)
+        {
             fps = static_cast<uint32_t>(static_cast<float>(frameCounter) * (1000.0f / fpsTimer));
             fpsTimer -= 1000.0f;
             frameCounter = 0;
         }
     }
 
-    void updateWithLimiter(float minTimeAllowed) {
+    void updateWithLimiter(float minTimeAllowed)
+    {
         ++frameCounter;
 
-        do {
+        do
+        {
             currentTime = std::chrono::high_resolution_clock::now();
             deltaTime = std::chrono::duration<double, std::milli>(currentTime - previousTime).count();
         } while (deltaTime < minTimeAllowed);
@@ -50,18 +57,21 @@ struct Timer
 
         fpsTimer += static_cast<float>(deltaTime);
 
-        if (fpsTimer > 1000.0f) {
+        if (fpsTimer > 1000.0f)
+        {
             fps = static_cast<uint32_t>(static_cast<float>(frameCounter) * (1000.0f / fpsTimer));
             fpsTimer -= 1000.0f;
             frameCounter = 0;
         }
     }
 
-    float getDeltaTime() const {
+    float getDeltaTime() const
+    {
         return static_cast<float>(deltaTime);
     }
 
-    float getTime() const {
+    float getTime() const
+    {
         return std::chrono::duration<float, std::milli>(currentTime - startTime).count();
     }
 

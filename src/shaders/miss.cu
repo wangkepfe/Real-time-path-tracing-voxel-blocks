@@ -22,8 +22,9 @@ extern "C" __global__ void __miss__env_sphere()
     const Float3 emission = Float3(tex2D<float4>(sysParam.envTexture, u, v));
 
     thePrd->radiance = emission;
+    thePrd->totalDistance = RayMax;
     thePrd->flags |= FLAG_TERMINATE;
-    thePrd->material = SkyMaterialID;
+    thePrd->material = SKY_MATERIAL_ID;
 }
 
 }

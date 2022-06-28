@@ -108,8 +108,7 @@ static int determineFace(int i, bool isCubemapDDS)
 
 Picture::Picture()
     : m_isCube(false)
-{
-}
+{}
 
 Picture::~Picture()
 {

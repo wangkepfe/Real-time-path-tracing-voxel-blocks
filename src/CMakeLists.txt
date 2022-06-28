@@ -8,6 +8,7 @@ find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
+find_package(NVTT REQUIRED)
 
 set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
 
@@ -50,6 +51,9 @@ set( HEADERS
   util/Picture.h
   util/Texture.h
   util/Timer.h
+  util/TextureUtils.h
+  util/RandGenData.h
+  util/RandGenHost.h
 
   shaders/LinearMath.h
   shaders/Common.h
@@ -57,6 +61,7 @@ set( HEADERS
   shaders/HalfPrecision.h
   shaders/Sampler.h
   shaders/SystemParameter.h
+  shaders/RandGen.h
 )
 
 set( SOURCES
@@ -74,6 +79,8 @@ set( SOURCES
 
   util/Picture.cpp
   util/Texture.cpp
+  util/TextureUtils.cpp
+  util/RandGenHost.cpp
 )
 
 set( SHADERS
@@ -93,6 +100,7 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Camera.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/HalfPrecision.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Sampler.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RandGen.h
 )
 
 set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")
@@ -124,6 +132,7 @@ include_directories(
   ${OPTIX_INCLUDE_DIR}
   ${CUDAToolkit_INCLUDE_DIRS}
   ${IL_INCLUDE_DIR}
+  ${NVTT_INCLUDE_DIR}
 )
 
 add_definitions(
@@ -149,6 +158,7 @@ target_link_libraries( jazzfusion
   ${IL_LIBRARIES}
   ${ILU_LIBRARIES}
   ${ILUT_LIBRARIES}
+  ${NVTT_LIBRARIES}
 )
 
 set_target_properties( jazzfusion PROPERTIES FOLDER "src")

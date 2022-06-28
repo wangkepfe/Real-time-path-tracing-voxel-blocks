@@ -32,7 +32,7 @@ __forceinline__ __device__ void unitSquareToCosineHemisphere(const Float2 sample
 
 extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData * prd, Float3 & wi, Float3 & f_over_pdf, float& pdf)
 {
-    unitSquareToCosineHemisphere(rng2(prd->seed), state.normal, wi, pdf);
+    unitSquareToCosineHemisphere(prd->rand2(), state.normal, wi, pdf);
 
     if (pdf <= 0.0f || dot(wi, state.normalGeo) <= 0.0f)
     {
@@ -125,7 +125,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
         reflective = evaluateFresnelDielectric(eta, dot(prd->wo, state.normal));
     }
 
-    const float pseudo = rng(prd->seed);
+    const float pseudo = prd->rand();
     if (pseudo < reflective)
     {
         wi = R; // Fresnel reflection or total internal reflection.

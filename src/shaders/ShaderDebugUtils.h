@@ -4,8 +4,11 @@
 
 #define COMMA ,
 
+#define OPTIX_LEFT_HALF_SCREEN() (optixGetLaunchIndex().x < optixGetLaunchDimensions().x * 0.5f)
+#define OPTIX_CENTER_PIXEL() (optixGetLaunchIndex().x == optixGetLaunchDimensions().x * 0.5f) && (optixGetLaunchIndex().y == optixGetLaunchDimensions().y * 0.5f)
 #define OPTIX_DEBUG_PRINT(__VALUE__) OptixDebugPrint(__FILE__,__LINE__,#__VALUE__,__VALUE__);
 
+#define CUDA_CENTER_PIXEL() (blockIdx.x * blockDim.x + threadIdx.x == gridDim.x * blockDim.x * 0.5f && blockIdx.y * blockDim.y + threadIdx.y == gridDim.y * blockDim.y * 0.5f)
 #define DEBUG_PRINT(__VALUE__) CudaDebugPrint(__FILE__,__LINE__,#__VALUE__,__VALUE__);
 
 #define OPTIX_DEBUG_PRINT_IMPL(__ARG__,__PRINT_STR__,__PRINT_ARG__) \

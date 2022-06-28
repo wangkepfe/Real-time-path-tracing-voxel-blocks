@@ -69,6 +69,8 @@ struct DenoisingParams
 
             { &noise_threshold_local, "noise_threshold_local"},
             { &noise_threshold_large, "noise_threshold_large"},
+
+            { &noiseBlend, "noiseBlend"},
         };
     }
 
@@ -91,11 +93,13 @@ struct DenoisingParams
     float temporal_denoise_sigma_depth = 0.1f;
     float temporal_denoise_sigma_material = 100.0f;
     float temporal_denoise_depth_diff_threshold = 0.1f;
-    float temporal_denoise_baseBlendingFactor = 1.0f / 64.0f;
+    float temporal_denoise_baseBlendingFactor = 1.0f / 2.0f;
     float temporal_denoise_antiFlickeringWeight = 0.8f;
 
     float noise_threshold_local = 0.001f;
     float noise_threshold_large = 0.001f;
+
+    float noiseBlend = 0.0f;
 
     bool temporal_denoise_use_softmax = true;
 };

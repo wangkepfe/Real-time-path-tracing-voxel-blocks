@@ -80,6 +80,7 @@ void BufferManager::init()
         { NormalBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
         { DepthBuffer             , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
         { HistoryDepthBuffer      , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
+        { HistoryNormalBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
 
         { MotionVectorBuffer      , { cudaCreateChannelDescHalf2()     , bufferSize                          } } ,
         { NoiseLevelBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize8x8                       } } ,

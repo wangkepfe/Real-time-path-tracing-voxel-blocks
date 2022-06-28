@@ -501,6 +501,7 @@ struct Float4
     INL_HOST_DEVICE explicit Float4(const Float2& v1, const Float2& v2) : x(v1.x), y(v1.y), z(v2.x), w(v2.y) {}
     INL_HOST_DEVICE explicit Float4(const Float3& v) : x(v.x), y(v.y), z(v.z), w(0) {}
     INL_HOST_DEVICE explicit Float4(const Float3& v, float a) : x(v.x), y(v.y), z(v.z), w(a) {}
+    INL_HOST_DEVICE explicit Float4(const float4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
 
     INL_HOST_DEVICE Float4  operator+(const Float4& v) const { return Float4(x + v.x, y + v.y, z + v.z, z + v.z); }
     INL_HOST_DEVICE Float4  operator-(const Float4& v) const { return Float4(x - v.x, y - v.y, z - v.z, z - v.z); }
@@ -544,10 +545,13 @@ INL_HOST_DEVICE Float3 sqrt3f(const Float3& v) { return Float3(sqrtf(v.x), sqrtf
 INL_HOST_DEVICE Float3 rsqrt3f(const Float3& v) { return Float3(1.0f / sqrtf(v.x), 1.0f / sqrtf(v.y), 1.0f / sqrtf(v.z)); }
 INL_HOST_DEVICE Float3 min3f(const Float3& v1, const Float3& v2) { return Float3(min(v1.x, v2.x), min(v1.y, v2.y), min(v1.z, v2.z)); }
 INL_HOST_DEVICE Float3 max3f(const Float3& v1, const Float3& v2) { return Float3(max(v1.x, v2.x), max(v1.y, v2.y), max(v1.z, v2.z)); }
+INL_HOST_DEVICE Float4 min4f(const Float4& v1, const Float4& v2) { return Float4(min(v1.x, v2.x), min(v1.y, v2.y), min(v1.z, v2.z), min(v1.w, v2.w)); }
+INL_HOST_DEVICE Float4 max4f(const Float4& v1, const Float4& v2) { return Float4(max(v1.x, v2.x), max(v1.y, v2.y), max(v1.z, v2.z), max(v1.w, v2.w)); }
 INL_HOST_DEVICE Float3 cross(const Float3& v1, const Float3& v2) { return Float3(dop(v1.y, v2.z, v1.z, v2.y), dop(v1.z, v2.x, v1.x, v2.z), dop(v1.x, v2.y, v1.y, v2.x)); /*Float3(v1.y * v2.z - v1.z * v2.y, v1.z * v2.x - v1.x * v2.z, v1.x * v2.y - v1.y * v2.x);*/ }
 INL_HOST_DEVICE Float3 pow3f(const Float3& v1, const Float3& v2) { return Float3(powf(v1.x, v2.x), powf(v1.y, v2.y), powf(v1.z, v2.z)); }
 INL_HOST_DEVICE Float3 exp3f(const Float3& v) { return Float3(expf(v.x), expf(v.y), expf(v.z)); }
 INL_HOST_DEVICE Float3 pow3f(const Float3& v, float a) { return Float3(powf(v.x, a), powf(v.y, a), powf(v.z, a)); }
+INL_HOST_DEVICE Float4 pow4f(const Float4& v, float a) { return Float4(powf(v.x, a), powf(v.y, a), powf(v.z, a), powf(v.w, a)); }
 INL_HOST_DEVICE Float3 sin3f(const Float3& v) { return Float3(sinf(v.x), sinf(v.y), sinf(v.z)); }
 INL_HOST_DEVICE Float3 cos3f(const Float3& v) { return Float3(cosf(v.x), cosf(v.y), cosf(v.z)); }
 INL_HOST_DEVICE Float3 mixf(const Float3& v1, const Float3& v2, float a) { return v1 * (1.0f - a) + v2 * a; }
@@ -1037,6 +1041,56 @@ INL_DEVICE void WarpReduceSum(T& v)
     {
         v += __shfl_down_sync(0xffffffff, v, offset);
     }
+}
+
+INL_DEVICE Float2 copysignf2(const Float2& a, const Float2& b)
+{
+    return { copysignf(a.x, b.x), copysignf(a.y, b.y) };
+}
+
+INL_DEVICE Float3 CatmulRom(float T, Float3 D, Float3 C, Float3 B, Float3 A)
+{
+    return 0.5f * ((2.0f * B) + (-A + C) * T + (2.0f * A - 5.0f * B + 4.0f * C - D) * T * T + (-A + 3.0f * B - 3.0f * C + D) * T * T * T);
+}
+
+INL_DEVICE Float3 ColorRampBSpline(float T, Float4 A, Float4 B, Float4 C, Float4 D)
+{
+    float AB = B.w - A.w;
+    float BC = C.w - B.w;
+    float CD = D.w - C.w;
+
+    float iAB = clampf((T - A.w) / AB);
+    float iBC = clampf((T - B.w) / BC);
+    float iCD = clampf((T - C.w) / CD);
+
+    Float4 p = Float4(1.0f - iAB, iAB - iBC, iBC - iCD, iCD);
+    Float3 cA = CatmulRom(p.x, A.xyz, A.xyz, B.xyz, C.xyz);
+    Float3 cB = CatmulRom(p.y, A.xyz, B.xyz, C.xyz, D.xyz);
+    Float3 cC = CatmulRom(p.z, B.xyz, C.xyz, D.xyz, D.xyz);
+    Float3 cD = D.xyz;
+
+    if (T < B.w) return cA;
+    if (T < C.w) return cB;
+    if (T < D.w) return cC;
+    return cD;
+}
+
+INL_DEVICE Float3 ColorHexToFloat3(int Hex)
+{
+    // 0xABCDEF
+    int AB = (Hex & 0x00FF0000) >> 16;
+    int CD = (Hex & 0x0000FF00) >> 8;
+    int EF = Hex & 0x000000FF;
+    return pow3f(Float3(AB, CD, EF) / 255.0f, Float3(2.2f));
+}
+
+INL_DEVICE Float3 ColorRampVisualization(float t)
+{
+    Float4 A = Float4(ColorHexToFloat3(0x6a2c70), 0.05);
+    Float4 B = Float4(ColorHexToFloat3(0xb83b5e), 0.22);
+    Float4 C = Float4(ColorHexToFloat3(0xf08a5d), 0.5);
+    Float4 D = Float4(ColorHexToFloat3(0xf9ed69), 0.9);
+    return ColorRampBSpline(t, A, B, C, D);
 }
 
 }
