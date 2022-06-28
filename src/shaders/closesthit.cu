@@ -122,6 +122,10 @@ extern "C" __global__ void __closesthit__radiance()
 
     rayData->distance = optixGetRayTmax();
     rayData->pos = rayData->pos + rayData->wi * rayData->distance;
+    rayData->totalDistance += rayData->distance;
+
+    rayData->rayConeWidth += rayData->rayConeSpread * rayData->distance;
+    // rayState.rayConeSpread += surfaceRayConeSpread; // @TODO Based on the local surface curvature
 
     // Explicitly include edge-on cases as frontface condition! Keeps the material stack from overflowing at silhouettes.
     // Prevents that silhouettes of thin-walled materials use the backface material. Using the true geometry normal attribute as originally defined on the frontface!
@@ -146,7 +150,9 @@ extern "C" __global__ void __closesthit__radiance()
 
     if (parameters.textureAlbedo != 0)
     {
-        const Float3 texColor = Float3(tex2D<float4>(parameters.textureAlbedo, state.texcoord.x, state.texcoord.y));
+        float texMip0Size = parameters.texSize.length();
+        float lod = log2f(rayData->rayConeWidth * parameters.uvScale * texMip0Size);
+        const Float3 texColor = Float3(tex2DLod<float4>(parameters.textureAlbedo, state.texcoord.x, state.texcoord.y, lod));
         albedo *= texColor;
     }
 
@@ -170,14 +176,14 @@ extern "C" __global__ void __closesthit__radiance()
         rayData->flags |= FLAG_DIFFUSED;
 
         const int numLights = sysParam.numLights;
-        const Float2 randNum = rng2(rayData->seed);
-        const int indexLight = (1 < numLights) ? clampi(static_cast<int>(floorf(rng(rayData->seed) * numLights)), 0, numLights - 1) : 0;
+        const Float2 randNum = rayData->rand2();
+        const int indexLight = (1 < numLights) ? clampi(static_cast<int>(floorf(rayData->rand() * numLights)), 0, numLights - 1) : 0;
         LightDefinition const& light = sysParam.lightDefinitions[indexLight];
         const int indexCallable = light.type;
         LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const Float3, const Float2>(indexCallable, light, rayData->pos, randNum);
 
         float misLightSurf = powerHeuristic(lightSample.pdf, surfPdf);
-        if (0.0f < lightSample.pdf && rng(rayData->seed) < misLightSurf) // Useful light sample?
+        if (0.0f < lightSample.pdf && rayData->rand() < misLightSurf) // Useful light sample?
         {
             // Evaluate the BSDF in the light sample direction. Normally cheaper than shooting rays.
             // Returns BSDF f in .xyz and the BSDF pdf in .w

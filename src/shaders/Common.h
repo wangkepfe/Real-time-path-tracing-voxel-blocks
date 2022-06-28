@@ -27,13 +27,13 @@
 #define KERNEL_ARGS3(grid, block, sh_mem) <<< grid, block, sh_mem >>>
 #define KERNEL_ARGS4(grid, block, sh_mem, stream) <<< grid, block, sh_mem, stream >>>
 
+#define OPTIMIZED_BLUE_NOISE_SPP 4
+
 namespace jazzfusion
 {
 
 static constexpr float RayMax = 1.0e27f;
 static constexpr float RayMaxLowerBound = 1.0e26f;
-static constexpr int SkyMaterialID = 10;
-static constexpr int MirrorMaterialID = 9;
 
 enum FunctionIndexSpecular
 {
@@ -45,6 +45,15 @@ enum FunctionIndexSpecular
 enum FunctionIndexDiffuse
 {
     INDEX_BSDF_DIFFUSE_REFLECTION = 2,
+    NUM_BSDF = 3,
 };
+
+enum OtherMaterialIndex
+{
+    SKY_MATERIAL_ID = 3,
+    NUM_MATERIALS = 4,
+};
+
+static constexpr int SkyMaterialID = NUM_MATERIALS + SKY_MATERIAL_ID;
 
 }

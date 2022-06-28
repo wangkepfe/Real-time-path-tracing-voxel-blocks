@@ -3,6 +3,8 @@
 #include "OptixRenderer.h"
 #include "core/Scene.h"
 #include "core/BufferManager.h"
+#include "util/TextureUtils.h"
+#include "core/GlobalSettings.h"
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -134,6 +136,7 @@ void OptixRenderer::render()
     }
 
     m_systemParameter.camera = m_camera;
+    m_systemParameter.noiseBlend = GlobalSettings::GetDenoisingParams().noiseBlend;
 
     CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
 
@@ -344,34 +347,19 @@ void OptixRenderer::init()
 
     // Create materials
     {
-        // Create texture
-        {
-            Picture* picture = new Picture;
-
-            unsigned int flags = IMAGE_FLAG_2D;
-
-            // std::filesystem::path cwd = std::filesystem::current_path();
-            // std::cout << "The current directory is " << cwd.string() << std::endl;
-
-            const std::string filenameDiffuse = std::string("data/Checker.png");
-            if (!picture->load(filenameDiffuse, flags))
-            {
-                picture->generateRGBA8(2, 2, 1, flags); // 2x2 RGBA8 red-green-blue-yellow failure picture.
-            }
-            m_textureAlbedo = new Texture();
-            m_textureAlbedo->create(picture, flags);
-
-            delete picture;
-        }
-
         // Setup GUI material parameters, one for each of the implemented BSDFs.
-        MaterialParameter parameters;
+        MaterialParameter parameters{};
+
+        TextureManager& textureManager = TextureManager::Get();
 
         // The order in this array matches the instance ID in the root IAS!
         // Lambert material for the floor.
         parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
-        parameters.albedo = Float3(0.8f, 0.8f, 0.8f);    // Grey. Modulates the albedo texture.
-        parameters.textureAlbedo = m_textureAlbedo->getTextureObject();
+        parameters.albedo = Float3(1.0f);
+        parameters.uvScale = 1.0f / 8.0f;
+        parameters.textureAlbedo = textureManager.GetTexture("data/TexturesCom_OutdoorFloor4_1K_albedo.png");
+        parameters.textureNormal = textureManager.GetTexture("data/TexturesCom_OutdoorFloor4_1K_normal.png");
+        parameters.textureRoughness = textureManager.GetTexture("data/TexturesCom_OutdoorFloor4_1K_roughness.png");
         parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.5f;
         parameters.flags = 0;                       // FLAG_THINWALLED;
@@ -932,6 +920,10 @@ void OptixRenderer::init()
         m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
         m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
         m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
+    }
+
+    {
+        m_systemParameter.randGen = d_randGen;
     }
 }
 

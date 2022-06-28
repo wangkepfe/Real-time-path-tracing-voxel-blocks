@@ -17,6 +17,9 @@
 
 #include "shaders/Camera.h"
 
+#include "util/RandGenHost.h"
+#include "shaders/RandGen.h"
+
 namespace jazzfusion
 {
 
@@ -99,6 +102,9 @@ private:
 
     std::vector<LightDefinition>               m_lightDefinitions;
     std::vector<MaterialParameter>             m_materialParameters;
+
+    BlueNoiseRandGeneratorHost  h_randGen{};
+    BlueNoiseRandGenerator      d_randGen{ static_cast<BlueNoiseRandGenerator>(h_randGen) };
 };
 
 }

@@ -45,6 +45,8 @@ void TextureManager::init()
     for (int i = 0; i < filePaths.size(); ++i)
     {
         std::string filePath = filePaths[i];
+        textureNameIdLookup[filePath] = i;
+
         ScopeTimer timer("Generating texture for " + filePath);
 
         int fileNamePosStart = filePath.find('/') + 1;

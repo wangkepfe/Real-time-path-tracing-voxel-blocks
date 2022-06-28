@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
+
 #include "shaders/LinearMath.h"
 #include "util/DebugUtils.h"
 
@@ -57,12 +59,20 @@ public:
     }
 
     void init();
+    TexObj GetTexture(const std::string& name)
+    {
+        assert(textureNameIdLookup.find(name) != textureNameIdLookup.end());
+        int id = textureNameIdLookup[name];
+        assert(id >= 0 && id < MAX_NUM_TEXTURES);
+        return m_shaderTextures.texObjs[id];
+    }
 
 private:
     TextureManager() {}
 
     ShaderTexture m_shaderTextures{};
     std::vector<Texture2D> m_textures{};
+    std::unordered_map<std::string, int> textureNameIdLookup;
 };
 
 

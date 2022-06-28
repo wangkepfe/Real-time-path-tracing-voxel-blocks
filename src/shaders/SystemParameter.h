@@ -2,6 +2,7 @@
 
 #include "LinearMath.h"
 #include "Camera.h"
+#include "RandGen.h"
 #include <optix.h>
 
 namespace jazzfusion
@@ -11,15 +12,20 @@ namespace jazzfusion
 // Alignment of all data types used here is 4 bytes.
 struct __align__(16) MaterialParameter
 {
-    // 8 byte alignment.
-    TexObj textureAlbedo;
+    TexObj textureAlbedo = 0;
+    TexObj textureNormal = 0;
+    TexObj textureRoughness = 0;
+    TexObj textureUnused = 0;
 
-    // 4 byte alignment.
-    int indexBSDF;      // BSDF index to use in the closest hit program
     Float3 albedo;      // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
+    int indexBSDF;      // BSDF index to use in the closest hit program
+
     Float3 absorption;  // Absorption coefficient
     float ior;          // Index of refraction
+
+    Float2 texSize = Float2(1024.0f);
     uint flags; // Thin-walled on/off
+    float uvScale = 1.0f;
 };
 
 enum LightType
@@ -90,6 +96,8 @@ struct SystemParameter
     float sceneEpsilon;
 
     int numLights;
+    BlueNoiseRandGenerator randGen;
+    float noiseBlend;
 };
 
 struct VertexAttributes

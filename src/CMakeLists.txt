@@ -52,6 +52,8 @@ set( HEADERS
   util/Texture.h
   util/Timer.h
   util/TextureUtils.h
+  util/RandGenData.h
+  util/RandGenHost.h
 
   shaders/LinearMath.h
   shaders/Common.h
@@ -59,6 +61,7 @@ set( HEADERS
   shaders/HalfPrecision.h
   shaders/Sampler.h
   shaders/SystemParameter.h
+  shaders/RandGen.h
 )
 
 set( SOURCES
@@ -77,6 +80,7 @@ set( SOURCES
   util/Picture.cpp
   util/Texture.cpp
   util/TextureUtils.cpp
+  util/RandGenHost.cpp
 )
 
 set( SHADERS
@@ -96,6 +100,7 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Camera.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/HalfPrecision.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/Sampler.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/RandGen.h
 )
 
 set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")

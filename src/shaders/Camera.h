@@ -49,7 +49,7 @@ struct __align__(16) Camera
         pitch = yawPitch.y;
         up = Float3{ 0.0f, 1.0f, 0.0f };
         focal = 5.0f;
-        aperture = 0.001f;
+        aperture = 0.0f;
         resolution = Float2{ (float)width, (float)height };
         fov.x = 90.0f * Pi_over_180;
     }

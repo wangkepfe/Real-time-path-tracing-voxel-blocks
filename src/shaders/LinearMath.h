@@ -1043,4 +1043,54 @@ INL_DEVICE void WarpReduceSum(T& v)
     }
 }
 
+INL_DEVICE Float2 copysignf2(const Float2& a, const Float2& b)
+{
+    return { copysignf(a.x, b.x), copysignf(a.y, b.y) };
+}
+
+INL_DEVICE Float3 CatmulRom(float T, Float3 D, Float3 C, Float3 B, Float3 A)
+{
+    return 0.5f * ((2.0f * B) + (-A + C) * T + (2.0f * A - 5.0f * B + 4.0f * C - D) * T * T + (-A + 3.0f * B - 3.0f * C + D) * T * T * T);
+}
+
+INL_DEVICE Float3 ColorRampBSpline(float T, Float4 A, Float4 B, Float4 C, Float4 D)
+{
+    float AB = B.w - A.w;
+    float BC = C.w - B.w;
+    float CD = D.w - C.w;
+
+    float iAB = clampf((T - A.w) / AB);
+    float iBC = clampf((T - B.w) / BC);
+    float iCD = clampf((T - C.w) / CD);
+
+    Float4 p = Float4(1.0f - iAB, iAB - iBC, iBC - iCD, iCD);
+    Float3 cA = CatmulRom(p.x, A.xyz, A.xyz, B.xyz, C.xyz);
+    Float3 cB = CatmulRom(p.y, A.xyz, B.xyz, C.xyz, D.xyz);
+    Float3 cC = CatmulRom(p.z, B.xyz, C.xyz, D.xyz, D.xyz);
+    Float3 cD = D.xyz;
+
+    if (T < B.w) return cA;
+    if (T < C.w) return cB;
+    if (T < D.w) return cC;
+    return cD;
+}
+
+INL_DEVICE Float3 ColorHexToFloat3(int Hex)
+{
+    // 0xABCDEF
+    int AB = (Hex & 0x00FF0000) >> 16;
+    int CD = (Hex & 0x0000FF00) >> 8;
+    int EF = Hex & 0x000000FF;
+    return pow3f(Float3(AB, CD, EF) / 255.0f, Float3(2.2f));
+}
+
+INL_DEVICE Float3 ColorRampVisualization(float t)
+{
+    Float4 A = Float4(ColorHexToFloat3(0x6a2c70), 0.05);
+    Float4 B = Float4(ColorHexToFloat3(0xb83b5e), 0.22);
+    Float4 C = Float4(ColorHexToFloat3(0xf08a5d), 0.5);
+    Float4 D = Float4(ColorHexToFloat3(0xf9ed69), 0.9);
+    return ColorRampBSpline(t, A, B, C, D);
+}
+
 }

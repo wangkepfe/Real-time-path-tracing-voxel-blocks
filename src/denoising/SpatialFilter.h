@@ -2,6 +2,7 @@
 #include "shaders/Sampler.h"
 #include "util/Gaussian.h"
 #include "core/GlobalSettings.h"
+#include "shaders/ShaderDebugUtils.h"
 
 #define SPATIAL_FILTER_7X7_USE_SAMPLE_KERNEL_3D_PATTERN 0
 #define SPATIAL_FILTER_7X7_USE_DEFAULT_PATTERN 0
@@ -141,7 +142,11 @@ __global__ void SpatialFilter7x7(
     Float3 normalValue = half3ToFloat3(center.normal);
     ushort maskValue = center.mask;
 
-    if (depthValue >= RayMaxLowerBound) return;
+    uint finalMat = (uint)maskValue % NUM_MATERIALS;
+    if (finalMat == SKY_MATERIAL_ID)
+    {
+        return;
+    }
 
     // -------------------------------- atrous filter --------------------------------
     Float3 sumOfColor = Float3(0.0f);
@@ -225,6 +230,6 @@ __global__ void SpatialFilter7x7(
 
     // store to current
     Store2DHalf4(Float4(finalColor, 0), colorBuffer, Int2(x, y));
-}
+    }
 
 }

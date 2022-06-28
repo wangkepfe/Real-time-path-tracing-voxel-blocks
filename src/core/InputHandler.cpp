@@ -61,6 +61,7 @@ void InputHandler::KeyCallback(GLFWwindow* window, int key, int scancode, int ac
 void InputHandler::CursorPosCallback(GLFWwindow* window, double xpos, double ypos)
 {
     auto& inputHandler = InputHandler::Get();
+    Backend& backend = Backend::Get();
     if (inputHandler.appmode == AppMode::Gameplay)
     {
         if (inputHandler.cursorReset)
@@ -82,6 +83,8 @@ void InputHandler::CursorPosCallback(GLFWwindow* window, double xpos, double ypo
         camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
         camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
         camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
+
+        backend.resetAccumulationCounter();
     }
 }
 
@@ -103,6 +106,8 @@ void InputHandler::update()
         if (moveX) movingDir -= Float3(0, 1, 0);
 
         camera.pos += movingDir * backend.getTimer().getDeltaTime() * moveSpeed;
+
+        backend.resetAccumulationCounter();
     }
 }
 

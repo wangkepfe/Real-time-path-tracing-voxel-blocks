@@ -25,6 +25,7 @@ enum Buffer2DName
     NormalBuffer,                  // normalBu buffer
     DepthBuffer,                   // depth buffer
     HistoryDepthBuffer,            // depth buffer
+    HistoryNormalBuffer,
 
     MotionVectorBuffer,            // motion vector buffer
     NoiseLevelBuffer,              // noise level
