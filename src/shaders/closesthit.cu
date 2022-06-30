@@ -138,8 +138,6 @@ extern "C" __global__ void __closesthit__radiance()
         state.normal = -state.normal;
     }
 
-    rayData->normal = state.normal;
-
     rayData->radiance = Float3(0.0f);
     rayData->f_over_pdf = Float3(0.0f);
     rayData->pdf = 0.0f;
@@ -148,22 +146,46 @@ extern "C" __global__ void __closesthit__radiance()
 
     Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
+    float texMip0Size = parameters.texSize.length();
+    float lod = log2f(rayData->rayConeWidth * parameters.uvScale * texMip0Size);
+
     if (parameters.textureAlbedo != 0)
     {
-        float texMip0Size = parameters.texSize.length();
-        float lod = log2f(rayData->rayConeWidth * parameters.uvScale * texMip0Size);
         const Float3 texColor = Float3(tex2DLod<float4>(parameters.textureAlbedo, state.texcoord.x, state.texcoord.y, lod));
         albedo *= texColor;
     }
 
+    if (parameters.textureNormal != 0)
+    {
+        Float3 texNormal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
+        alignVector(state.normal, texNormal);
+        state.normal = texNormal;
+    }
+
+    if (parameters.textureRoughness != 0)
+    {
+        float texRoughness = tex2DLod<float1>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod).x;
+        if (texRoughness < 0.1f)
+        {
+            parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
+        }
+        else
+        {
+            parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
+        }
+    }
+
+    rayData->normal = state.normal;
+
     rayData->flags = rayData->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 
     rayData->material = parameters.indexBSDF;
+
+    const bool isDiffuse = parameters.indexBSDF >= NUM_SPECULAR_BSDF;
+
     rayData->albedo *= albedo;
 
     const int indexBsdfSample = NUM_LIGHT_TYPES + parameters.indexBSDF;
-
-    const bool isDiffuse = parameters.indexBSDF >= NUM_SPECULAR_BSDF;
 
     Float3 surfWi;
     Float3 surfBsdfOverPdf;
@@ -173,6 +195,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     if (isDiffuse)
     {
+        rayData->albedo *= (1.0f + abs(dot(state.normal, rayData->centerRayDir)));
         rayData->flags |= FLAG_DIFFUSED;
 
         const int numLights = sysParam.numLights;
@@ -181,6 +204,10 @@ extern "C" __global__ void __closesthit__radiance()
         LightDefinition const& light = sysParam.lightDefinitions[indexLight];
         const int indexCallable = light.type;
         LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const Float3, const Float2>(indexCallable, light, rayData->pos, randNum);
+
+        // Directional light test
+        // lightSample.pdf = 1.0f;
+        // lightSample.direction = normalize(Float3(1, 1, 0));
 
         float misLightSurf = powerHeuristic(lightSample.pdf, surfPdf);
         if (0.0f < lightSample.pdf && rayData->rand() < misLightSurf) // Useful light sample?
@@ -200,7 +227,7 @@ extern "C" __global__ void __closesthit__radiance()
                 const float misWeight = powerHeuristic(lightSample.pdf, lightPdf);
 
                 rayData->wi = lightSample.direction;
-                rayData->f_over_pdf = misWeight * lightBsdf / lightSample.pdf;
+                rayData->f_over_pdf = misWeight * lightBsdf * fmaxf(0.0f, dot(rayData->wi, state.normal)) / lightSample.pdf;
                 rayData->pdf = lightSample.pdf;
             }
         }

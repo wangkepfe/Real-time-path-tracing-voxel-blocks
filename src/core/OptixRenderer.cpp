@@ -370,6 +370,8 @@ void OptixRenderer::init()
         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
         parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
+        parameters.textureNormal = 0;
+        parameters.textureRoughness = 0;
         parameters.flags = 0;
         parameters.absorption = Float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
         parameters.ior = 1.52f;                                                             // Flint glass. Higher IOR than the surrounding box.
@@ -514,7 +516,9 @@ void OptixRenderer::init()
             Picture* picture = new Picture; // Separating image file handling from CUDA texture handling.
 
             const unsigned int flags = IMAGE_FLAG_2D | IMAGE_FLAG_ENV;
-            if (!picture->load("data/NV_Default_HDR_3000x1500.hdr", flags))
+            std::string hdrMapName = "data/NV_Default_HDR_3000x1500.hdr";
+            // std::string hdrMapName = "data/HDR_111_Parking_Lot_2_Ref.hdr";
+            if (!picture->load(hdrMapName, flags))
             {
                 picture->generateEnvironment(8, 8); // Generate a white 8x8 RGBA32F dummy environment picture.
             }

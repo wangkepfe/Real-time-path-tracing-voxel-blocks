@@ -701,11 +701,27 @@ __global__ void TemporalFilter(
             return;
         }
 
+
+        // else
+        // {
+        //     maskValue = Load2DUshort1(materialBuffer, Int2(x, y));
+        //     ushort historyMaterial = Load2DUshort1(materialHistoryBuffer, Int2(x, y));
+        //     outMaterial = (maskValue == SkyMaterialID) ? historyMaterial : maskValue;
+        // }
+
         maskValue = Load2DUshort1(materialBuffer, Int2(x, y));
-        if (maskValue == SkyMaterialID)
+        ushort historyMaterial = Load2DUshort1(materialHistoryBuffer, Int2(x, y));
+        outMaterial = (maskValue == SkyMaterialID) ? historyMaterial : maskValue;
+
+        if (accuCounter == 2)
         {
-            // return;
+            outMaterial = maskValue;
         }
+
+        // if (outMaterial == SkyMaterialID)
+        // {
+        //     return;
+        // }
 
         float blendFactor = min(0.5f, 1.0f / (float)accuCounter);
 
@@ -722,9 +738,9 @@ __global__ void TemporalFilter(
         else
         {
             colorHistory = Load2DHalf4(historyColorBuffer, Int2(x, y)).xyz;
+
             // outNormal = Load2DHalf4(normalBuffer, Int2(x, y)).xyz;
             outDepth = Load2DHalf1(depthBuffer, Int2(x, y));
-            outMaterial = maskValue;
         }
 
 
@@ -738,17 +754,14 @@ __global__ void TemporalFilter(
         {
             // Float3 historyNormal = Load2DHalf4(normalHistoryBuffer, Int2(x, y)).xyz;
             float historyDepth = Load2DHalf1(depthHistoryBuffer, Int2(x, y));
-            ushort historyMaterial = Load2DUshort1(materialHistoryBuffer, Int2(x, y));
 
             // outNormal = outNormal * blendFactor + historyNormal * (1.0f - blendFactor);
             outDepth = outDepth * blendFactor + historyDepth * (1.0f - blendFactor);
-            outMaterial = min(outMaterial, historyMaterial);
         }
-
     }
 
     // Write to current buffer
-    if (maskValue != SkyMaterialID)
+    if (outMaterial != SkyMaterialID)
     {
         Store2DHalf4(Float4(outColor, 0), colorBuffer, Int2(x, y));
     }

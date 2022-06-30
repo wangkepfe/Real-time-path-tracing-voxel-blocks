@@ -216,14 +216,13 @@ extern "C" __global__ void __raygen__pathtracer()
     const Float2 samplePixelJitterOffset = rayData->rand2();
     const Float2 sampleApertureJitterOffset = rayData->rand2();
 
-    Float3 centerDir;
     Float2 sampleUv;
-    GenerateRay(rayData->pos, rayData->wi, centerDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+    GenerateRay(rayData->pos, rayData->wi, rayData->centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
 
     // This renderer supports nested volumes. The absorption coefficient and IOR of the volume the ray is currently inside.
     Float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
 
-    Float3 radiance = Float3(1.0f);
+    Float3 radiance = Float3(0.0f);
     Float3 throughput = Float3(1.0f);
 
     int stackIdx = MaterialStackEmpty;

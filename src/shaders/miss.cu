@@ -25,6 +25,16 @@ extern "C" __global__ void __miss__env_sphere()
     thePrd->totalDistance = RayMax;
     thePrd->flags |= FLAG_TERMINATE;
     thePrd->material = SKY_MATERIAL_ID;
+
+    // Directional light test
+    // if (dot(normalize(Float3(1, 1, 0)), R) > 0.99f)
+    // {
+    //     thePrd->radiance = Float3(1.0f);
+    // }
+    // else
+    // {
+    //     thePrd->radiance = Float3(0.0f);
+    // }
 }
 
 }

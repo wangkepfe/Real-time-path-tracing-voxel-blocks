@@ -4,16 +4,6 @@
 namespace jazzfusion
 {
 
-__forceinline__ __device__ void alignVector(Float3 const& axis, Float3& w)
-{
-    // Align w with axis.
-    const float s = copysignf(1.0f, axis.z);
-    w.z *= s;
-    const Float3 h = Float3(axis.x, axis.y, axis.z + s);
-    const float k = dot(w, h) / (1.0f + fabsf(axis.z));
-    w = k * h - w;
-}
-
 __forceinline__ __device__ void unitSquareToCosineHemisphere(const Float2 sample, Float3 const& axis, Float3& w, float& pdf)
 {
     // Choose a point on the local hemisphere coordinates about +z.

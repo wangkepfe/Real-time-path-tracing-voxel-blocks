@@ -63,6 +63,9 @@ struct __align__(16) PerRayData
     Float3 albedo;
     float totalDistance;
 
+    Float3 centerRayDir;
+    float unused;
+
     float randNums[8];
 
     INL_DEVICE float rand()
