@@ -293,6 +293,8 @@ __global__ void TemporalFilter(
     float outDepth;
     ushort outMaterial;
 
+    ushort maskValue;
+
     if constexpr (IsFirstAccumulation)
     {
         // calculate address
@@ -379,7 +381,7 @@ __global__ void TemporalFilter(
         // load center
         AtrousLDS center = sharedBuffer[centerIdx];
         Float3 colorValue = half3ToFloat3(center.color);
-        ushort maskValue = center.mask;
+        maskValue = center.mask;
         float depthValue;
         Float3 albedoValue;
         if constexpr (IsFirstPass)
@@ -415,7 +417,7 @@ __global__ void TemporalFilter(
         Float3 neighbourAlbedoMin2 = RgbToYcocg(albedoValue);
 
         Float3 filteredColor = Float3(0);
-        Float3 filteredAlbedo = Float3(0);
+        // Float3 filteredAlbedo = Float3(0);
         float weightSum = 0;
 
         int j;
@@ -483,7 +485,7 @@ __global__ void TemporalFilter(
 
                 // accumulate
                 filteredColor += color * weight;
-                filteredAlbedo += albedo * weight;
+                // filteredAlbedo += albedo * weight;
                 weightSum += weight;
             }
 
@@ -520,19 +522,22 @@ __global__ void TemporalFilter(
             neighbourMax = (neighbourMax + neighbourMax2) / 2.0f;
             neighbourMin = (neighbourMin + neighbourMin2) / 2.0f;
 
-            neighbourAlbedoMax = (neighbourAlbedoMax + neighbourAlbedoMax2) / 2.0f;
-            neighbourAlbedoMin = (neighbourAlbedoMin + neighbourAlbedoMin2) / 2.0f;
+            if constexpr (IsFirstPass)
+            {
+                neighbourAlbedoMax = (neighbourAlbedoMax + neighbourAlbedoMax2) / 2.0f;
+                neighbourAlbedoMin = (neighbourAlbedoMin + neighbourAlbedoMin2) / 2.0f;
+            }
         }
 
         if (weightSum > 0)
         {
             filteredColor /= weightSum;
-            filteredAlbedo /= weightSum;
+            // filteredAlbedo /= weightSum;
         }
         else
         {
             filteredColor = Float3(0.5f);
-            filteredAlbedo = Float3(0.5f);
+            // filteredAlbedo = Float3(0.5f);
         }
 
         if (isnan(filteredColor.x) || isnan(filteredColor.y) || isnan(filteredColor.z))
@@ -551,7 +556,7 @@ __global__ void TemporalFilter(
             if constexpr (IsFirstPass)
             {
                 outColor = filteredColor;
-                outAlbedo = filteredAlbedo;
+                outAlbedo = albedoValue;
             }
             else
             {
@@ -630,13 +635,14 @@ __global__ void TemporalFilter(
             //     historyNormal = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>>(normalHistoryBuffer, historyUv, historySize);
             // }
 
-            float blendFactor = 1.0f / 256.0f;
+            float blendFactor = 1.0f / 2.0f;
             Float3 blendedColorHistory = clampedColorHistory * (1.0f - discardHistoryFactor) + filteredColor * discardHistoryFactor;
 
             Float3 blendedAlbedoHistory;
             if constexpr (IsFirstPass)
             {
-                blendedAlbedoHistory = clampedAlbedoHistory * (1.0f - discardHistoryFactor) + filteredAlbedo * discardHistoryFactor;
+                // blendedAlbedoHistory = clampedAlbedoHistory * (1.0f - discardHistoryFactor) + filteredAlbedo * discardHistoryFactor;
+                blendedAlbedoHistory = clampedAlbedoHistory * (1.0f - discardHistoryFactor) + albedoValue * discardHistoryFactor;
             }
 
             float lumaHistory;
@@ -669,20 +675,15 @@ __global__ void TemporalFilter(
                 weightB *= weightSum;
 
                 outColor = colorValue * weightA + blendedColorHistory * weightB;
-
-                if constexpr (IsFirstPass)
-                {
-                    outAlbedo = albedoValue * weightA + blendedAlbedoHistory * weightB;
-                }
             }
             else
             {
                 outColor = colorValue * blendFactor + blendedColorHistory * (1.0f - blendFactor);
+            }
 
-                if constexpr (IsFirstPass)
-                {
-                    outAlbedo = albedoValue * blendFactor + blendedAlbedoHistory * (1.0f - blendFactor);
-                }
+            if constexpr (IsFirstPass)
+            {
+                outAlbedo = lerp3f(blendedAlbedoHistory, albedoValue, 0.5f);
             }
 
             if constexpr (!IsFirstPass)
@@ -700,7 +701,7 @@ __global__ void TemporalFilter(
             return;
         }
 
-        ushort maskValue = Load2DUshort1(materialBuffer, Int2(x, y));
+        maskValue = Load2DUshort1(materialBuffer, Int2(x, y));
         if (maskValue == SkyMaterialID)
         {
             // return;
@@ -726,29 +727,31 @@ __global__ void TemporalFilter(
             outMaterial = maskValue;
         }
 
-        if (maskValue != SkyMaterialID)
+
+        outColor = outColor * blendFactor + colorHistory * (1.0f - blendFactor);
+
+        if constexpr (IsFirstPass)
         {
-            outColor = outColor * blendFactor + colorHistory * (1.0f - blendFactor);
-
-            if constexpr (IsFirstPass)
-            {
-                outAlbedo = outAlbedo * blendFactor + albedoHistory * (1.0f - blendFactor);
-            }
-            else
-            {
-                // Float3 historyNormal = Load2DHalf4(normalHistoryBuffer, Int2(x, y)).xyz;
-                float historyDepth = Load2DHalf1(depthHistoryBuffer, Int2(x, y));
-                ushort historyMaterial = Load2DUshort1(materialHistoryBuffer, Int2(x, y));
-
-                // outNormal = outNormal * blendFactor + historyNormal * (1.0f - blendFactor);
-                outDepth = outDepth * blendFactor + historyDepth * (1.0f - blendFactor);
-                outMaterial = min(outMaterial, historyMaterial);
-            }
+            outAlbedo = outAlbedo * blendFactor + albedoHistory * (1.0f - blendFactor);
         }
+        else
+        {
+            // Float3 historyNormal = Load2DHalf4(normalHistoryBuffer, Int2(x, y)).xyz;
+            float historyDepth = Load2DHalf1(depthHistoryBuffer, Int2(x, y));
+            ushort historyMaterial = Load2DUshort1(materialHistoryBuffer, Int2(x, y));
+
+            // outNormal = outNormal * blendFactor + historyNormal * (1.0f - blendFactor);
+            outDepth = outDepth * blendFactor + historyDepth * (1.0f - blendFactor);
+            outMaterial = min(outMaterial, historyMaterial);
+        }
+
     }
 
     // Write to current buffer
-    Store2DHalf4(Float4(outColor, 0), colorBuffer, Int2(x, y));
+    if (maskValue != SkyMaterialID)
+    {
+        Store2DHalf4(Float4(outColor, 0), colorBuffer, Int2(x, y));
+    }
 
     if constexpr (IsFirstPass)
     {

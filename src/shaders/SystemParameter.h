@@ -77,9 +77,6 @@ struct SystemParameter
     SurfObj outAlbedo;
     SurfObj outMaterial;
     SurfObj outMotionVector;
-    SurfObj outNormalFront;
-    SurfObj outDepthFront;
-    SurfObj outMaterialFront;
 
     LightDefinition* lightDefinitions;
 

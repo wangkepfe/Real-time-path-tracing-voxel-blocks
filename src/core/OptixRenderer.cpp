@@ -921,10 +921,6 @@ void OptixRenderer::init()
         m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
         m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
         m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
-
-        m_systemParameter.outNormalFront = bufferManager.GetBuffer2D(NormalFrontBuffer);
-        m_systemParameter.outDepthFront = bufferManager.GetBuffer2D(DepthFrontBuffer);
-        m_systemParameter.outMaterialFront = bufferManager.GetBuffer2D(MaterialFrontBuffer);
     }
 
     {
