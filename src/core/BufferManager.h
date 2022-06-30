@@ -12,6 +12,7 @@ enum Buffer2DName
     RenderColorBuffer,             // main render buffer
     MaterialBuffer,
     MaterialHistoryBuffer,
+    AccumulationCounterBuffer,
 
     AccumulationColorBuffer,       // accumulation render buffer
     HistoryColorBuffer,
@@ -27,6 +28,14 @@ enum Buffer2DName
     HistoryDepthBuffer,            // depth buffer
     HistoryNormalBuffer,
 
+    NormalFrontBuffer,
+    DepthFrontBuffer,
+    MaterialFrontBuffer,
+
+    HistoryNormalFrontBuffer,
+    HistoryDepthFrontBuffer,
+    HistoryMaterialFrontBuffer,
+
     MotionVectorBuffer,            // motion vector buffer
     NoiseLevelBuffer,              // noise level
     NoiseLevelBuffer16x16,
@@ -35,6 +44,7 @@ enum Buffer2DName
     SunBuffer,
 
     AlbedoBuffer,
+    HistoryAlbedoBuffer,
 
     Buffer2DCount,
 };

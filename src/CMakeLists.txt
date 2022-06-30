@@ -45,6 +45,7 @@ set( HEADERS
   denoising/SpatialFilter.h
   denoising/SpatialWideFilter.h
   denoising/TemporalFilter.h
+  denoising/BilateralFilter.h
 
   util/KernelHelper.h
   util/DebugUtils.h

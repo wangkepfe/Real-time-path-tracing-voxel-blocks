@@ -7,8 +7,9 @@ namespace jazzfusion
 {
 
 template<int KernelStride>
-__global__ void SpatialWideFilter5x5(
+__global__ void SpatialWideFilter(
     int frameNum,
+    int accuCounter,
     SurfObj colorBuffer,
     SurfObj materialBuffer,
     SurfObj normalBuffer,
@@ -41,8 +42,20 @@ __global__ void SpatialWideFilter5x5(
         colorValue = Float3(0.5f);
     }
 
+    // Get first hit material
+    uint firstMat = (uint)maskValue;
+    while (firstMat > NUM_MATERIALS * 2)
+    {
+        firstMat /= NUM_MATERIALS;
+    }
+    firstMat -= NUM_MATERIALS;
+
+    // Get final hit material
     uint finalMat = (uint)maskValue % NUM_MATERIALS;
-    if (finalMat == SKY_MATERIAL_ID)
+
+    bool isGlass = (firstMat == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION);
+
+    if (finalMat == SKY_MATERIAL_ID || isGlass)
     {
         return;
     }
@@ -86,7 +99,10 @@ __global__ void SpatialWideFilter5x5(
         weight *= expf(-0.5f * deltaDepth * deltaDepth);
 
         // material mask diff factor
-        weight *= (maskValue != mask) ? 1.0f / params.large_denoise_sigma_material : 1.0f;
+        // if (!isGlass)
+        {
+            weight *= (maskValue != mask) ? 1.0f / params.large_denoise_sigma_material : 1.0f;
+        }
 
         // gaussian filter weight
         weight *= GetGaussian5x5(i + j * 5);

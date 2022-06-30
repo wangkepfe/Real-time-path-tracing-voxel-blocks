@@ -5,8 +5,8 @@
 #include "shaders/ShaderDebugUtils.h"
 
 #define SPATIAL_FILTER_7X7_USE_SAMPLE_KERNEL_3D_PATTERN 0
-#define SPATIAL_FILTER_7X7_USE_DEFAULT_PATTERN 0
-#define SPATIAL_FILTER_7X7_USE_STRIDE_PATTERN 1
+#define SPATIAL_FILTER_7X7_USE_DEFAULT_PATTERN 1
+#define SPATIAL_FILTER_7X7_USE_STRIDE_PATTERN 0
 
 namespace jazzfusion
 {
@@ -37,8 +37,9 @@ namespace jazzfusion
 //       x x x x x x x x x x x x x x x x x x x x x x      2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
 //       x x x x x x x x x x x x x x x x x x x x x x      2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
 
-__global__ void SpatialFilter7x7(
+__global__ void SpatialFilter(
     int frameNum,
+    int accuCounter,
     SurfObj colorBuffer,
     SurfObj materialBuffer,
     SurfObj normalBuffer,
@@ -68,7 +69,7 @@ __global__ void SpatialFilter7x7(
     };
 
     constexpr int blockdim = 16;
-    constexpr int kernelRadius = 3;
+    constexpr int kernelRadius = 2;
 
     constexpr int threadCount = blockdim * blockdim;
 
@@ -142,8 +143,20 @@ __global__ void SpatialFilter7x7(
     Float3 normalValue = half3ToFloat3(center.normal);
     ushort maskValue = center.mask;
 
+    // Get first hit material
+    uint firstMat = (uint)maskValue;
+    while (firstMat > NUM_MATERIALS * 2)
+    {
+        firstMat /= NUM_MATERIALS;
+    }
+    firstMat -= NUM_MATERIALS;
+
+    // Get final hit material
     uint finalMat = (uint)maskValue % NUM_MATERIALS;
-    if (finalMat == SKY_MATERIAL_ID)
+
+    bool isGlass = (firstMat == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION);
+
+    if (finalMat == SKY_MATERIAL_ID || isGlass)
     {
         return;
     }
@@ -195,7 +208,10 @@ __global__ void SpatialFilter7x7(
         weight *= expf(-0.5f * deltaDepth * deltaDepth);
 
         // material mask diff factor
-        weight *= (maskValue != mask) ? 1.0f / params.local_denoise_sigma_material : 1.0f;
+        // if (!isGlass)
+        {
+            weight *= (maskValue != mask) ? 1.0f / params.local_denoise_sigma_material : 1.0f;
+        }
 
         // gaussian filter weight
         weight *= GetGaussian7x7(xoffset + yoffset * kernelDim);
@@ -230,6 +246,6 @@ __global__ void SpatialFilter7x7(
 
     // store to current
     Store2DHalf4(Float4(finalColor, 0), colorBuffer, Int2(x, y));
-    }
+}
 
 }

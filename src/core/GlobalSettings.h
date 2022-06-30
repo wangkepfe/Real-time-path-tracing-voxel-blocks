@@ -20,6 +20,8 @@ struct RenderPassSettings
             { &enableNoiseLevelVisualize, "Enable Noise Level Visualize"},
             { &enableWideSpatialFilter  , "Enable Wide Spatial Filter"  },
             { &enableTemporalDenoising2 , "Enable Temporal Denoising 2" },
+            { &enableBilateralFilter ,    "Enable Bilateral Filter"     },
+
             { &enablePostProcess        , "Enable Post Process"         },
             { &enableDownScalePasses    , "Enable Down Scale Passes"    },
             { &enableHistogram          , "Enable Histogram"            },
@@ -36,6 +38,7 @@ struct RenderPassSettings
     bool enableNoiseLevelVisualize = false;
     bool enableWideSpatialFilter = true;
     bool enableTemporalDenoising2 = true;
+    bool enableBilateralFilter = false;
 
     bool enablePostProcess = true;
     bool enableDownScalePasses = true;

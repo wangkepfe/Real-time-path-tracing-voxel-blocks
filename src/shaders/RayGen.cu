@@ -240,15 +240,21 @@ extern "C" __global__ void __raygen__pathtracer()
     bool pathTerminated = false;
 
     Float2 outMotionVector = Float2(0.5f);
-    Float3 outNormal = Float3(0.0f, -1.0f, 0.0f);
+    Float3 outNormal = Float3(0.0f, 1.0f, 0.0f);
     Float3 outAlbedo = Float3(1.0f);
     float outDepth = RayMax;
     ushort outMaterial = SKY_MATERIAL_ID;
     uint multipliedMaterial = 1;
     bool needWriteOutput = true;
-    while (depth < BounceLimit && !pathTerminated)
+
+    while (!pathTerminated)
     {
         pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx, depth);
+
+        if (depth == BounceLimit - 1)
+        {
+            pathTerminated = true;
+        }
 
         // Multiply material ID
         multipliedMaterial = multipliedMaterial * NUM_MATERIALS + rayData->material;
@@ -257,13 +263,22 @@ extern "C" __global__ void __raygen__pathtracer()
         {
             needWriteOutput = false;
 
-            outNormal = rayData->normal;
-            outDepth = rayData->totalDistance;
+            // outNormal = rayData->normal;
+            // outDepth = rayData->totalDistance;
             outMaterial = (ushort)multipliedMaterial;
 
             // Only denoise the first diffuse albedo, reset the albedo and apply the other albedo to radiance
             outAlbedo = rayData->albedo;
             rayData->albedo = Float3(1.0f);
+        }
+
+        if (depth == 0)
+        {
+            outNormal = rayData->normal;
+            outDepth = rayData->totalDistance;
+            // Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormalFront, idx);
+            // Store2DHalf1(rayData->totalDistance, sysParam.outDepthFront, idx);
+            // Store2DUshort1(rayData->material, sysParam.outMaterialFront, idx);
         }
 
         if (depth == 0 && !pathTerminated)
@@ -274,6 +289,11 @@ extern "C" __global__ void __raygen__pathtracer()
 
         ++depth; // Next path segment.
     }
+
+    // if (OPTIX_CENTER_PIXEL() && outMaterial == 3)
+    // {
+    //     OPTIX_DEBUG_PRINT(Float4(depth, pathTerminated, needWriteOutput, 0));
+    // }
 
     if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
     {

@@ -68,6 +68,8 @@ void BufferManager::init()
         { MaterialBuffer          , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
         { MaterialHistoryBuffer   , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
 
+        { AccumulationCounterBuffer      , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
+
         { AccumulationColorBuffer , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
         { HistoryColorBuffer      , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
 
@@ -82,6 +84,14 @@ void BufferManager::init()
         { HistoryDepthBuffer      , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
         { HistoryNormalBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
 
+        { NormalFrontBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+        { DepthFrontBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
+        { MaterialFrontBuffer     , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
+
+        { HistoryNormalFrontBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+        { HistoryDepthFrontBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
+        { HistoryMaterialFrontBuffer     , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
+
         { MotionVectorBuffer      , { cudaCreateChannelDescHalf2()     , bufferSize                          } } ,
         { NoiseLevelBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize8x8                       } } ,
         { NoiseLevelBuffer16x16   , { cudaCreateChannelDescHalf1()     , bufferSize16x16                     } } ,
@@ -90,6 +100,7 @@ void BufferManager::init()
         { SunBuffer               , { cudaCreateChannelDesc<float4>()  , UInt2(SUN_WIDTH       , SUN_HEIGHT) } } ,
 
         { AlbedoBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+        { HistoryAlbedoBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
     };
 
     assert(map.size() == Buffer2DCount);
