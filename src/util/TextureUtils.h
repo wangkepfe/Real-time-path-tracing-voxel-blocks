@@ -9,7 +9,7 @@
 namespace jazzfusion
 {
 
-static constexpr int MAX_NUM_TEXTURES = 3;
+static constexpr int MAX_NUM_TEXTURES = 64;
 
 struct Texture2D
 {

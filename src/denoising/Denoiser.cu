@@ -66,95 +66,95 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     //         bufferDim);
     // }
 
-    if (renderPassSettings.enableTemporalDenoising)
-    {
-        if (frameNum != 0)
-        {
-            if (accuCounter == 1)
-            {
-                TemporalFilter<true, true> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-                    frameNum,
-                    accuCounter,
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(AccumulationColorBuffer),
-                    bufferManager.GetBuffer2D(HistoryColorBuffer),
-                    bufferManager.GetBuffer2D(NormalBuffer),
-                    bufferManager.GetBuffer2D(HistoryNormalBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    bufferManager.GetBuffer2D(HistoryDepthBuffer),
-                    bufferManager.GetBuffer2D(MaterialBuffer),
-                    bufferManager.GetBuffer2D(MaterialHistoryBuffer),
-                    bufferManager.GetBuffer2D(AlbedoBuffer),
-                    bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
-                    bufferManager.GetBuffer2D(MotionVectorBuffer),
-                    denoisingParams,
-                    bufferDim,
-                    historyDim);
-            }
-            else
-            {
-                TemporalFilter<true, false> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-                    frameNum,
-                    accuCounter,
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(AccumulationColorBuffer),
-                    bufferManager.GetBuffer2D(HistoryColorBuffer),
-                    bufferManager.GetBuffer2D(NormalBuffer),
-                    bufferManager.GetBuffer2D(HistoryNormalBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    bufferManager.GetBuffer2D(HistoryDepthBuffer),
-                    bufferManager.GetBuffer2D(MaterialBuffer),
-                    bufferManager.GetBuffer2D(MaterialHistoryBuffer),
-                    bufferManager.GetBuffer2D(AlbedoBuffer),
-                    bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
-                    bufferManager.GetBuffer2D(MotionVectorBuffer),
-                    denoisingParams,
-                    bufferDim,
-                    historyDim);
-            }
-        }
-    }
+    // if (renderPassSettings.enableTemporalDenoising)
+    // {
+    //     if (frameNum != 0)
+    //     {
+    //         if (accuCounter == 1)
+    //         {
+    //             TemporalFilter<true, true> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //                 frameNum,
+    //                 accuCounter,
+    //                 bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                 bufferManager.GetBuffer2D(AccumulationColorBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryColorBuffer),
+    //                 bufferManager.GetBuffer2D(NormalBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryNormalBuffer),
+    //                 bufferManager.GetBuffer2D(DepthBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryDepthBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+    //                 bufferManager.GetBuffer2D(AlbedoBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
+    //                 bufferManager.GetBuffer2D(MotionVectorBuffer),
+    //                 denoisingParams,
+    //                 bufferDim,
+    //                 historyDim);
+    //         }
+    //         else
+    //         {
+    //             TemporalFilter<true, false> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //                 frameNum,
+    //                 accuCounter,
+    //                 bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                 bufferManager.GetBuffer2D(AccumulationColorBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryColorBuffer),
+    //                 bufferManager.GetBuffer2D(NormalBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryNormalBuffer),
+    //                 bufferManager.GetBuffer2D(DepthBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryDepthBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+    //                 bufferManager.GetBuffer2D(AlbedoBuffer),
+    //                 bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
+    //                 bufferManager.GetBuffer2D(MotionVectorBuffer),
+    //                 denoisingParams,
+    //                 bufferDim,
+    //                 historyDim);
+    //         }
+    //     }
+    // }
 
-    if (accuCounter < 4)
-    {
-        SpatialFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-            frameNum,
-            accuCounter,
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(MaterialBuffer),
-            bufferManager.GetBuffer2D(NormalBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-            denoisingParams,
-            bufferDim);
+    // if (accuCounter < 32)
+    // {
+    //     SpatialFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //         frameNum,
+    //         accuCounter,
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(NormalBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //         denoisingParams,
+    //         bufferDim);
 
-        CopyToAccumulationColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(AccumulationColorBuffer),
-            bufferManager.GetBuffer2D(AlbedoBuffer),
-            bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
-            bufferDim);
-    }
-    else
-    {
-        CopyToAccumulationColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(AccumulationColorBuffer),
-            bufferManager.GetBuffer2D(AlbedoBuffer),
-            bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
-            bufferDim);
+    //     CopyToAccumulationColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(AccumulationColorBuffer),
+    //         bufferManager.GetBuffer2D(AlbedoBuffer),
+    //         bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
+    //         bufferDim);
+    // }
+    // else
+    // {
+    //     CopyToAccumulationColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(AccumulationColorBuffer),
+    //         bufferManager.GetBuffer2D(AlbedoBuffer),
+    //         bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
+    //         bufferDim);
 
-        SpatialFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-            frameNum,
-            accuCounter,
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(MaterialBuffer),
-            bufferManager.GetBuffer2D(NormalBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-            denoisingParams,
-            bufferDim);
-    }
+    //     SpatialFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //         frameNum,
+    //         accuCounter,
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(NormalBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //         denoisingParams,
+    //         bufferDim);
+    // }
 
     // CopyToAccumulationColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
     //     bufferManager.GetBuffer2D(RenderColorBuffer),
@@ -212,267 +212,325 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     //         bufferDim);
     // }
 
-    if (renderPassSettings.enableWideSpatialFilter)
+    // if (renderPassSettings.enableWideSpatialFilter)
+    // {
+    //     if (ENABLE_DENOISING_NOISE_CALCULATION)
+    //     {
+    //         CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
+    //             bufferManager.GetBuffer2D(RenderColorBuffer),
+    //             bufferManager.GetBuffer2D(DepthBuffer),
+    //             bufferManager.GetBuffer2D(NoiseLevelBuffer),
+    //             bufferDim);
+
+    //         TileNoiseLevel8x8to16x16 KERNEL_ARGS2(GetGridDim(noiseLevel16x16Dim.x, noiseLevel16x16Dim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //             bufferManager.GetBuffer2D(NoiseLevelBuffer),
+    //             bufferManager.GetBuffer2D(NoiseLevelBuffer16x16));
+
+    //         if (renderPassSettings.enableNoiseLevelVisualize)
+    //         {
+    //             TileNoiseLevelVisualize<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                 bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                 bufferManager.GetBuffer2D(NormalBuffer),
+    //                 bufferManager.GetBuffer2D(DepthBuffer),
+    //                 bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //                 bufferDim,
+    //                 denoisingParams);
+    //         }
+    //     }
+
+    //     if (1 || accuCounter < 64)
+    //     {
+    //         SpatialWideFilter<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //             frameNum,
+    //             accuCounter,
+    //             bufferManager.GetBuffer2D(RenderColorBuffer),
+    //             bufferManager.GetBuffer2D(MaterialBuffer),
+    //             bufferManager.GetBuffer2D(NormalBuffer),
+    //             bufferManager.GetBuffer2D(DepthBuffer),
+    //             bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //             denoisingParams,
+    //             bufferDim);
+
+    //         if (1 || accuCounter < 32)
+    //         {
+    //             SpatialWideFilter<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                 frameNum,
+    //                 accuCounter,
+    //                 bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialBuffer),
+    //                 bufferManager.GetBuffer2D(NormalBuffer),
+    //                 bufferManager.GetBuffer2D(DepthBuffer),
+    //                 bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //                 denoisingParams,
+    //                 bufferDim);
+
+    //             if (1 || accuCounter < 16)
+    //             {
+    //                 SpatialWideFilter<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                     frameNum,
+    //                     accuCounter,
+    //                     bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                     bufferManager.GetBuffer2D(MaterialBuffer),
+    //                     bufferManager.GetBuffer2D(NormalBuffer),
+    //                     bufferManager.GetBuffer2D(DepthBuffer),
+    //                     bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //                     denoisingParams,
+    //                     bufferDim);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // RecoupleAlbedo KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //     bufferManager.GetBuffer2D(RenderColorBuffer),
+    //     bufferManager.GetBuffer2D(AlbedoBuffer),
+    //     bufferManager.GetBuffer2D(MaterialBuffer),
+    //     bufferDim);
+
+
+
+    // if (0 && accuCounter < 2)
+    // {
+    //     SpatialFilter2 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //         frameNum,
+    //         accuCounter,
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(NormalBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //         denoisingParams,
+    //         bufferDim);
+
+    //     BilateralFilter2 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //         frameNum,
+    //         accuCounter,
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         denoisingParams,
+    //         bufferDim);
+    // }
+    // {
+    //     if (0 && accuCounter < 16)
+    //     {
+    //         SpatialWideFilter2<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //             frameNum,
+    //             accuCounter,
+    //             bufferManager.GetBuffer2D(RenderColorBuffer),
+    //             bufferManager.GetBuffer2D(MaterialBuffer),
+    //             bufferManager.GetBuffer2D(NormalBuffer),
+    //             bufferManager.GetBuffer2D(DepthBuffer),
+    //             bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //             denoisingParams,
+    //             bufferDim);
+
+    //         BilateralFilterWide2<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //             frameNum,
+    //             accuCounter,
+    //             bufferManager.GetBuffer2D(RenderColorBuffer),
+    //             bufferManager.GetBuffer2D(MaterialBuffer),
+    //             bufferManager.GetBuffer2D(DepthBuffer),
+    //             denoisingParams,
+    //             bufferDim);
+
+    //         if (accuCounter < 4)
+    //         {
+    //             SpatialWideFilter2<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                 frameNum,
+    //                 accuCounter,
+    //                 bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialBuffer),
+    //                 bufferManager.GetBuffer2D(NormalBuffer),
+    //                 bufferManager.GetBuffer2D(DepthBuffer),
+    //                 bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //                 denoisingParams,
+    //                 bufferDim);
+
+    //             BilateralFilterWide2<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                 frameNum,
+    //                 accuCounter,
+    //                 bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                 bufferManager.GetBuffer2D(MaterialBuffer),
+    //                 bufferManager.GetBuffer2D(DepthBuffer),
+    //                 denoisingParams,
+    //                 bufferDim);
+
+    //             if (accuCounter < 2)
+    //             {
+    //                 SpatialWideFilter2<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                     frameNum,
+    //                     accuCounter,
+    //                     bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                     bufferManager.GetBuffer2D(MaterialBuffer),
+    //                     bufferManager.GetBuffer2D(NormalBuffer),
+    //                     bufferManager.GetBuffer2D(DepthBuffer),
+    //                     bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //                     denoisingParams,
+    //                     bufferDim);
+
+    //                 BilateralFilterWide2<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //                     frameNum,
+    //                     accuCounter,
+    //                     bufferManager.GetBuffer2D(RenderColorBuffer),
+    //                     bufferManager.GetBuffer2D(MaterialBuffer),
+    //                     bufferManager.GetBuffer2D(DepthBuffer),
+    //                     denoisingParams,
+    //                     bufferDim);
+    //             }
+    //         }
+    //     }
+
+
+    // if (renderPassSettings.enableTemporalDenoising2)
+    // {
+    if (frameNum != 0)
     {
-        if (ENABLE_DENOISING_NOISE_CALCULATION)
+        if (accuCounter == 1)
         {
-            CalculateTileNoiseLevel KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x4x1)) (
+            // TemporalFilter<false, true> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+            //     frameNum,
+            //     accuCounter,
+            //     bufferManager.GetBuffer2D(RenderColorBuffer),
+            //     bufferManager.GetBuffer2D(AccumulationColorBuffer),
+            //     bufferManager.GetBuffer2D(HistoryColorBuffer),
+            //     bufferManager.GetBuffer2D(NormalBuffer),
+            //     bufferManager.GetBuffer2D(HistoryNormalBuffer),
+            //     bufferManager.GetBuffer2D(DepthBuffer),
+            //     bufferManager.GetBuffer2D(HistoryDepthBuffer),
+            //     bufferManager.GetBuffer2D(MaterialBuffer),
+            //     bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+            //     bufferManager.GetBuffer2D(AlbedoBuffer),
+            //     bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
+            //     bufferManager.GetBuffer2D(MotionVectorBuffer),
+            //     denoisingParams,
+            //     bufferDim,
+            //     historyDim);
+
+            CopyToHistoryColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
                 bufferManager.GetBuffer2D(RenderColorBuffer),
+                bufferManager.GetBuffer2D(HistoryColorBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(NoiseLevelBuffer),
+                bufferManager.GetBuffer2D(HistoryDepthBuffer),
+                bufferManager.GetBuffer2D(MaterialBuffer),
+                bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+                bufferManager.GetBuffer2D(NormalBuffer),
+                bufferManager.GetBuffer2D(HistoryNormalBuffer),
                 bufferDim);
-
-            TileNoiseLevel8x8to16x16 KERNEL_ARGS2(GetGridDim(noiseLevel16x16Dim.x, noiseLevel16x16Dim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-                bufferManager.GetBuffer2D(NoiseLevelBuffer),
-                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16));
-
-            if (renderPassSettings.enableNoiseLevelVisualize)
-            {
-                TileNoiseLevelVisualize<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(NormalBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                    bufferDim,
-                    denoisingParams);
-            }
         }
-
-        if (1 || accuCounter < 64)
+        else
         {
-            SpatialWideFilter<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+            TemporalFilter<false, false> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
                 frameNum,
                 accuCounter,
                 bufferManager.GetBuffer2D(RenderColorBuffer),
-                bufferManager.GetBuffer2D(MaterialBuffer),
+                bufferManager.GetBuffer2D(AccumulationColorBuffer),
+                bufferManager.GetBuffer2D(HistoryColorBuffer),
                 bufferManager.GetBuffer2D(NormalBuffer),
+                bufferManager.GetBuffer2D(HistoryNormalBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+                bufferManager.GetBuffer2D(HistoryDepthBuffer),
+                bufferManager.GetBuffer2D(MaterialBuffer),
+                bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+                bufferManager.GetBuffer2D(AlbedoBuffer),
+                bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
+                bufferManager.GetBuffer2D(MotionVectorBuffer),
                 denoisingParams,
-                bufferDim);
-
-            if (1 || accuCounter < 32)
-            {
-                SpatialWideFilter<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                    frameNum,
-                    accuCounter,
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(MaterialBuffer),
-                    bufferManager.GetBuffer2D(NormalBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                    denoisingParams,
-                    bufferDim);
-
-                if (1 || accuCounter < 16)
-                {
-                    SpatialWideFilter<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                        frameNum,
-                        accuCounter,
-                        bufferManager.GetBuffer2D(RenderColorBuffer),
-                        bufferManager.GetBuffer2D(MaterialBuffer),
-                        bufferManager.GetBuffer2D(NormalBuffer),
-                        bufferManager.GetBuffer2D(DepthBuffer),
-                        bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                        denoisingParams,
-                        bufferDim);
-                }
-            }
+                bufferDim,
+                historyDim);
         }
     }
-
-    RecoupleAlbedo KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-        bufferManager.GetBuffer2D(RenderColorBuffer),
-        bufferManager.GetBuffer2D(AlbedoBuffer),
-        bufferManager.GetBuffer2D(MaterialBuffer),
-        bufferDim);
-
-    if (1 && accuCounter < 2)
-    {
-        SpatialFilter2 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-            frameNum,
-            accuCounter,
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(MaterialBuffer),
-            bufferManager.GetBuffer2D(NormalBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-            denoisingParams,
-            bufferDim);
-
-        BilateralFilter2 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-            frameNum,
-            accuCounter,
-            bufferManager.GetBuffer2D(RenderColorBuffer),
-            bufferManager.GetBuffer2D(MaterialBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            denoisingParams,
-            bufferDim);
-    }
-
-    {
-        if (0 && accuCounter < 16)
-        {
-            SpatialWideFilter2<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                frameNum,
-                accuCounter,
-                bufferManager.GetBuffer2D(RenderColorBuffer),
-                bufferManager.GetBuffer2D(MaterialBuffer),
-                bufferManager.GetBuffer2D(NormalBuffer),
-                bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                denoisingParams,
-                bufferDim);
-
-            BilateralFilterWide2<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                frameNum,
-                accuCounter,
-                bufferManager.GetBuffer2D(RenderColorBuffer),
-                bufferManager.GetBuffer2D(MaterialBuffer),
-                bufferManager.GetBuffer2D(DepthBuffer),
-                denoisingParams,
-                bufferDim);
-
-            if (accuCounter < 4)
-            {
-                SpatialWideFilter2<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                    frameNum,
-                    accuCounter,
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(MaterialBuffer),
-                    bufferManager.GetBuffer2D(NormalBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                    denoisingParams,
-                    bufferDim);
-
-                BilateralFilterWide2<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                    frameNum,
-                    accuCounter,
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(MaterialBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    denoisingParams,
-                    bufferDim);
-
-                if (accuCounter < 2)
-                {
-                    SpatialWideFilter2<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                        frameNum,
-                        accuCounter,
-                        bufferManager.GetBuffer2D(RenderColorBuffer),
-                        bufferManager.GetBuffer2D(MaterialBuffer),
-                        bufferManager.GetBuffer2D(NormalBuffer),
-                        bufferManager.GetBuffer2D(DepthBuffer),
-                        bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-                        denoisingParams,
-                        bufferDim);
-
-                    BilateralFilterWide2<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-                        frameNum,
-                        accuCounter,
-                        bufferManager.GetBuffer2D(RenderColorBuffer),
-                        bufferManager.GetBuffer2D(MaterialBuffer),
-                        bufferManager.GetBuffer2D(DepthBuffer),
-                        denoisingParams,
-                        bufferDim);
-                }
-            }
-        }
+    // }
+    // CopyToHistoryColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //     bufferManager.GetBuffer2D(RenderColorBuffer),
+    //     bufferManager.GetBuffer2D(HistoryColorBuffer),
+    //     bufferManager.GetBuffer2D(DepthBuffer),
+    //     bufferManager.GetBuffer2D(HistoryDepthBuffer),
+    //     bufferManager.GetBuffer2D(MaterialBuffer),
+    //     bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+    //     bufferManager.GetBuffer2D(NormalBuffer),
+    //     bufferManager.GetBuffer2D(HistoryNormalBuffer),
+    //     bufferDim);
 
 
-        if (renderPassSettings.enableTemporalDenoising2)
-        {
-            if (frameNum != 0)
-            {
-                if (accuCounter == 1)
-                {
-                    TemporalFilter<false, true> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-                        frameNum,
-                        accuCounter,
-                        bufferManager.GetBuffer2D(RenderColorBuffer),
-                        bufferManager.GetBuffer2D(AccumulationColorBuffer),
-                        bufferManager.GetBuffer2D(HistoryColorBuffer),
-                        bufferManager.GetBuffer2D(NormalBuffer),
-                        bufferManager.GetBuffer2D(HistoryNormalBuffer),
-                        bufferManager.GetBuffer2D(DepthBuffer),
-                        bufferManager.GetBuffer2D(HistoryDepthBuffer),
-                        bufferManager.GetBuffer2D(MaterialBuffer),
-                        bufferManager.GetBuffer2D(MaterialHistoryBuffer),
-                        bufferManager.GetBuffer2D(AlbedoBuffer),
-                        bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
-                        bufferManager.GetBuffer2D(MotionVectorBuffer),
-                        denoisingParams,
-                        bufferDim,
-                        historyDim);
-                }
-                else
-                {
-                    TemporalFilter<false, false> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-                        frameNum,
-                        accuCounter,
-                        bufferManager.GetBuffer2D(RenderColorBuffer),
-                        bufferManager.GetBuffer2D(AccumulationColorBuffer),
-                        bufferManager.GetBuffer2D(HistoryColorBuffer),
-                        bufferManager.GetBuffer2D(NormalBuffer),
-                        bufferManager.GetBuffer2D(HistoryNormalBuffer),
-                        bufferManager.GetBuffer2D(DepthBuffer),
-                        bufferManager.GetBuffer2D(HistoryDepthBuffer),
-                        bufferManager.GetBuffer2D(MaterialBuffer),
-                        bufferManager.GetBuffer2D(MaterialHistoryBuffer),
-                        bufferManager.GetBuffer2D(AlbedoBuffer),
-                        bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
-                        bufferManager.GetBuffer2D(MotionVectorBuffer),
-                        denoisingParams,
-                        bufferDim,
-                        historyDim);
-                }
-            }
-            else
-            {
-                CopyToHistoryColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
-                    bufferManager.GetBuffer2D(RenderColorBuffer),
-                    bufferManager.GetBuffer2D(HistoryColorBuffer),
-                    bufferManager.GetBuffer2D(DepthBuffer),
-                    bufferManager.GetBuffer2D(HistoryDepthBuffer),
-                    bufferManager.GetBuffer2D(MaterialBuffer),
-                    bufferManager.GetBuffer2D(MaterialHistoryBuffer),
-                    bufferManager.GetBuffer2D(NormalBuffer),
-                    bufferManager.GetBuffer2D(HistoryNormalBuffer),
-                    bufferDim);
-            }
-        }
 
-        // TemporalSpatialFilterTranslucentMaterial7x7 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-        //     frameNum,
-        //     accuCounter,
+        // CopyToHistoryColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
         //     bufferManager.GetBuffer2D(RenderColorBuffer),
+        //     bufferManager.GetBuffer2D(HistoryColorBuffer),
+        //     bufferManager.GetBuffer2D(DepthBuffer),
+        //     bufferManager.GetBuffer2D(HistoryDepthBuffer),
         //     bufferManager.GetBuffer2D(MaterialBuffer),
-        //     bufferManager.GetBuffer2D(NormalFrontBuffer),
-        //     bufferManager.GetBuffer2D(DepthFrontBuffer),
-        //     bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
-        //     denoisingParams,
+        //     bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+        //     bufferManager.GetBuffer2D(NormalBuffer),
+        //     bufferManager.GetBuffer2D(HistoryNormalBuffer),
         //     bufferDim);
 
-        // if (renderPassSettings.enableBilateralFilter)
-        // {
-        //     BilateralFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-        //         frameNum,
-        //         accuCounter,
-        //         bufferManager.GetBuffer2D(RenderColorBuffer),
-        //         bufferManager.GetBuffer2D(MaterialBuffer),
-        //         denoisingParams,
-        //         bufferDim);
+    // else
+    // {
+    //     CopyToHistoryColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(HistoryColorBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         bufferManager.GetBuffer2D(HistoryDepthBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(MaterialHistoryBuffer),
+    //         bufferManager.GetBuffer2D(NormalBuffer),
+    //         bufferManager.GetBuffer2D(HistoryNormalBuffer),
+    //         bufferDim);
 
-        //     BilateralFilterWide<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-        //         frameNum,
-        //         accuCounter,
-        //         bufferManager.GetBuffer2D(RenderColorBuffer),
-        //         bufferManager.GetBuffer2D(MaterialBuffer),
-        //         denoisingParams,
-        //         bufferDim);
-        // }
-    }
+    //     SpatialFilter2 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //         frameNum,
+    //         accuCounter,
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(NormalBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+    //         denoisingParams,
+    //         bufferDim);
+
+    //     BilateralFilter2 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+    //         frameNum,
+    //         accuCounter,
+    //         bufferManager.GetBuffer2D(RenderColorBuffer),
+    //         bufferManager.GetBuffer2D(MaterialBuffer),
+    //         bufferManager.GetBuffer2D(DepthBuffer),
+    //         denoisingParams,
+    //         bufferDim);
+    // }
+
+
+
+// TemporalSpatialFilterTranslucentMaterial7x7 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+//     frameNum,
+//     accuCounter,
+//     bufferManager.GetBuffer2D(RenderColorBuffer),
+//     bufferManager.GetBuffer2D(MaterialBuffer),
+//     bufferManager.GetBuffer2D(NormalFrontBuffer),
+//     bufferManager.GetBuffer2D(DepthFrontBuffer),
+//     bufferManager.GetBuffer2D(NoiseLevelBuffer16x16),
+//     denoisingParams,
+//     bufferDim);
+
+// if (renderPassSettings.enableBilateralFilter)
+// {
+//     BilateralFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+//         frameNum,
+//         accuCounter,
+//         bufferManager.GetBuffer2D(RenderColorBuffer),
+//         bufferManager.GetBuffer2D(MaterialBuffer),
+//         denoisingParams,
+//         bufferDim);
+
+//     BilateralFilterWide<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+//         frameNum,
+//         accuCounter,
+//         bufferManager.GetBuffer2D(RenderColorBuffer),
+//         bufferManager.GetBuffer2D(MaterialBuffer),
+//         denoisingParams,
+//         bufferDim);
+// }
 
 }
+
 }

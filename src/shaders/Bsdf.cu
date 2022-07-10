@@ -115,18 +115,44 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
         reflective = evaluateFresnelDielectric(eta, dot(prd->wo, state.normal));
     }
 
-    const float pseudo = prd->rand();
-    if (pseudo < reflective)
+    if (prd->flags & FLAG_VOLUME) // If we are inside a volumn
     {
-        wi = R; // Fresnel reflection or total internal reflection.
+        if (reflective == 1.0f) // Either total reflection
+        {
+            wi = R;
+        }
+        else // Or total transmission
+        {
+            prd->flags |= FLAG_TRANSMISSION;
+        }
+        f_over_pdf = Float3(1.0f);
     }
-    else if (!(prd->flags & FLAG_THINWALLED)) // Only non-thinwalled materials have a volume and transmission events.
+    else
     {
-        prd->flags |= FLAG_TRANSMISSION;
+        if (prd->sampleIdx & 0x1)
+        {
+            wi = R; // Fresnel reflection or total internal reflection.
+            f_over_pdf = Float3(reflective);
+        }
+        else if (!(prd->flags & FLAG_THINWALLED)) // Only non-thinwalled materials have a volume and transmission events.
+        {
+            prd->flags |= FLAG_TRANSMISSION;
+            f_over_pdf = Float3(1.0f - reflective);
+        }
+
+        // const float pseudo = prd->rand();
+        // if (pseudo < reflective)
+        // {
+        //     wi = R; // Fresnel reflection or total internal reflection.
+        // }
+        // else if (!(prd->flags & FLAG_THINWALLED)) // Only non-thinwalled materials have a volume and transmission events.
+        // {
+        //     prd->flags |= FLAG_TRANSMISSION;
+        // }
     }
 
     // No Fresnel factor here. The probability to pick one or the other side took care of that.
-    f_over_pdf = Float3(1.0f);
+    // f_over_pdf = Float3(1.0f);
     pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
 }
 

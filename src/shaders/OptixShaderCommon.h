@@ -18,9 +18,11 @@ static constexpr int FLAG_THINWALLED = 0x00000020;
 static constexpr int FLAG_TRANSMISSION = 0x00000100;
 static constexpr int FLAG_VOLUME = 0x00001000;
 
+static constexpr int FLAG_SHADOW_HIT = 0x00002000;
+
 static constexpr int FLAG_TERMINATE = 0x80000000;
 
-static constexpr int FLAG_CLEAR_MASK = FLAG_DIFFUSED;
+static constexpr int FLAG_CLEAR_MASK = FLAG_DIFFUSED | FLAG_SHADOW;
 
 // Currently only containing some vertex attributes in world coordinates.
 struct State
@@ -39,40 +41,40 @@ struct __align__(16) PerRayData
     float distance; // Distance from the ray origin to the current position, in world space. Needed for absorption of nested materials.
 
     Float3 wo; // Outgoing direction, to observer, in world space.
-    uint randNumIdx; // Random number generator input.
+    uint flags;
 
     Float3 wi; // Incoming direction, to light, in world space.
     uint depth;
 
     Float3 radiance; // Radiance along the current path segment.
-    int flags;       // Bitfield with flags. See FLAG_* defines for its contents.
+    uint material;
 
     Float3 f_over_pdf; // BSDF sample throughput, pre-multiplied f_over_pdf = bsdf.f * fabsf(dot(wi, ns) / bsdf.pdf;
     float pdf;         // The last BSDF sample's pdf, tracked for multiple importance sampling.
 
-    Float3 extinction; // The current volume's extinction coefficient. (Only absorption in this implementation.)
-    float opacity;     // Cutout opacity result.
-
     Float2 ior;            // .x = IOR the ray currently is inside, .y = the IOR of the surrounding volume. The IOR of the current material is in absorption_ior.w!
-    uint material;
+    float rayConeSpread;
     float rayConeWidth;
 
     Float3 normal;
-    float rayConeSpread;
+    uint seed;
 
     Float3 albedo;
-    float totalDistance;
+    uint sampleIdx;
 
-    Float3 centerRayDir;
-    float unused;
-
-    float randNums[8];
+    // float totalDistance;
+    // Float3 lightEmission;
+    // float lightPdf;
+    // Float3 centerRayDir;
+    // uint unused;
+    // float randNums[8];
 
     INL_DEVICE float rand()
     {
-        float res = randNums[randNumIdx];
-        randNumIdx = (randNumIdx + 1) % 8;
-        return res;
+        // float res = randNums[randNumIdx];
+        // randNumIdx = (randNumIdx + 1) % 8;
+        // return res;
+        return rng(seed);
     }
 
     INL_DEVICE Float2 rand2()

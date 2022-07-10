@@ -358,9 +358,9 @@ void OptixRenderer::init()
         parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
         parameters.albedo = Float3(1.0f);
         parameters.uvScale = 1.0f / 8.0f;
-        parameters.textureAlbedo = textureManager.GetTexture("data/TexturesCom_OutdoorFloor4_1K_albedo.png");
-        parameters.textureNormal = textureManager.GetTexture("data/TexturesCom_OutdoorFloor4_1K_normal.png");
-        parameters.textureRoughness = textureManager.GetTexture("data/TexturesCom_OutdoorFloor4_1K_roughness.png");
+        parameters.textureAlbedo = textureManager.GetTexture("data/TexturesCom_VinylChecker_1K_albedo.png");
+        parameters.textureNormal = textureManager.GetTexture("data/TexturesCom_VinylChecker_1K_normal.png");
+        parameters.textureRoughness = textureManager.GetTexture("data/TexturesCom_VinylChecker_1K_roughness.png");
         parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.5f;
         parameters.flags = 0;                       // FLAG_THINWALLED;
@@ -379,8 +379,10 @@ void OptixRenderer::init()
 
         // Lambert material
         parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
-        parameters.albedo = Float3(0.75f, 1.0f, 1.0f);
+        parameters.albedo = Float3(1.0f, 0.2f, 0.2f);
         parameters.textureAlbedo = 0;
+        parameters.textureNormal = 0;
+        parameters.textureRoughness = 0;
         parameters.flags = 0;
         parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.5f;
@@ -388,8 +390,10 @@ void OptixRenderer::init()
 
         // Tinted mirror material.
         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo = Float3(0.9f, 0.9f, 0.9f);
+        parameters.albedo = Float3(0.2f, 0.2f, 1.0f); // blue
         parameters.textureAlbedo = 0;
+        parameters.textureNormal = 0;
+        parameters.textureRoughness = 0;
         parameters.flags = 0;
         parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.33f;
@@ -399,6 +403,8 @@ void OptixRenderer::init()
         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
         parameters.albedo = Float3(0.0f, 1.0f, 1.0f);
         parameters.textureAlbedo = 0;
+        parameters.textureNormal = 0;
+        parameters.textureRoughness = 0;
         parameters.flags = 0;
         parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
         parameters.ior = 1.0f;
@@ -439,7 +445,7 @@ void OptixRenderer::init()
         {
             1.0f, 0.0f, 0.0f, -2.5f, // Move to the left.
             0.0f, 1.0f, 0.0f, 1.25f, // The box is modeled with unit coordinates in the range [-1, 1], Move it above the floor plane.
-            0.0f, 0.0f, 1.0f, 0.0f
+            0.0f, 0.0f, 1.0f, -1.0f
         };
         unsigned int id = static_cast<unsigned int>(m_instances.size());
 
@@ -461,7 +467,7 @@ void OptixRenderer::init()
         {
             1.0f, 0.0f, 0.0f, 0.0f,  // In the center, to the right of the box.
             0.0f, 1.0f, 0.0f, 1.25f, // The sphere is modeled with radius 1.0f. Move it above the floor plane to show shadows.
-            0.0f, 0.0f, 1.0f, 0.0f
+            0.0f, 0.0f, 1.0f, 1.0f
         };
         unsigned int id = static_cast<unsigned int>(m_instances.size());
 
@@ -483,7 +489,7 @@ void OptixRenderer::init()
         {
             1.0f, 0.0f, 0.0f, 2.5f,  // Move it to the right of the sphere.
             0.0f, 1.0f, 0.0f, 1.25f, // The torus has an outer radius of 0.5f. Move it above the floor plane.
-            0.0f, 0.0f, 1.0f, 0.0f
+            0.0f, 0.0f, 1.0f, -1.5f
         };
         unsigned int id = static_cast<unsigned int>(m_instances.size());
 

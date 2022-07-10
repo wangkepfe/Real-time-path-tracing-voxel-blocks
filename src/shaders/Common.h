@@ -56,4 +56,10 @@ enum OtherMaterialIndex
 
 static constexpr int SkyMaterialID = NUM_MATERIALS + SKY_MATERIAL_ID;
 
+static constexpr uint RAY_MAT_FLAG_DIFFUSE = 0x00008000;
+static constexpr uint RAY_MAT_FLAG_SKY = 0x00004000;
+static constexpr uint RAY_MAT_FLAG_REFL = 0x00000001;
+static constexpr uint RAY_MAT_FLAG_REFR = 0x00000002;
+static constexpr uint RAY_MAT_FLAG_REFL_REFR = 0x00000003;
+
 }

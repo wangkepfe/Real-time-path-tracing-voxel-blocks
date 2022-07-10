@@ -1,5 +1,6 @@
 #include "OptixShaderCommon.h"
 #include "SystemParameter.h"
+#include "ShaderDebugUtils.h"
 
 namespace jazzfusion
 {
@@ -9,9 +10,22 @@ extern "C" __constant__ SystemParameter sysParam;
 extern "C" __global__ void __miss__env_sphere()
 {
     // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
-    PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+    PerRayData* rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
-    const Float3 R = thePrd->wi; // theRay.direction;
+    if (rayData->flags & FLAG_SHADOW)
+    {
+        return;
+    }
+
+    Float3 emission;
+
+    // if ((rayData->flags & FLAG_DIFFUSED))
+    // {
+    //     emission = rayData->lightEmission;
+    // }
+    // else
+    // {
+    const Float3 R = rayData->wi; // theRay.direction;
     // The seam u == 0.0 == 1.0 is in positive z-axis direction.
     // Compensate for the environment rotation done inside the direct lighting.
     // FIXME Use a light.matrix to rotate the environment.
@@ -19,22 +33,40 @@ extern "C" __global__ void __miss__env_sphere()
     const float theta = acosf(-R.y);     // theta == 0.0f is south pole, theta == M_PIf is north pole.
     const float v = theta * M_1_PIf; // Texture is with origin at lower left, v == 0.0f is south pole.
 
-    const Float3 emission = Float3(tex2D<float4>(sysParam.envTexture, u, v));
+    emission = Float3(tex2D<float4>(sysParam.envTexture, u, v));
 
-    thePrd->radiance = emission;
-    thePrd->totalDistance = RayMax;
-    thePrd->flags |= FLAG_TERMINATE;
-    thePrd->material = SKY_MATERIAL_ID;
-
-    // Directional light test
-    // if (dot(normalize(Float3(1, 1, 0)), R) > 0.99f)
+    /// Directional light test
+    // if (dot(normalize(Float3(1, 1, 0)), R) > cosf(Pi_over_180))
     // {
-    //     thePrd->radiance = Float3(1.0f);
+    //     emission = Float3(1.0f);
     // }
     // else
     // {
-    //     thePrd->radiance = Float3(0.0f);
+    //     emission = Float3(0.0f);
     // }
+    // }
+
+    float weightMIS = 1.0f;
+    // // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
+    // // then calculate light emission with multiple importance sampling for this implicit light hit as well.
+    if (rayData->flags & FLAG_DIFFUSED)
+    {
+        // For simplicity we pretend that we perfectly importance-sampled the actual texture-filtered environment map
+        // and not the Gaussian smoothed one used to actually generate the CDFs.
+        const float pdfLight = intensity(emission) / sysParam.envIntegral;
+        weightMIS = powerHeuristic(rayData->pdf, pdfLight);
+
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(Float4(pdfLight, weightMIS, 0, 0));
+        // }
+    }
+    rayData->radiance = emission * weightMIS;
+
+    // rayData->totalDistance = RayMax;
+    rayData->distance = RayMax;
+    rayData->flags |= FLAG_TERMINATE;
+    rayData->material |= RAY_MAT_FLAG_SKY;
 }
 
 }

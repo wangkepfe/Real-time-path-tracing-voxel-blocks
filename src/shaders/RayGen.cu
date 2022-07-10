@@ -96,19 +96,20 @@ __device__ __inline__ bool TraceNextPath(
     Float3& radiance,
     Float3& throughput,
     int& stackIdx,
-    int& depth)
+    uint& depth)
 {
     rayData->wo = -rayData->wi;              // Direction to observer.
     rayData->ior = Float2(1.0f);   // Reset the volume IORs.
     rayData->distance = RayMax; // Shoot the next ray with maximum length.
     rayData->flags &= FLAG_CLEAR_MASK;  // Clear all non-persistent flags. In this demo only the last diffuse surface interaction stays.
     rayData->depth = depth;
+    Float3 extinction;
 
     // Handle volume absorption of nested materials.
     if (MaterialStackFirst <= stackIdx) // Inside a volume?
     {
         rayData->flags |= FLAG_VOLUME;                                // Indicate that we're inside a volume. => At least absorption calculation needs to happen.
-        rayData->extinction = absorptionStack[stackIdx].xyz; // There is only volume absorption in this demo, no volume scattering.
+        extinction = absorptionStack[stackIdx].xyz; // There is only volume absorption in this demo, no volume scattering.
         rayData->ior.x = absorptionStack[stackIdx].w;                 // The IOR of the volume we're inside. Needed for eta calculations in transparent materials.
         if (MaterialStackFirst <= stackIdx - 1)
         {
@@ -134,7 +135,7 @@ __device__ __inline__ bool TraceNextPath(
         // We're inside a volume. Calculate the extinction along the current path segment in any case.
         // The transmittance along the current path segment inside a volume needs to attenuate the ray throughput with the extinction
         // before it modulates the radiance of the hitpoint.
-        throughput *= exp3f(-rayData->distance * rayData->extinction);
+        throughput *= exp3f(-rayData->distance * extinction);
     }
 
     radiance += throughput * rayData->radiance;
@@ -181,43 +182,46 @@ extern "C" __global__ void __raygen__pathtracer()
     const UInt2 imgSize = UInt2(optixGetLaunchDimensions());
     UInt2 idx = UInt2(optixGetLaunchIndex());
 
-    if constexpr (0)
-    {
-        BlueNoiseRandGenerator randGen = sysParam.randGen;
-        randGen.idx.x = idx.x;
-        randGen.idx.y = idx.y;
-        uint seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
-#pragma unroll
-        for (int i = 0; i < 4; ++i)
-        {
-            randGen.sampleIdx = sysParam.iterationIndex * 4 + i;
+    //     if constexpr (0)
+    //     {
+    //         BlueNoiseRandGenerator randGen = sysParam.randGen;
+    //         randGen.idx.x = idx.x;
+    //         randGen.idx.y = idx.y;
+    //         uint seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
+    // #pragma unroll
+    //         for (int i = 0; i < 4; ++i)
+    //         {
+    //             randGen.sampleIdx = sysParam.iterationIndex * 4 + i;
 
-#pragma unroll
-            for (int j = 0; j < 4; ++j)
-            {
-                float blueNoise = randGen.Rand(j);
-                float pureRand = rng(seed);
-                rayData->randNums[i * 4 + j] = lerpf(blueNoise, pureRand, sysParam.noiseBlend);
-            }
-        }
-    }
+    // #pragma unroll
+    //             for (int j = 0; j < 4; ++j)
+    //             {
+    //                 float blueNoise = randGen.Rand(j);
+    //                 float pureRand = rng(seed);
+    //                 rayData->randNums[i * 4 + j] = lerpf(blueNoise, pureRand, sysParam.noiseBlend);
+    //             }
+    //         }
+    //     }
 
-    uint seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
-#pragma unroll
-    for (int i = 0; i < 8; ++i)
-    {
-        rayData->randNums[i] = rng(seed);
-    }
-    rayData->randNumIdx = 0;
+        //     uint seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
+        // #pragma unroll
+        //     for (int i = 0; i < 8; ++i)
+        //     {
+        //         rayData->randNums[i] = rng(seed);
+        //     }
+        //     rayData->randNumIdx = 0;
+
+    rayData->seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
 
     const Float2 screen = Float2(imgSize.x, imgSize.y);
     const Float2 pixel = Float2(idx.x, idx.y);
 
-    const Float2 samplePixelJitterOffset = rayData->rand2();
-    const Float2 sampleApertureJitterOffset = rayData->rand2();
+    Float2 samplePixelJitterOffset = rayData->rand2();
+    Float2 sampleApertureJitterOffset = rayData->rand2();
 
     Float2 sampleUv;
-    GenerateRay(rayData->pos, rayData->wi, rayData->centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+    Float3 centerRayDir;
+    GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
 
     // This renderer supports nested volumes. The absorption coefficient and IOR of the volume the ray is currently inside.
     Float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
@@ -226,7 +230,7 @@ extern "C" __global__ void __raygen__pathtracer()
     Float3 throughput = Float3(1.0f);
 
     int stackIdx = MaterialStackEmpty;
-    int depth = 0;
+    uint depth = 0;
 
     rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f); // Assume primary ray starts in vacuum.
     rayData->flags = 0;
@@ -234,7 +238,9 @@ extern "C" __global__ void __raygen__pathtracer()
     rayData->normal = Float3(0.0f, -1.0f, 0.0f);
     rayData->rayConeWidth = 0.0f;
     rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
-    rayData->totalDistance = 0.0f;
+    // rayData->totalDistance = 0.0f;
+    rayData->material = 0u;
+    rayData->sampleIdx = 0;
 
     bool pathTerminated = false;
 
@@ -248,6 +254,7 @@ extern "C" __global__ void __raygen__pathtracer()
 
     while (!pathTerminated)
     {
+        // Trace next path
         pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx, depth);
 
         if (depth == BounceLimit - 1)
@@ -256,35 +263,35 @@ extern "C" __global__ void __raygen__pathtracer()
         }
 
         // Multiply material ID
-        multipliedMaterial = multipliedMaterial * NUM_MATERIALS + rayData->material;
+        // multipliedMaterial = multipliedMaterial * NUM_MATERIALS + rayData->material;
 
-        if (needWriteOutput && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
-        {
-            needWriteOutput = false;
+        // if (needWriteOutput && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
+        // {
+        //     needWriteOutput = false;
 
-            // outNormal = rayData->normal;
-            // outDepth = rayData->totalDistance;
-            outMaterial = (ushort)multipliedMaterial;
+        //     // outNormal = rayData->normal;
+        //     // outDepth = rayData->totalDistance;
+        //     outMaterial = (ushort)multipliedMaterial;
 
-            // Only denoise the first diffuse albedo, reset the albedo and apply the other albedo to radiance
-            outAlbedo = rayData->albedo;
-            rayData->albedo = Float3(1.0f);
-        }
+        //     // Only denoise the first diffuse albedo, reset the albedo and apply the other albedo to radiance
+        //     outAlbedo = rayData->albedo;
+        //     rayData->albedo = Float3(1.0f);
+        // }
 
-        if (depth == 0)
-        {
-            outNormal = rayData->normal;
-            outDepth = rayData->totalDistance;
-            // Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormalFront, idx);
-            // Store2DHalf1(rayData->totalDistance, sysParam.outDepthFront, idx);
-            // Store2DUshort1(rayData->material, sysParam.outMaterialFront, idx);
-        }
+        // if (depth == 0)
+        // {
+        //     outNormal = rayData->normal;
+        //     outDepth = rayData->totalDistance;
+        //     // Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormalFront, idx);
+        //     // Store2DHalf1(rayData->totalDistance, sysParam.outDepthFront, idx);
+        //     // Store2DUshort1(rayData->material, sysParam.outMaterialFront, idx);
+        // }
 
-        if (depth == 0 && !pathTerminated)
-        {
-            Float2 lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos, sysParam.camera.tanHalfFov);
-            outMotionVector += lastFrameSampleUv - sampleUv;
-        }
+        // if (depth == 0 && !pathTerminated)
+        // {
+        //     Float2 lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos, sysParam.camera.tanHalfFov);
+        //     outMotionVector += lastFrameSampleUv - sampleUv;
+        // }
 
         ++depth; // Next path segment.
     }
@@ -293,13 +300,55 @@ extern "C" __global__ void __raygen__pathtracer()
     // {
     //     OPTIX_DEBUG_PRINT(Float4(depth, pathTerminated, needWriteOutput, 0));
     // }
-
+    radiance *= rayData->albedo;
     if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
     {
         radiance = Float3(0.5f);
     }
 
-    radiance *= rayData->albedo;
+    Float3 tempRadiance = Float3(0);
+
+    // if (OPTIX_CENTER_PIXEL())
+    // {
+    //     // OPTIX_DEBUG_PRINT(rayData->material);
+    //     radiance = Float3(100.0f, 0.0f, 0.0f);
+    // }
+
+    if (rayData->material & RAY_MAT_FLAG_REFL_REFR == RAY_MAT_FLAG_REFL_REFR)
+    {
+        //rayData->randNumIdx = 4;
+        samplePixelJitterOffset = rayData->rand2();
+        sampleApertureJitterOffset = rayData->rand2();
+        GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+        throughput = Float3(1.0f);
+        stackIdx = MaterialStackEmpty;
+        depth = 0;
+        rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
+        rayData->flags = 0;
+        rayData->albedo = Float3(1.0f);
+        rayData->normal = Float3(0.0f, -1.0f, 0.0f);
+        rayData->rayConeWidth = 0.0f;
+        rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
+        // rayData->totalDistance = 0.0f;
+        rayData->material = 0u;
+        rayData->sampleIdx = 1;
+        pathTerminated = false;
+        while (!pathTerminated)
+        {
+            pathTerminated = !TraceNextPath(rayData, absorptionStack, tempRadiance, throughput, stackIdx, depth);
+            if (depth == BounceLimit - 1)
+            {
+                pathTerminated = true;
+            }
+            ++depth;
+        }
+        tempRadiance *= rayData->albedo;
+        if (isnan(tempRadiance.x) || isnan(tempRadiance.y) || isnan(tempRadiance.z))
+        {
+            tempRadiance = Float3(0.5f);
+        }
+        radiance = lerp3f(radiance, tempRadiance, 0.5f);
+    }
 
     // Debug visualization
     // radiance = outNormal * 0.5f + 0.5f;
@@ -313,11 +362,11 @@ extern "C" __global__ void __raygen__pathtracer()
     //     outAlbedo = Float3(100.0f, 0.0f, 0.0f);
     // }
 
-    Store2DHalf4(Float4(outNormal, 1.0f), sysParam.outNormal, idx);
-    Store2DHalf1(outDepth, sysParam.outDepth, idx);
-    Store2DUshort1(outMaterial, sysParam.outMaterial, idx);
-    Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
-    Store2DHalf4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
+    // Store2DHalf4(Float4(outNormal, 1.0f), sysParam.outNormal, idx);
+    // Store2DHalf1(outDepth, sysParam.outDepth, idx);
+    // Store2DUshort1(outMaterial, sysParam.outMaterial, idx);
+    // Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
+    // Store2DHalf4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
     Store2DHalf4(Float4(radiance, 1.0f), sysParam.outputBuffer, idx);
 }
 

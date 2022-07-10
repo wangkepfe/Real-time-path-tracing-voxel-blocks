@@ -179,7 +179,8 @@ __global__ void CopyToHistoryColorBuffer(
     surf2Dwrite(surf2Dread<ushort4>(colorBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp), historyColorBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
     surf2Dwrite(surf2Dread<ushort1>(depthBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp), depthHistoryBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
     surf2Dwrite(surf2Dread<ushort1>(materialBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp), materialHistoryBuffer, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
-    surf2Dwrite(surf2Dread<ushort4>(normalBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp), normalHistoryBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
+
+    // surf2Dwrite(surf2Dread<ushort4>(normalBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp), normalHistoryBuffer, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
 }
 
 __global__ void CopyToAccumulationColorBuffer(
@@ -265,7 +266,7 @@ __global__ void TemporalFilter(
     float depthDiffLimit = params.temporal_denoise_depth_diff_threshold;
 
     constexpr bool enableAntiFlickering = true;
-    constexpr bool enableBlendUsingLumaHdrFactor = true;
+    constexpr bool enableBlendUsingLumaHdrFactor = false;
 
     constexpr int blockdim = 8;
     constexpr int kernelRadius = 1;
@@ -635,7 +636,7 @@ __global__ void TemporalFilter(
             //     historyNormal = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>>(normalHistoryBuffer, historyUv, historySize);
             // }
 
-            float blendFactor = 1.0f / 2.0f;
+            float blendFactor = 1.0f / 4.0f;
             Float3 blendedColorHistory = clampedColorHistory * (1.0f - discardHistoryFactor) + filteredColor * discardHistoryFactor;
 
             Float3 blendedAlbedoHistory;
@@ -780,9 +781,11 @@ __global__ void TemporalFilter(
     else
     {
         Store2DHalf4(Float4(outColor, 0.0f), historyColorBuffer, Int2(x, y));
-        // Store2DHalf4(Float4(outNormal, 0.0f), normalHistoryBuffer, Int2(x, y));
         Store2DHalf1(outDepth, depthHistoryBuffer, Int2(x, y));
         Store2DUshort1(outMaterial, materialHistoryBuffer, Int2(x, y));
+
+
+        // Store2DHalf4(Float4(outNormal, 0.0f), normalHistoryBuffer, Int2(x, y));
     }
 }
 

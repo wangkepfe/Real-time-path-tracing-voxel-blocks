@@ -38,6 +38,12 @@ void TextureManager::init()
         "data/TexturesCom_OutdoorFloor4_1K_albedo.png",
         "data/TexturesCom_OutdoorFloor4_1K_normal.png",
         "data/TexturesCom_OutdoorFloor4_1K_roughness.png",
+        "data/TexturesCom_VinylChecker_1K_albedo.png",
+        "data/TexturesCom_VinylChecker_1K_normal.png",
+        "data/TexturesCom_VinylChecker_1K_roughness.png",
+        "data/TexturesCom_Ground_RockMossy_2.5x2.5_1K_albedo.png",
+        "data/TexturesCom_Ground_RockMossy_2.5x2.5_1K_normal.png",
+        "data/TexturesCom_Ground_RockMossy_2.5x2.5_1K_roughness.png",
     };
 
     m_textures.resize(filePaths.size());
@@ -50,7 +56,7 @@ void TextureManager::init()
         ScopeTimer timer("Generating texture for " + filePath);
 
         int fileNamePosStart = filePath.find('/') + 1;
-        int fileNamePosEnd = filePath.find('.');
+        int fileNamePosEnd = filePath.find(".png");
 
         std::string cacheFileNameBase = "tex/" + filePath.substr(fileNamePosStart, fileNamePosEnd - fileNamePosStart + 1);
 
