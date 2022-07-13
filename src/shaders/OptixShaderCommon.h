@@ -19,6 +19,7 @@ static constexpr int FLAG_TRANSMISSION = 0x00000100;
 static constexpr int FLAG_VOLUME = 0x00001000;
 
 static constexpr int FLAG_SHADOW_HIT = 0x00002000;
+static constexpr int FLAG_SHADOW_GLASS_HIT = 0x00004000;
 
 static constexpr int FLAG_TERMINATE = 0x80000000;
 

@@ -201,21 +201,32 @@ extern "C" __global__ void __closesthit__radiance()
 {
     PerRayData* rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
+    GeometryInstanceData* instanceData = reinterpret_cast<GeometryInstanceData*>(optixGetSbtDataPointer());
+    const MaterialParameter& parameters = sysParam.materialParameters[instanceData->materialIndex]; // Use a const reference, not all BSDFs need all values.
+    int materialId = parameters.indexBSDF;
+
     if (rayData->flags & FLAG_SHADOW)
     {
         rayData->flags |= FLAG_SHADOW_HIT;
+
+        if (materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
+        {
+            rayData->flags |= FLAG_SHADOW_GLASS_HIT;
+            rayData->absorption_ior.xyz = parameters.absorption;
+            rayData->distance = optixGetRayTmax();
+            rayData->pos = rayData->pos + rayData->wi * rayData->distance;
+        }
+
         return;
     }
 
-    GeometryInstanceData* theData = reinterpret_cast<GeometryInstanceData*>(optixGetSbtDataPointer());
-
     const unsigned int thePrimtiveIndex = optixGetPrimitiveIndex();
 
-    const Int3 tri = theData->indices[thePrimtiveIndex];
+    const Int3 tri = instanceData->indices[thePrimtiveIndex];
 
-    const VertexAttributes& va0 = theData->attributes[tri.x];
-    const VertexAttributes& va1 = theData->attributes[tri.y];
-    const VertexAttributes& va2 = theData->attributes[tri.z];
+    const VertexAttributes& va0 = instanceData->attributes[tri.x];
+    const VertexAttributes& va1 = instanceData->attributes[tri.y];
+    const VertexAttributes& va2 = instanceData->attributes[tri.z];
 
     const Float2 theBarycentrics = Float2(optixGetTriangleBarycentrics()); // beta and gamma
     const float alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
@@ -252,7 +263,7 @@ extern "C" __global__ void __closesthit__radiance()
     rayData->f_over_pdf = Float3(0.0f);
     rayData->pdf = 0.0f;
 
-    MaterialParameter parameters = sysParam.materialParameters[theData->materialIndex]; // Use a const reference, not all BSDFs need all values.
+
 
     Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
@@ -280,11 +291,11 @@ extern "C" __global__ void __closesthit__radiance()
     //     float texRoughness = tex2DLod<float1>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod).x;
     //     if (texRoughness < 0.1f)
     //     {
-    //         parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
+    //         materialId = INDEX_BSDF_SPECULAR_REFLECTION;
     //     }
     //     else
     //     {
-    //         parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
+    //         materialId = INDEX_BSDF_DIFFUSE_REFLECTION;
     //     }
     // }
 
@@ -292,11 +303,11 @@ extern "C" __global__ void __closesthit__radiance()
 
     rayData->flags = rayData->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 
-    const bool isDiffuse = parameters.indexBSDF >= NUM_SPECULAR_BSDF;
+    const bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
 
     rayData->albedo *= albedo;
 
-    const int indexBsdfSample = NUM_LIGHT_TYPES + parameters.indexBSDF;
+    const int indexBsdfSample = NUM_LIGHT_TYPES + materialId;
 
     Float3 surfWi;
     Float3 surfBsdfOverPdf;
@@ -308,12 +319,11 @@ extern "C" __global__ void __closesthit__radiance()
     {
         // rayData->albedo *= (1.0f + abs(dot(state.normal, rayData->centerRayDir)));
         bool shadowRayOnly = false;
-        if (rayData->material & RAY_MAT_FLAG_DIFFUSE)
+        if (rayData->flags & FLAG_DIFFUSED)
         {
             shadowRayOnly = true;
         }
         rayData->flags |= FLAG_DIFFUSED;
-        rayData->material |= RAY_MAT_FLAG_DIFFUSE;
 
         // const int numLights = sysParam.numLights;
         const Float2 randNum = rayData->rand2();
@@ -324,9 +334,13 @@ extern "C" __global__ void __closesthit__radiance()
         LightSample lightSample = LightEnvSphereSample(light, rayData->pos, randNum);
 
         /// Directional light test
-        // lightSample.pdf = 1.0f;
-        // lightSample.direction = normalize(Float3(1, 1, 0));
-        // lightSample.emission = Float3(1.0f);
+        if (0)
+        {
+            lightSample.pdf = 1.0f;
+            lightSample.direction = normalize(Float3(1, 1, 0));
+            lightSample.emission = Float3(1.0f);
+        }
+
 
         float lightSampleLightDistPdf = lightSample.pdf;
 
@@ -334,23 +348,9 @@ extern "C" __global__ void __closesthit__radiance()
         // Float3 surfSampleEmission = surfSampleEmissionPdf.xyz;
         // float surfSampleLightDistPdf = surfSampleEmissionPdf.w;
 
-        /// Directional light test
-        // if (dot(normalize(Float3(1, 1, 0)), surfWi) > cosf(Pi_over_180))
-        // {
-        //     surfSampleEmission = Float3(1.0f);
-        // }
-        // else
-        // {
-        //     surfSampleEmission = Float3(0.0f);
-        // }
-        // surfSampleLightDistPdf = 1.0f;
-
         // float misWeightSurfSample = powerHeuristic(surfSampleSurfPdf, surfSampleLightDistPdf);
-
         // shadowRayOnly = shadowRayOnly || (misWeightSurfSample < 0.1f);
-
         // rayData->lightEmission = surfSampleEmission * misWeightSurfSample;
-
 
         if (0.0f < lightSampleLightDistPdf) // Valid light sample, verify light distribution
         {
@@ -366,21 +366,73 @@ extern "C" __global__ void __closesthit__radiance()
 
                 rayData->flags |= FLAG_SHADOW;
 
-                UInt2 payload = UInt2(optixGetPayload_0(), optixGetPayload_1());
-                optixTrace(sysParam.topObject,
-                    (float3)rayData->pos, (float3)lightSample.direction,
-                    sysParam.sceneEpsilon, RayMax, 0.0f, // tmin, tmax, time
-                    OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                    0, 1, 0,
-                    payload.x, payload.y);
+                Float3 originalPos = rayData->pos;
+                float originalDistance = rayData->distance;
+                Float3 originalAbsorption = rayData->absorption_ior.xyz;
 
-                if (!(rayData->flags & FLAG_SHADOW_HIT))
+                rayData->wi = lightSample.direction;
+                bool inVolume = rayData->flags & FLAG_VOLUME;
+                Float3 glassThroughput = Float3(1.0f);
+
+                for (int shadowRayIter = 0; shadowRayIter < 5; ++shadowRayIter)
                 {
-                    float misWeightLightSample = powerHeuristic(lightSampleLightDistPdf, lightSampleSurfDistPdf);
-                    const float cosTheta = fmaxf(0.0f, dot(lightSample.direction, state.normal));
-                    Float3 shadowRayBsdfOverPdf = lightSampleSurfDistBsdf * cosTheta / lightSampleLightDistPdf;
-                    rayData->radiance += lightSample.emission * misWeightLightSample * shadowRayBsdfOverPdf;
+                    UInt2 payload = splitPointer(rayData);
+
+                    // if (OPTIX_CENTER_PIXEL())
+                    // {
+                    //     OPTIX_DEBUG_PRINT(Float4(glassThroughput, shadowRayIter));
+                    // }
+
+                    rayData->flags &= ~FLAG_SHADOW_HIT;
+                    rayData->flags &= ~FLAG_SHADOW_GLASS_HIT;
+
+                    optixTrace(sysParam.topObject,
+                        (float3)rayData->pos, (float3)rayData->wi,
+                        sysParam.sceneEpsilon, RayMax, 0.0f, // tmin, tmax, time
+                        OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+                        0, 1, 0,
+                        payload.x, payload.y);
+
+                    if (!(rayData->flags & FLAG_SHADOW_HIT))
+                    {
+                        float misWeightLightSample = powerHeuristic(lightSampleLightDistPdf, lightSampleSurfDistPdf);
+                        const float cosTheta = fmaxf(0.0f, dot(lightSample.direction, state.normal));
+                        Float3 shadowRayBsdfOverPdf = lightSampleSurfDistBsdf * cosTheta / lightSampleLightDistPdf;
+                        Float3 shadowRayRadiance = lightSample.emission * misWeightLightSample * shadowRayBsdfOverPdf * glassThroughput;
+                        rayData->radiance += shadowRayRadiance;
+
+                        // if (OPTIX_CENTER_PIXEL() && shadowRayIter == 2)
+                        // {
+                        //     OPTIX_DEBUG_PRINT(Float4(shadowRayRadiance, 0));
+                        // }
+
+                        break;
+                    }
+                    else
+                    {
+                        if (rayData->flags & FLAG_SHADOW_GLASS_HIT)
+                        {
+                            if (inVolume)
+                            {
+                                inVolume = false;
+                                glassThroughput *= exp3f(-rayData->distance * rayData->absorption_ior.xyz);
+                            }
+                            else
+                            {
+                                inVolume = true;
+                            }
+                            continue;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
                 }
+
+                rayData->pos = originalPos;
+                rayData->distance = originalDistance;
+                rayData->absorption_ior.xyz = originalAbsorption;
 
                 if (shadowRayOnly)
                 {
@@ -388,22 +440,6 @@ extern "C" __global__ void __closesthit__radiance()
                     return;
                 }
             }
-        }
-    }
-
-    if (parameters.indexBSDF == INDEX_BSDF_SPECULAR_REFLECTION)
-    {
-        rayData->material |= RAY_MAT_FLAG_REFL << (2 * rayData->depth);
-    }
-    else if (parameters.indexBSDF == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
-    {
-        if (rayData->flags & FLAG_VOLUME)
-        {
-            rayData->material |= RAY_MAT_FLAG_REFR << (2 * rayData->depth);
-        }
-        else
-        {
-            rayData->material |= RAY_MAT_FLAG_REFL_REFR << (2 * rayData->depth);
         }
     }
 

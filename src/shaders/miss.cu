@@ -36,15 +36,17 @@ extern "C" __global__ void __miss__env_sphere()
     emission = Float3(tex2D<float4>(sysParam.envTexture, u, v));
 
     /// Directional light test
-    // if (dot(normalize(Float3(1, 1, 0)), R) > cosf(Pi_over_180))
-    // {
-    //     emission = Float3(1.0f);
-    // }
-    // else
-    // {
-    //     emission = Float3(0.0f);
-    // }
-    // }
+    if (0)
+    {
+        if (dot(normalize(Float3(1, 1, 0)), R) > cosf(Pi_over_180))
+        {
+            emission = Float3(1.0f);
+        }
+        else
+        {
+            emission = Float3(0.0f);
+        }
+    }
 
     float weightMIS = 1.0f;
     // // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
@@ -66,7 +68,11 @@ extern "C" __global__ void __miss__env_sphere()
     // rayData->totalDistance = RayMax;
     rayData->distance = RayMax;
     rayData->flags |= FLAG_TERMINATE;
-    rayData->material |= RAY_MAT_FLAG_SKY;
+    if (!(rayData->flags & FLAG_DIFFUSED))
+    {
+        rayData->material |= RAY_MAT_FLAG_SKY << (2 * rayData->depth);
+    }
+
 }
 
 }

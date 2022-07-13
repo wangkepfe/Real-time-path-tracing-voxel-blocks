@@ -95,14 +95,12 @@ __device__ __inline__ bool TraceNextPath(
     Float4* absorptionStack,
     Float3& radiance,
     Float3& throughput,
-    int& stackIdx,
-    uint& depth)
+    int& stackIdx)
 {
     rayData->wo = -rayData->wi;              // Direction to observer.
     rayData->ior = Float2(1.0f);   // Reset the volume IORs.
     rayData->distance = RayMax; // Shoot the next ray with maximum length.
     rayData->flags &= FLAG_CLEAR_MASK;  // Clear all non-persistent flags. In this demo only the last diffuse surface interaction stays.
-    rayData->depth = depth;
     Float3 extinction;
 
     // Handle volume absorption of nested materials.
@@ -235,12 +233,13 @@ extern "C" __global__ void __raygen__pathtracer()
     rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f); // Assume primary ray starts in vacuum.
     rayData->flags = 0;
     rayData->albedo = Float3(1.0f);
-    rayData->normal = Float3(0.0f, -1.0f, 0.0f);
+    rayData->normal = Float3(0.0f, 1.0f, 0.0f);
     rayData->rayConeWidth = 0.0f;
     rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
     // rayData->totalDistance = 0.0f;
     rayData->material = 0u;
     rayData->sampleIdx = 0;
+    rayData->depth = 0;
 
     bool pathTerminated = false;
 
@@ -248,50 +247,50 @@ extern "C" __global__ void __raygen__pathtracer()
     Float3 outNormal = Float3(0.0f, 1.0f, 0.0f);
     Float3 outAlbedo = Float3(1.0f);
     float outDepth = RayMax;
-    ushort outMaterial = SKY_MATERIAL_ID;
-    uint multipliedMaterial = 1;
-    bool needWriteOutput = true;
+    // ushort outMaterial = SKY_MATERIAL_ID;
+    // uint multipliedMaterial = 1;
+    bool hitFirstDefuseSurface = false;
 
     while (!pathTerminated)
     {
         // Trace next path
-        pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx, depth);
+        pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx);
 
         if (depth == BounceLimit - 1)
         {
             pathTerminated = true;
         }
 
-        // Multiply material ID
-        // multipliedMaterial = multipliedMaterial * NUM_MATERIALS + rayData->material;
+        // First hit
+        if (depth == 0)
+        {
+            outNormal = rayData->normal;
+            outDepth = rayData->distance;
 
-        // if (needWriteOutput && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
-        // {
-        //     needWriteOutput = false;
+            Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormal, idx);
+            Store2DHalf1(rayData->distance, sysParam.outDepth, idx);
 
-        //     // outNormal = rayData->normal;
-        //     // outDepth = rayData->totalDistance;
-        //     outMaterial = (ushort)multipliedMaterial;
+            outMotionVector = Float2(0.5f);
+            if (!pathTerminated)
+            {
+                Float2 lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos, sysParam.camera.tanHalfFov);
+                outMotionVector += lastFrameSampleUv - sampleUv;
+            }
+            Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
+        }
 
-        //     // Only denoise the first diffuse albedo, reset the albedo and apply the other albedo to radiance
-        //     outAlbedo = rayData->albedo;
-        //     rayData->albedo = Float3(1.0f);
-        // }
+        if (!hitFirstDefuseSurface)
+        {
+            ++rayData->depth;
+        }
 
-        // if (depth == 0)
-        // {
-        //     outNormal = rayData->normal;
-        //     outDepth = rayData->totalDistance;
-        //     // Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormalFront, idx);
-        //     // Store2DHalf1(rayData->totalDistance, sysParam.outDepthFront, idx);
-        //     // Store2DUshort1(rayData->material, sysParam.outMaterialFront, idx);
-        // }
-
-        // if (depth == 0 && !pathTerminated)
-        // {
-        //     Float2 lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos, sysParam.camera.tanHalfFov);
-        //     outMotionVector += lastFrameSampleUv - sampleUv;
-        // }
+        // First diffuse hit
+        if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
+        {
+            hitFirstDefuseSurface = true;
+            outAlbedo = rayData->albedo;
+            rayData->albedo = Float3(1.0f);
+        }
 
         ++depth; // Next path segment.
     }
@@ -301,22 +300,31 @@ extern "C" __global__ void __raygen__pathtracer()
     //     OPTIX_DEBUG_PRINT(Float4(depth, pathTerminated, needWriteOutput, 0));
     // }
     radiance *= rayData->albedo;
-    if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
-    {
-        radiance = Float3(0.5f);
-    }
 
     Float3 tempRadiance = Float3(0);
 
     // if (OPTIX_CENTER_PIXEL())
     // {
-    //     // OPTIX_DEBUG_PRINT(rayData->material);
     //     radiance = Float3(100.0f, 0.0f, 0.0f);
     // }
 
-    if (rayData->material & RAY_MAT_FLAG_REFL_REFR == RAY_MAT_FLAG_REFL_REFR)
+    bool hasGlass = false;
+    for (uint traverseDepth = 0; traverseDepth < 16; ++traverseDepth)
     {
-        //rayData->randNumIdx = 4;
+        uint currentMat = (rayData->material >> (traverseDepth * 2)) & 0x3;
+        if (currentMat == RAY_MAT_FLAG_REFR_AND_REFL)
+        {
+            hasGlass = true;
+            break;
+        }
+        else if (currentMat == RAY_MAT_FLAG_DIFFUSE || currentMat == RAY_MAT_FLAG_SKY)
+        {
+            break;
+        }
+    }
+
+    if (hasGlass)
+    {
         samplePixelJitterOffset = rayData->rand2();
         sampleApertureJitterOffset = rayData->rand2();
         GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
@@ -329,18 +337,28 @@ extern "C" __global__ void __raygen__pathtracer()
         rayData->normal = Float3(0.0f, -1.0f, 0.0f);
         rayData->rayConeWidth = 0.0f;
         rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
-        // rayData->totalDistance = 0.0f;
-        rayData->material = 0u;
         rayData->sampleIdx = 1;
+        hitFirstDefuseSurface = false;
         pathTerminated = false;
         while (!pathTerminated)
         {
-            pathTerminated = !TraceNextPath(rayData, absorptionStack, tempRadiance, throughput, stackIdx, depth);
+            pathTerminated = !TraceNextPath(rayData, absorptionStack, tempRadiance, throughput, stackIdx);
             if (depth == BounceLimit - 1)
             {
                 pathTerminated = true;
             }
+            if (!hitFirstDefuseSurface)
+            {
+                ++rayData->depth;
+            }
+            if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
+            {
+                hitFirstDefuseSurface = true;
+                outAlbedo = lerp3f(outAlbedo, rayData->albedo, 0.5f);
+                rayData->albedo = Float3(1.0f);
+            }
             ++depth;
+
         }
         tempRadiance *= rayData->albedo;
         if (isnan(tempRadiance.x) || isnan(tempRadiance.y) || isnan(tempRadiance.z))
@@ -350,23 +368,25 @@ extern "C" __global__ void __raygen__pathtracer()
         radiance = lerp3f(radiance, tempRadiance, 0.5f);
     }
 
-    // Debug visualization
+    /// Debug visualization
     // radiance = outNormal * 0.5f + 0.5f;
-    // radiance = ColorRampVisualization(clampf((float)outMaterial / 24.0f));
+    // radiance = ColorRampVisualization(clampf((float)((ushort)rayData->material) / 8192.0f));
     // radiance = ColorRampVisualization(expf(-outDepth * 0.1f));
+    // radiance = Float3(((outMotionVector - 0.5f) * 10.0f) + 0.5f, 0.0f);
     // outAlbedo = Float3(1.0f);
 
     // if (OPTIX_CENTER_PIXEL())
     // {
-    //     // OPTIX_DEBUG_PRINT((float)outMaterial);
+    //     OPTIX_DEBUG_PRINT(rayData->material);
     //     outAlbedo = Float3(100.0f, 0.0f, 0.0f);
     // }
 
-    // Store2DHalf4(Float4(outNormal, 1.0f), sysParam.outNormal, idx);
-    // Store2DHalf1(outDepth, sysParam.outDepth, idx);
-    // Store2DUshort1(outMaterial, sysParam.outMaterial, idx);
-    // Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
-    // Store2DHalf4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
+    if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
+    {
+        radiance = Float3(0.5f);
+    }
+    Store2DHalf4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
+    Store2DUshort1((ushort)rayData->material, sysParam.outMaterial, idx);
     Store2DHalf4(Float4(radiance, 1.0f), sysParam.outputBuffer, idx);
 }
 
