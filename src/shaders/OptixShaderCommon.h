@@ -2,6 +2,7 @@
 
 #include <optix.h>
 #include "LinearMath.h"
+#include "SystemParameter.h"
 
 namespace jazzfusion
 {
@@ -58,7 +59,7 @@ struct __align__(16) PerRayData
     float rayConeWidth;
 
     Float3 normal;
-    uint seed;
+    int randIdx;
 
     Float3 albedo;
     uint sampleIdx;
@@ -70,17 +71,15 @@ struct __align__(16) PerRayData
     // uint unused;
     // float randNums[8];
 
-    INL_DEVICE float rand()
+    INL_DEVICE float rand(const SystemParameter & sysParam)
     {
-        // float res = randNums[randNumIdx];
-        // randNumIdx = (randNumIdx + 1) % 8;
-        // return res;
-        return rng(seed);
+        UInt2 idx = UInt2(optixGetLaunchIndex());
+        return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, randIdx++);
     }
 
-    INL_DEVICE Float2 rand2()
+    INL_DEVICE Float2 rand2(const SystemParameter& sysParam)
     {
-        return Float2(rand(), rand());
+        return Float2(rand(sysParam), rand(sysParam));
     }
 };
 

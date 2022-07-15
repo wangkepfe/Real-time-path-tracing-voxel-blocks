@@ -14,19 +14,9 @@ __global__ void SpatialWideFilter(
     SurfObj materialBuffer,
     SurfObj normalBuffer,
     SurfObj depthBuffer,
-    SurfObj noiseLevelBuffer,
     DenoisingParams params,
     Int2    size)
 {
-    if (ENABLE_DENOISING_NOISE_CALCULATION)
-    {
-        float noiseLevel = Load2DHalf1(noiseLevelBuffer, Int2(blockIdx.x, blockIdx.y));
-        if (noiseLevel < params.noise_threshold_large)
-        {
-            return;
-        }
-    }
-
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
 
@@ -42,20 +32,18 @@ __global__ void SpatialWideFilter(
         colorValue = Float3(0.5f);
     }
 
-    // Get first hit material
-    uint firstMat = (uint)maskValue;
-    while (firstMat > NUM_MATERIALS * 2)
+    // Return for any non-diffused pixel
+    bool hasDiffuse = false;
+    for (uint traverseDepth = 0; traverseDepth < 8; ++traverseDepth)
     {
-        firstMat /= NUM_MATERIALS;
+        uint currentMat = (maskValue >> (traverseDepth * 2)) & 0x3;
+        if (currentMat == RAY_MAT_FLAG_DIFFUSE)
+        {
+            hasDiffuse = true;
+            break;
+        }
     }
-    firstMat -= NUM_MATERIALS;
-
-    // Get final hit material
-    uint finalMat = (uint)maskValue % NUM_MATERIALS;
-
-    bool isGlass = (firstMat == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION);
-
-    if (finalMat == SKY_MATERIAL_ID || isGlass)
+    if (!hasDiffuse)
     {
         return;
     }

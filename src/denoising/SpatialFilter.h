@@ -44,21 +44,11 @@ __global__ void SpatialFilter(
     SurfObj materialBuffer,
     SurfObj normalBuffer,
     SurfObj depthBuffer,
-    SurfObj noiseLevelBuffer16,
     DenoisingParams params,
     Int2    size)
 {
     int x = threadIdx.x + blockIdx.x * 16;
     int y = threadIdx.y + blockIdx.y * 16;
-
-    if (ENABLE_DENOISING_NOISE_CALCULATION)
-    {
-        float noiseLevel = Load2DHalf1(noiseLevelBuffer16, Int2(blockIdx.x, blockIdx.y));
-        if (noiseLevel < params.noise_threshold_local)
-        {
-            return;
-        }
-    }
 
     struct AtrousLDS
     {
@@ -143,20 +133,18 @@ __global__ void SpatialFilter(
     Float3 normalValue = half3ToFloat3(center.normal);
     ushort maskValue = center.mask;
 
-    // Get first hit material
-    uint firstMat = (uint)maskValue;
-    while (firstMat > NUM_MATERIALS * 2)
+    // Return for any non-diffused pixel
+    bool hasDiffuse = false;
+    for (uint traverseDepth = 0; traverseDepth < 8; ++traverseDepth)
     {
-        firstMat /= NUM_MATERIALS;
+        uint currentMat = (maskValue >> (traverseDepth * 2)) & 0x3;
+        if (currentMat == RAY_MAT_FLAG_DIFFUSE)
+        {
+            hasDiffuse = true;
+            break;
+        }
     }
-    firstMat -= NUM_MATERIALS;
-
-    // Get final hit material
-    uint finalMat = (uint)maskValue % NUM_MATERIALS;
-
-    bool isGlass = (firstMat == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION);
-
-    if (finalMat == SKY_MATERIAL_ID || isGlass)
+    if (!hasDiffuse)
     {
         return;
     }
@@ -165,31 +153,11 @@ __global__ void SpatialFilter(
     Float3 sumOfColor = Float3(0.0f);
     float sumOfWeight = 0;
 
-#if SPATIAL_FILTER_7X7_USE_SAMPLE_KERNEL_3D_PATTERN
-#pragma unroll
-    for (int i = 0; i < SAMPLE_KERNEL_SAMPLE_PER_FRAME; i += 1)
-    {
-        int kernelSelect = frameNum % SAMPLE_KERNEL_FRAME_COUNT;
-        int kernelSelectIdx = kernelSelect * SAMPLE_KERNEL_SAMPLE_PER_FRAME + i;
-
-        int xoffset = SampleKernel3d[kernelSelectIdx][0];
-        int yoffset = SampleKernel3d[kernelSelectIdx][1];
-#elif SPATIAL_FILTER_7X7_USE_DEFAULT_PATTERN
-#pragma unroll
     for (int i = 0; i < kernelSize; i += 1)
     {
         int xoffset = i % kernelDim;
         int yoffset = i / kernelDim;
-#elif SPATIAL_FILTER_7X7_USE_STRIDE_PATTERN
-    constexpr int stride = 2;
-    int j = frameNum % stride;
-#pragma unroll
-    for (int i = 0; i < kernelSize / stride; ++i)
-    {
-        int xoffset = j % kernelDim;
-        int yoffset = j / kernelDim;
-        j += stride;
-#endif
+
         AtrousLDS bufferReadTmp = sharedBuffer[threadIdx.x + xoffset + (threadIdx.y + yoffset) * kernelCoverDim];
 
         // get data
@@ -225,7 +193,7 @@ __global__ void SpatialFilter(
         // accumulate
         sumOfColor += color * weight;
         sumOfWeight += weight;
-    }
+}
 
     Float3 finalColor;
 

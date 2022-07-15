@@ -4,6 +4,8 @@
 namespace jazzfusion
 {
 
+extern "C" __constant__ SystemParameter sysParam;
+
 __forceinline__ __device__ void unitSquareToCosineHemisphere(const Float2 sample, Float3 const& axis, Float3& w, float& pdf)
 {
     // Choose a point on the local hemisphere coordinates about +z.
@@ -22,7 +24,7 @@ __forceinline__ __device__ void unitSquareToCosineHemisphere(const Float2 sample
 
 extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData * rayData, Float3 & wi, Float3 & f_over_pdf, float& pdf)
 {
-    unitSquareToCosineHemisphere(rayData->rand2(), state.normal, wi, pdf);
+    unitSquareToCosineHemisphere(rayData->rand2(sysParam), state.normal, wi, pdf);
 
     if (!(rayData->flags & FLAG_DIFFUSED))
     {
@@ -161,7 +163,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
             f_over_pdf = Float3(1.0f - reflective);
         }
 
-        // const float pseudo = rayData->rand();
+        // const float pseudo = rayData->rand(sysParam);
         // if (pseudo < reflective)
         // {
         //     wi = R; // Fresnel reflection or total internal reflection.

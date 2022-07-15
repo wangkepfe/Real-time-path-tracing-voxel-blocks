@@ -93,12 +93,25 @@ struct SystemParameter
     float envRotation;
 
     int iterationIndex;
+    int sampleIndex;
     float sceneEpsilon;
 
     int numLights;
     BlueNoiseRandGenerator randGen;
     float noiseBlend;
     int accumulationCounter;
+
+    // INL_DEVICE float rand(int& randIdx) const
+    // {
+    //     UInt2 idx = UInt2(optixGetLaunchIndex());
+    //     return randGen.rand(idx.x, idx.y, iterationIndex, randIdx++);
+    // }
+
+    // INL_DEVICE Float2 rand2(int& randIdx) const
+    // {
+    //     return Float2(rand(randIdx), rand(randIdx));
+    // }
+
 };
 
 struct VertexAttributes

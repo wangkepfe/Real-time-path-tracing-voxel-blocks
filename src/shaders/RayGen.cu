@@ -39,6 +39,7 @@ __device__ void inline GenerateRay(
     Float3& dir,
     Float3& centerDir,
     Float2& sampleUv,
+    Float2& centerUv,
     Camera camera,
     Int2   idx,
     Int2   imgSize,
@@ -49,6 +50,7 @@ __device__ void inline GenerateRay(
     Float2 uv = (Float2(idx.x, idx.y) + randPixelOffset) * camera.inversedResolution;
     Float2 uvCenter = (Float2(idx.x, idx.y) + 0.5f) * camera.inversedResolution;
     sampleUv = uv;
+    centerUv = uvCenter;
 
     // [0, 1] -> [1, -1], since left/up vector should be 1 when uv is 0
     uv = uv * Float2(-2.0f, 2.0f) + Float2(1.0f, -1.0f);
@@ -172,6 +174,16 @@ __device__ __inline__ bool TraceNextPath(
     return true;
 }
 
+__forceinline__ __device__ unsigned int IntegerHash(unsigned int a)
+{
+    a = (a ^ 61) ^ (a >> 16);
+    a = a + (a << 3);
+    a = a ^ (a >> 4);
+    a = a * 0x27d4eb2d;
+    a = a ^ (a >> 15);
+    return a;
+}
+
 extern "C" __global__ void __raygen__pathtracer()
 {
     PerRayData perRayData;
@@ -209,17 +221,19 @@ extern "C" __global__ void __raygen__pathtracer()
         //     }
         //     rayData->randNumIdx = 0;
 
-    rayData->seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
+    // rayData->seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
+    rayData->randIdx = 0;
 
     const Float2 screen = Float2(imgSize.x, imgSize.y);
     const Float2 pixel = Float2(idx.x, idx.y);
 
-    Float2 samplePixelJitterOffset = rayData->rand2();
-    Float2 sampleApertureJitterOffset = rayData->rand2();
+    Float2 samplePixelJitterOffset = rayData->rand2(sysParam);//Float2(sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, rayData->randIdx++), sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, rayData->randIdx++));
+    Float2 sampleApertureJitterOffset = rayData->rand2(sysParam);
 
     Float2 sampleUv;
     Float3 centerRayDir;
-    GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+    Float2 centerUv;
+    GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, centerUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
 
     // This renderer supports nested volumes. The absorption coefficient and IOR of the volume the ray is currently inside.
     Float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
@@ -325,9 +339,9 @@ extern "C" __global__ void __raygen__pathtracer()
 
     if (hasGlass)
     {
-        samplePixelJitterOffset = rayData->rand2();
-        sampleApertureJitterOffset = rayData->rand2();
-        GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+        samplePixelJitterOffset = rayData->rand2(sysParam);
+        sampleApertureJitterOffset = rayData->rand2(sysParam);
+        GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, centerUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
         throughput = Float3(1.0f);
         stackIdx = MaterialStackEmpty;
         depth = 0;

@@ -326,8 +326,8 @@ extern "C" __global__ void __closesthit__radiance()
         rayData->flags |= FLAG_DIFFUSED;
 
         // const int numLights = sysParam.numLights;
-        const Float2 randNum = rayData->rand2();
-        const int indexLight = 0; //(1 < numLights) ? clampi(static_cast<int>(floorf(rayData->rand() * numLights)), 0, numLights - 1) : 0;
+        const Float2 randNum = rayData->rand2(sysParam);
+        const int indexLight = 0; //(1 < numLights) ? clampi(static_cast<int>(floorf(rayData->rand(sysParam) * numLights)), 0, numLights - 1) : 0;
         LightDefinition const& light = sysParam.lightDefinitions[indexLight];
         //const int indexCallable = light.type;
         //LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const Float3, const Float2>(indexCallable, light, rayData->pos, randNum);
@@ -362,7 +362,7 @@ extern "C" __global__ void __closesthit__radiance()
             if (0.0f < lightSampleSurfDistPdf) // Valid light sample, verify surface distribution
             {
                 // float chooseLightSampleWeight = misWeightLightSample / (misWeightLightSample + misWeightSurfSample);
-                // if ((rayData->rand() < chooseLightSampleWeight) || shadowRayOnly)
+                // if ((rayData->rand(sysParam) < chooseLightSampleWeight) || shadowRayOnly)
 
                 rayData->flags |= FLAG_SHADOW;
 
