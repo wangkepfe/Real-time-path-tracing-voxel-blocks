@@ -53,7 +53,7 @@ void TextureManager::init()
         std::string filePath = filePaths[i];
         textureNameIdLookup[filePath] = i;
 
-        ScopeTimer timer("Generating texture for " + filePath);
+        // ScopeTimer timer("Generating texture for " + filePath);
 
         int fileNamePosStart = filePath.find('/') + 1;
         int fileNamePosEnd = filePath.find(".png");
@@ -131,7 +131,7 @@ void TextureManager::init()
 
         for (int lod = 0; lod < numLods; ++lod)
         {
-            ScopeTimer timer("Generating mip level " + std::to_string(lod));
+            // ScopeTimer timer("Generating mip level " + std::to_string(lod));
 
             cudaArray_t currentMipLevelArray;
             CUDA_CHECK(cudaGetMipmappedArrayLevel(&currentMipLevelArray, texture.bufferArray, lod));

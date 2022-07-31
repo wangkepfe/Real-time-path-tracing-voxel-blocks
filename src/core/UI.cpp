@@ -76,10 +76,17 @@ void UI::update()
         }
     }
 
-    if (ImGui::CollapsingHeader("Tone Mapping", 0))
+    if (ImGui::CollapsingHeader("Post Processing", ImGuiTreeNodeFlags_None))
     {
-        ImGui::SliderFloat("Gain", backend.getToneMapGain(), 0.1f, 100.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
-        ImGui::SliderFloat("Max White", backend.getToneMapMaxWhite(), 0.1f, 100.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+        PostProcessParams& postProcessParams = GlobalSettings::GetPostProcessParams();
+        for (auto& item : postProcessParams.GetValueList())
+            ImGui::SliderFloat(
+                std::get<1>(item).c_str(),
+                std::get<0>(item),
+                std::get<2>(item),
+                std::get<3>(item),
+                "%.2f",
+                std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
     }
 
     ImGui::End();

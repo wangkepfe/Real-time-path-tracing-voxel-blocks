@@ -5,7 +5,6 @@
 #include "denoising/SpatialWideFilter.h"
 #include "denoising/TemporalFilter.h"
 #include "denoising/BilateralFilter.h"
-#include "denoising/SpatialFilterTranslucentMaterial.h"
 #include "core/GlobalSettings.h"
 #include "core/BufferManager.h"
 #include "core/Backend.h"
@@ -18,15 +17,15 @@ namespace jazzfusion
 // Temporal Filter  <-----------------------------
 //         |                                     ^
 //         V                                     |
-// Spatial Filter 7x7  (Effective range 7x7)     |
+// Spatial Filter 5x5  (Effective range 5x5)     |
 //         |                                     |
 //         V                                     |
 // Copy To History Color Buffer ------------------ AccumulationColorBuffer
 //         |
 //         V
-// Spatial Filter Global 5x5, Stride=3 (Effective range 12x12)
-// Spatial Filter Global 5x5, Stride=6 (Effective range 24x24)
-// Spatial Filter Global 5x5, Stride=12 (Effective range 48x48)
+// Spatial Filter Global 5x5, Stride=2 (Effective range 9x9)
+// Spatial Filter Global 5x5, Stride=4 (Effective range 17x17)
+// Spatial Filter Global 5x5, Stride=8 (Effective range 33x33)
 //         |
 //         V
 // Temporal Filter 2  <----------------
@@ -62,7 +61,6 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferManager.GetBuffer2D(AccumulationColorBuffer),
             bufferManager.GetBuffer2D(HistoryColorBuffer),
             bufferManager.GetBuffer2D(NormalBuffer),
-            bufferManager.GetBuffer2D(HistoryNormalBuffer),
             bufferManager.GetBuffer2D(DepthBuffer),
             bufferManager.GetBuffer2D(HistoryDepthBuffer),
             bufferManager.GetBuffer2D(MaterialBuffer),
@@ -75,16 +73,6 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             historyDim);
     }
 
-    // SpatialFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-    //     frameNum,
-    //     accuCounter,
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(MaterialBuffer),
-    //     bufferManager.GetBuffer2D(NormalBuffer),
-    //     bufferManager.GetBuffer2D(DepthBuffer),
-    //     denoisingParams,
-    //     bufferDim);
-
     CopyToAccumulationColorBuffer KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
         bufferManager.GetBuffer2D(RenderColorBuffer),
         bufferManager.GetBuffer2D(AccumulationColorBuffer),
@@ -92,55 +80,45 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         bufferManager.GetBuffer2D(HistoryAlbedoBuffer),
         bufferDim);
 
-    // SpatialWideFilter<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-    //     frameNum,
-    //     accuCounter,
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(MaterialBuffer),
-    //     bufferManager.GetBuffer2D(NormalBuffer),
-    //     bufferManager.GetBuffer2D(DepthBuffer),
-    //     denoisingParams,
-    //     bufferDim);
+    SpatialFilter KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+        frameNum,
+        accuCounter,
+        bufferManager.GetBuffer2D(RenderColorBuffer),
+        bufferManager.GetBuffer2D(MaterialBuffer),
+        bufferManager.GetBuffer2D(NormalBuffer),
+        bufferManager.GetBuffer2D(DepthBuffer),
+        denoisingParams,
+        bufferDim);
 
-    // SpatialWideFilter<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-    //     frameNum,
-    //     accuCounter,
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(MaterialBuffer),
-    //     bufferManager.GetBuffer2D(NormalBuffer),
-    //     bufferManager.GetBuffer2D(DepthBuffer),
-    //     denoisingParams,
-    //     bufferDim);
+    SpatialWideFilter<2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+        frameNum,
+        accuCounter,
+        bufferManager.GetBuffer2D(RenderColorBuffer),
+        bufferManager.GetBuffer2D(MaterialBuffer),
+        bufferManager.GetBuffer2D(NormalBuffer),
+        bufferManager.GetBuffer2D(DepthBuffer),
+        denoisingParams,
+        bufferDim);
 
-    // SpatialWideFilter<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-    //     frameNum,
-    //     accuCounter,
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(MaterialBuffer),
-    //     bufferManager.GetBuffer2D(NormalBuffer),
-    //     bufferManager.GetBuffer2D(DepthBuffer),
-    //     denoisingParams,
-    //     bufferDim);
+    SpatialWideFilter<4> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+        frameNum,
+        accuCounter,
+        bufferManager.GetBuffer2D(RenderColorBuffer),
+        bufferManager.GetBuffer2D(MaterialBuffer),
+        bufferManager.GetBuffer2D(NormalBuffer),
+        bufferManager.GetBuffer2D(DepthBuffer),
+        denoisingParams,
+        bufferDim);
 
-    // SpatialWideFilter<16> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-    //     frameNum,
-    //     accuCounter,
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(MaterialBuffer),
-    //     bufferManager.GetBuffer2D(NormalBuffer),
-    //     bufferManager.GetBuffer2D(DepthBuffer),
-    //     denoisingParams,
-    //     bufferDim);
-
-    // SpatialWideFilter<32> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
-    //     frameNum,
-    //     accuCounter,
-    //     bufferManager.GetBuffer2D(RenderColorBuffer),
-    //     bufferManager.GetBuffer2D(MaterialBuffer),
-    //     bufferManager.GetBuffer2D(NormalBuffer),
-    //     bufferManager.GetBuffer2D(DepthBuffer),
-    //     denoisingParams,
-    //     bufferDim);
+    SpatialWideFilter<8> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_16x16x1), GetBlockDim(BLOCK_DIM_16x16x1)) (
+        frameNum,
+        accuCounter,
+        bufferManager.GetBuffer2D(RenderColorBuffer),
+        bufferManager.GetBuffer2D(MaterialBuffer),
+        bufferManager.GetBuffer2D(NormalBuffer),
+        bufferManager.GetBuffer2D(DepthBuffer),
+        denoisingParams,
+        bufferDim);
 
     RecoupleAlbedo KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1)) (
         bufferManager.GetBuffer2D(RenderColorBuffer),
@@ -157,7 +135,6 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferManager.GetBuffer2D(AccumulationColorBuffer),
             bufferManager.GetBuffer2D(HistoryColorBuffer),
             bufferManager.GetBuffer2D(NormalBuffer),
-            bufferManager.GetBuffer2D(HistoryNormalBuffer),
             bufferManager.GetBuffer2D(DepthBuffer),
             bufferManager.GetBuffer2D(HistoryDepthBuffer),
             bufferManager.GetBuffer2D(MaterialBuffer),

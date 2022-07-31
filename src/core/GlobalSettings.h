@@ -107,6 +107,24 @@ struct DenoisingParams
     bool temporal_denoise_use_softmax = true;
 };
 
+struct PostProcessParams
+{
+    std::vector<std::tuple<float*, std::string, float, float, bool>> GetValueList()
+    {
+        return {
+            { &exposure, "Exposure", 0.01f, 100.0f, true},
+            { &gain, "Gain", 1.0f, 10000.0f, true},
+            { &maxWhite, "Max White", 1.0f, 10000.0f, true},
+            { &gamma, "Gamma", 1.0f, 5.0f, false },
+        };
+    }
+
+    float exposure = 1.0f;
+    float gain = 1.0f;
+    float maxWhite = 7.0f;
+    float gamma = 2.2f;
+};
+
 class GlobalSettings
 {
 public:
@@ -126,11 +144,16 @@ public:
     {
         return Get().denoisingParams;
     }
+    static PostProcessParams& GetPostProcessParams()
+    {
+        return Get().postProcessParams;
+    }
 
     static const std::string& GetCameraSaveFileName() { return Get().cameraSaveFileName; }
 
     RenderPassSettings renderPassSettings{};
     DenoisingParams denoisingParams{};
+    PostProcessParams postProcessParams{};
 
     std::string cameraSaveFileName = "mycamera.bin";
 

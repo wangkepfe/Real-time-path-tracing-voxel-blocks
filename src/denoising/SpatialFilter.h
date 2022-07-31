@@ -175,14 +175,10 @@ __global__ void SpatialFilter(
         float deltaDepth = (depthValue - depth) / params.local_denoise_sigma_depth;
         weight *= expf(-0.5f * deltaDepth * deltaDepth);
 
-        // material mask diff factor
-        // if (!isGlass)
-        {
-            weight *= (maskValue != mask) ? 1.0f / params.local_denoise_sigma_material : 1.0f;
-        }
+        weight *= (maskValue != mask) ? 1.0f / params.local_denoise_sigma_material : 1.0f;
 
         // gaussian filter weight
-        weight *= GetGaussian7x7(xoffset + yoffset * kernelDim);
+        weight *= GetGaussian5x5(xoffset + yoffset * kernelDim);
 
         if (isnan(color.x) || isnan(color.y) || isnan(color.z))
         {
@@ -193,7 +189,7 @@ __global__ void SpatialFilter(
         // accumulate
         sumOfColor += color * weight;
         sumOfWeight += weight;
-}
+    }
 
     Float3 finalColor;
 

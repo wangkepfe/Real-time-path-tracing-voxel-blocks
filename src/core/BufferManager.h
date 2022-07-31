@@ -9,42 +9,24 @@ namespace jazzfusion
 
 enum Buffer2DName
 {
-    RenderColorBuffer,             // main render buffer
+    RenderColorBuffer,
+
     MaterialBuffer,
     MaterialHistoryBuffer,
-    AccumulationCounterBuffer,
 
-    AccumulationColorBuffer,       // accumulation render buffer
+    AccumulationColorBuffer,
     HistoryColorBuffer,
 
-    ColorBuffer4,                  // 1/4 res color buffer
-    ColorBuffer16,                 // 1/6 res color buffer
-    ColorBuffer64,                 // 1/64 res color buffer
-    BloomBuffer4,                  // 1/4 res bloom buffer
-    BloomBuffer16,                 // 1/16 bloom buffer
+    NormalBuffer,
+    DepthBuffer,
+    HistoryDepthBuffer,
 
-    NormalBuffer,                  // normalBu buffer
-    DepthBuffer,                   // depth buffer
-    HistoryDepthBuffer,            // depth buffer
-    HistoryNormalBuffer,
-
-    NormalFrontBuffer,
-    DepthFrontBuffer,
-    MaterialFrontBuffer,
-
-    HistoryNormalFrontBuffer,
-    HistoryDepthFrontBuffer,
-    HistoryMaterialFrontBuffer,
-
-    MotionVectorBuffer,            // motion vector buffer
-    NoiseLevelBuffer,              // noise level
-    NoiseLevelBuffer16x16,
-
-    SkyBuffer,                     // sky
-    SunBuffer,
+    MotionVectorBuffer,
 
     AlbedoBuffer,
     HistoryAlbedoBuffer,
+
+    OutputColorBuffer,
 
     Buffer2DCount,
 };

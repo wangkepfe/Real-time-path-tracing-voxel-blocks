@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HalfPrecision.h"
+#include "ShaderDebugUtils.h"
 
 namespace jazzfusion
 {
@@ -106,6 +107,23 @@ INL_DEVICE void Store2DUshort1(
     surf2Dwrite(make_ushort1(value), tex, idx.x * sizeof(ushort1), idx.y, cudaBoundaryModeClamp);
 }
 
+INL_DEVICE Float4 Load2DUshort4(
+    SurfObj tex,
+    Int2    idx)
+{
+    ushort4 val = surf2Dread<ushort4>(tex, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
+    return Float4((float)val.x, (float)val.y, (float)val.z, (float)val.w) / 65535.0f;
+}
+
+INL_DEVICE void Store2DUshort4(
+    Float4  val,
+    SurfObj tex,
+    Int2    idx)
+{
+    Float4 value = min4f(val * 65535.0f, Float4(65535.0f));
+    surf2Dwrite(make_ushort4((ushort)value.x, (ushort)value.y, (ushort)value.z, (ushort)value.w), tex, idx.x * sizeof(ushort4), idx.y, cudaBoundaryModeClamp);
+}
+
 //----------------------------------------------------------------------------------------------
 //
 //                                   Boundary Functors
@@ -189,11 +207,10 @@ struct Load2DFuncFloat4
 template<typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
 INL_DEVICE VectorType SampleNearest(
     SurfObj             tex,
-    const Float2& uv,
+    const Float2& UV,
     const Int2& texSize)
 {
-    Float2 UV = uv * texSize;
-    Int2 tc = floori(UV + 0.5f);
+    Int2 tc = floori(UV - 0.5f);
     return LoadFunc()(tex, BoundaryFunc()(tc, texSize));
 }
 
@@ -242,11 +259,9 @@ INL_DEVICE VectorType SampleBilinear(
 template<typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
 INL_DEVICE VectorType SampleBicubicCatmullRom(
     SurfObj             tex,
-    const Float2& uv,
+    const Float2& UV,
     const Int2& texSize)
 {
-    Float2 UV = uv * texSize;
-    Float2 invTexSize = 1.0f / texSize;
     Float2 tc = floor(UV - 0.5f) + 0.5f;
     Float2 f = UV - tc;
 
@@ -295,11 +310,9 @@ INL_DEVICE VectorType SampleBicubicCatmullRom(
 template<typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
 INL_DEVICE VectorType SampleBicubicSmoothStep(
     SurfObj             tex,
-    const Float2& uv,
+    const Float2& UV,
     const Int2& texSize)
 {
-    Float2 UV = uv * texSize;
-    Float2 invTexSize = 1.0f / texSize;
     Float2 tc = floor(UV - 0.5f) + 0.5f;
     Float2 f = UV - tc;
 

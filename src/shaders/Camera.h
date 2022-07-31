@@ -73,34 +73,23 @@ struct __align__(16) Camera
         apertureLeft = left * aperture;
         apertureUp = up * aperture;
     }
-
-    inline __device__ __host__ Float2 WorldToScreenSpace(Float3 worldPos)
-    {
-        Mat3 invCamMat(left, up, dir);                                   // build view matrix
-        invCamMat.transpose();                                           // orthogonal matrix, inverse is transpose
-        Float3 viewSpacePos = invCamMat * (worldPos - pos);            // transform world pos to view space
-        Float2 screenPlanePos = viewSpacePos.xy / viewSpacePos.z;        // projection onto plane
-        Float2 ndcSpacePos = screenPlanePos / tanHalfFov;             // [-1, 1]
-        Float2 screenSpacePos = Float2(0.5) - ndcSpacePos * Float2(0.5); // [0, 1]
-        return screenSpacePos;
-    }
 };
 
 struct __align__(16) HistoryCamera
 {
     inline __host__ void Setup(const Camera & cam)
     {
-        invCamMat = Mat3(cam.left, -cam.up, cam.dir);  // build view matrix
+        invCamMat = Mat3(-cam.left, cam.up, cam.dir);  // build view matrix
         invCamMat.transpose();                      // orthogonal matrix, inverse is transpose
         pos = cam.pos;
     }
 
-    inline __device__ Float2 WorldToScreenSpace(Float3 worldPos, Float2 tanHalfFov)
+    inline __device__ Float2 WorldToScreenSpace(Float3 dir, Float2 tanHalfFov)
     {
-        Float3 viewSpacePos = invCamMat * (worldPos - pos);            // transform world pos to view space
+        Float3 viewSpacePos = invCamMat * dir;            // transform world pos to view space
         Float2 screenPlanePos = viewSpacePos.xy / viewSpacePos.z;        // projection onto plane
         Float2 ndcSpacePos = screenPlanePos / tanHalfFov;             // [-1, 1]
-        Float2 screenSpacePos = Float2(0.5) - ndcSpacePos * Float2(0.5); // [0, 1]
+        Float2 screenSpacePos = Float2(0.5) + ndcSpacePos * Float2(0.5); // [0, 1]
         return screenSpacePos;
     }
 

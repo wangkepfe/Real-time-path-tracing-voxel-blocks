@@ -74,10 +74,10 @@ struct __align__(16) PerRayData
     INL_DEVICE float rand(const SystemParameter & sysParam)
     {
         UInt2 idx = UInt2(optixGetLaunchIndex());
-        return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, randIdx++);
+        return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex * sysParam.samplePerIteration + sysParam.sampleIndex, randIdx++);
     }
 
-    INL_DEVICE Float2 rand2(const SystemParameter& sysParam)
+    INL_DEVICE Float2 rand2(const SystemParameter & sysParam)
     {
         return Float2(rand(sysParam), rand(sysParam));
     }

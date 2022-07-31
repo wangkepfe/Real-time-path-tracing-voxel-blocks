@@ -244,17 +244,11 @@ void Backend::initOpenGL()
     static const std::string fsSource =
         "#version 330                                                                      \n"
         "uniform sampler2D samplerHDR;                                                     \n"
-        "uniform float gain;                                                               \n"
-        "uniform float maxWhite;                                                           \n"
         "in vec2 varTexCoord;                                                              \n"
         "layout(location = 0, index = 0) out vec4 outColor;                                \n"
         "void main()                                                                       \n"
         "{                                                                                 \n"
-        "    vec3 color = texture(samplerHDR, varTexCoord).rgb;                            \n"
-        "    float lum = dot(color, vec3(0.2126f, 0.7152f, 0.0722f));                      \n"
-        "    color = color * gain * (1.0f + (lum / (maxWhite * maxWhite))) / (1.0f + lum); \n"
-        "    color = pow(color, vec3(1.0f / 2.2f));                                        \n"
-        "    outColor = vec4(color, 1.0f);                                                 \n"
+        "    outColor = vec4(texture(samplerHDR, varTexCoord).rgb, 1.0f);                  \n"
         "}                                                                                 \n";
 
     GLint vsCompiled = 0;
@@ -313,9 +307,6 @@ void Backend::initOpenGL()
             m_texCoordLocation = glGetAttribLocation(m_glslProgram, "attrTexCoord");
             assert(m_texCoordLocation != -1);
 
-            glUniform1f(glGetUniformLocation(m_glslProgram, "gain"), m_toneMapGain);
-            glUniform1f(glGetUniformLocation(m_glslProgram, "maxWhite"), m_toneMapMaxWhite);
-
             glUseProgram(0);
         }
     }
@@ -368,9 +359,6 @@ void Backend::display()
     glEnableVertexAttribArray(m_texCoordLocation);
 
     glUseProgram(m_glslProgram);
-
-    glUniform1f(glGetUniformLocation(m_glslProgram, "gain"), m_toneMapGain);
-    glUniform1f(glGetUniformLocation(m_glslProgram, "maxWhite"), m_toneMapMaxWhite);
 
     glDrawElements(GL_TRIANGLES, (GLsizei)6, GL_UNSIGNED_INT, (const GLvoid*)0);
 
@@ -527,6 +515,6 @@ void Backend::dumpSystemInformation()
         std::cout << "directManagedMemAccessFromHost = " << properties.directManagedMemAccessFromHost << '\n';
 #endif
     }
-}
+    }
 
 }

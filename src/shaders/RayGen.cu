@@ -13,27 +13,6 @@ __device__ static constexpr int MaterialStackFirst = 0;
 __device__ static constexpr int MaterialStackLast = 0;
 __device__ static constexpr int MaterialStackSize = 1;
 
-//--------------------------------
-//
-//          ----------> u (0,1)
-//        |
-//        |
-//        |
-//        V
-//
-//        v (0,1)
-
-//--------------------------------
-//
-//         ^  y
-//         |
-//         |
-//         |
-//        / --------->  x
-//       /
-//      /
-//     v  z
-
 __device__ void inline GenerateRay(
     Float3& orig,
     Float3& dir,
@@ -192,36 +171,6 @@ extern "C" __global__ void __raygen__pathtracer()
     const UInt2 imgSize = UInt2(optixGetLaunchDimensions());
     UInt2 idx = UInt2(optixGetLaunchIndex());
 
-    //     if constexpr (0)
-    //     {
-    //         BlueNoiseRandGenerator randGen = sysParam.randGen;
-    //         randGen.idx.x = idx.x;
-    //         randGen.idx.y = idx.y;
-    //         uint seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
-    // #pragma unroll
-    //         for (int i = 0; i < 4; ++i)
-    //         {
-    //             randGen.sampleIdx = sysParam.iterationIndex * 4 + i;
-
-    // #pragma unroll
-    //             for (int j = 0; j < 4; ++j)
-    //             {
-    //                 float blueNoise = randGen.Rand(j);
-    //                 float pureRand = rng(seed);
-    //                 rayData->randNums[i * 4 + j] = lerpf(blueNoise, pureRand, sysParam.noiseBlend);
-    //             }
-    //         }
-    //     }
-
-        //     uint seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
-        // #pragma unroll
-        //     for (int i = 0; i < 8; ++i)
-        //     {
-        //         rayData->randNums[i] = rng(seed);
-        //     }
-        //     rayData->randNumIdx = 0;
-
-    // rayData->seed = tea<4>(idx.y * imgSize.x + idx.x, sysParam.iterationIndex);
     rayData->randIdx = 0;
 
     const Float2 screen = Float2(imgSize.x, imgSize.y);
@@ -250,7 +199,6 @@ extern "C" __global__ void __raygen__pathtracer()
     rayData->normal = Float3(0.0f, 1.0f, 0.0f);
     rayData->rayConeWidth = 0.0f;
     rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
-    // rayData->totalDistance = 0.0f;
     rayData->material = 0u;
     rayData->sampleIdx = 0;
     rayData->depth = 0;
@@ -258,11 +206,9 @@ extern "C" __global__ void __raygen__pathtracer()
     bool pathTerminated = false;
 
     Float2 outMotionVector = Float2(0.5f);
-    Float3 outNormal = Float3(0.0f, 1.0f, 0.0f);
+    Float3 outNormal = Float3(0.0f, 0.0f, 0.0f);
     Float3 outAlbedo = Float3(1.0f);
     float outDepth = RayMax;
-    // ushort outMaterial = SKY_MATERIAL_ID;
-    // uint multipliedMaterial = 1;
     bool hitFirstDefuseSurface = false;
 
     while (!pathTerminated)
@@ -278,19 +224,22 @@ extern "C" __global__ void __raygen__pathtracer()
         // First hit
         if (depth == 0)
         {
-            outNormal = rayData->normal;
-            outDepth = rayData->distance;
-
-            Store2DHalf4(Float4(rayData->normal, 1.0f), sysParam.outNormal, idx);
-            Store2DHalf1(rayData->distance, sysParam.outDepth, idx);
-
-            outMotionVector = Float2(0.5f);
-            if (!pathTerminated)
+            if (sysParam.sampleIndex == 0)
             {
-                Float2 lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos, sysParam.camera.tanHalfFov);
+                outNormal = rayData->normal;
+                outDepth = rayData->distance;
+
+                Float2 lastFrameSampleUv;
+                if (rayData->material == 0)
+                {
+                    lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->wi, sysParam.camera.tanHalfFov);
+                }
+                else
+                {
+                    lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos - sysParam.historyCamera.pos, sysParam.camera.tanHalfFov);
+                }
                 outMotionVector += lastFrameSampleUv - sampleUv;
             }
-            Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
         }
 
         if (!hitFirstDefuseSurface)
@@ -399,8 +348,25 @@ extern "C" __global__ void __raygen__pathtracer()
     {
         radiance = Float3(0.5f);
     }
+
+    if (sysParam.sampleIndex == 0)
+    {
+        Store2DUshort1((ushort)rayData->material, sysParam.outMaterial, idx);
+        Store2DHalf4(Float4(outNormal, 0.0f), sysParam.outNormal, idx);
+        Store2DHalf1(outDepth, sysParam.outDepth, idx);
+        Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
+    }
+
+    if (sysParam.sampleIndex > 0)
+    {
+        Float3 accumulatedAlbedo = Load2DHalf4(sysParam.outAlbedo, idx).xyz;
+        Float3 accumulatedRadiance = Load2DHalf4(sysParam.outputBuffer, idx).xyz;
+
+        outAlbedo = lerp3f(accumulatedAlbedo, outAlbedo, 1.0f / (float)(sysParam.sampleIndex + 1));
+        radiance = lerp3f(accumulatedRadiance, radiance, 1.0f / (float)(sysParam.sampleIndex + 1));
+    }
+
     Store2DHalf4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
-    Store2DUshort1((ushort)rayData->material, sysParam.outMaterial, idx);
     Store2DHalf4(Float4(radiance, 1.0f), sysParam.outputBuffer, idx);
 }
 

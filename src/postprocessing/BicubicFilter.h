@@ -5,7 +5,7 @@ namespace jazzfusion
 {
 
 __global__ void BicubicFilter(
-    Float4* out,
+    SurfObj outColorBuffer,
     SurfObj colorBuffer,
     Int2 texSize,
     Int2 outSize)
@@ -16,14 +16,9 @@ __global__ void BicubicFilter(
 
     if (idx.x >= outSize.x || idx.y >= outSize.y) return;
 
-    int linearId = idx.y * outSize.x + idx.x;
-    Float2 uv = ToFloat2(idx) / ToFloat2(outSize);
-
+    Float2 uv = (ToFloat2(idx) + 0.5f) / ToFloat2(outSize) * ToFloat2(texSize);
     Float3 sampledColor = SampleBicubicCatmullRom<Load2DFuncHalf4<Float3>>(colorBuffer, uv, texSize);
-    // Float3 sampledColor = SampleNearest<Load2DFuncHalf4<Float3>>(colorBuffer, uv, texSize);
-    // Float3 sampledColor = Load2DHalf4(colorBuffer, idx).xyz;
-
-    out[linearId] = Float4(sampledColor, 0);
+    Store2DHalf4(Float4(sampledColor, 0), outColorBuffer, idx);
 }
 
 }

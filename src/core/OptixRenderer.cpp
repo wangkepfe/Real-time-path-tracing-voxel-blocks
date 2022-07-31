@@ -135,13 +135,19 @@ void OptixRenderer::render()
         m_systemParameter.historyCamera.Setup(m_camera);
     }
 
+    constexpr int samplePerIteration = 4;
+
     m_systemParameter.camera = m_camera;
     m_systemParameter.noiseBlend = GlobalSettings::GetDenoisingParams().noiseBlend;
     m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
+    m_systemParameter.samplePerIteration = samplePerIteration;
 
-    CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
-
-    OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+    for (int sampleIndex = 0; sampleIndex < samplePerIteration; ++sampleIndex)
+    {
+        m_systemParameter.sampleIndex = sampleIndex;
+        CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+        OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 

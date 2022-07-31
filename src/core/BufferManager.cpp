@@ -55,6 +55,8 @@ void BufferManager::init()
     UInt2 bufferSize8x8 = UInt2(DivRoundUp(renderWidth, 8u), DivRoundUp(renderHeight, 8u));
     UInt2 bufferSize16x16 = UInt2(DivRoundUp(renderWidth, 16u), DivRoundUp(renderHeight, 16u));
 
+    UInt2 outputSize = UInt2(backend.getWidth(), backend.getHeight());
+
     struct Buffer2DDesc
     {
         cudaChannelFormatDesc format;
@@ -68,39 +70,19 @@ void BufferManager::init()
         { MaterialBuffer          , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
         { MaterialHistoryBuffer   , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
 
-        { AccumulationCounterBuffer      , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
-
         { AccumulationColorBuffer , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
         { HistoryColorBuffer      , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-
-        { ColorBuffer4            , { cudaCreateChannelDescHalf4()     , bufferSize4                         } } ,
-        { ColorBuffer16           , { cudaCreateChannelDescHalf4()     , bufferSize16                        } } ,
-        { ColorBuffer64           , { cudaCreateChannelDescHalf4()     , bufferSize64                        } } ,
-        { BloomBuffer4            , { cudaCreateChannelDescHalf4()     , bufferSize4                         } } ,
-        { BloomBuffer16           , { cudaCreateChannelDescHalf4()     , bufferSize16                        } } ,
 
         { NormalBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
         { DepthBuffer             , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
         { HistoryDepthBuffer      , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
-        { HistoryNormalBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-
-        { NormalFrontBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-        { DepthFrontBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
-        { MaterialFrontBuffer     , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
-
-        { HistoryNormalFrontBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-        { HistoryDepthFrontBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
-        { HistoryMaterialFrontBuffer     , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
 
         { MotionVectorBuffer      , { cudaCreateChannelDescHalf2()     , bufferSize                          } } ,
-        { NoiseLevelBuffer        , { cudaCreateChannelDescHalf1()     , bufferSize8x8                       } } ,
-        { NoiseLevelBuffer16x16   , { cudaCreateChannelDescHalf1()     , bufferSize16x16                     } } ,
-
-        { SkyBuffer               , { cudaCreateChannelDesc<float4>()  , UInt2(SKY_WIDTH       , SKY_HEIGHT) } } ,
-        { SunBuffer               , { cudaCreateChannelDesc<float4>()  , UInt2(SUN_WIDTH       , SUN_HEIGHT) } } ,
 
         { AlbedoBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
         { HistoryAlbedoBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+
+        { OutputColorBuffer       , { cudaCreateChannelDescHalf4()     , outputSize                          } } ,
     };
 
     assert(map.size() == Buffer2DCount);

@@ -93,6 +93,7 @@ struct SystemParameter
     float envRotation;
 
     int iterationIndex;
+    int samplePerIteration;
     int sampleIndex;
     float sceneEpsilon;
 
