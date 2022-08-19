@@ -56,10 +56,14 @@ public:
 
     void init();
 
-    SurfObj GetBuffer2D(Buffer2DName name) { return m_buffers[(uint)name].buffer; }
+    SurfObj GetBuffer2D(Buffer2DName name) const { return m_buffers[(uint)name].buffer; }
+    // TexObj GetRenderBufferTexture() const { return m_renderBufferTexture; }
 
 private:
     std::vector<Buffer2D> m_buffers{};
+
+    // cudaTextureDesc m_renderBufferTexDesc{};
+    // TexObj m_renderBufferTexture{};
 
     BufferManager() {}
 };

@@ -29,7 +29,9 @@ struct RenderPassSettings
             { &enableBloomEffect        , "Enable Bloom Effect"         },
             { &enableLensFlare          , "Enable Lens Flare"           },
             { &enableToneMapping        , "Enable Tone Mapping"         },
-            { &enableSharpening         , "Enable Sharpening"           }
+            { &enableSharpening         , "Enable Sharpening"           },
+
+            { &enableEASU               , "Enable EASU"                 },
         };
     }
 
@@ -48,6 +50,8 @@ struct RenderPassSettings
     bool enableLensFlare = false;
     bool enableToneMapping = true;
     bool enableSharpening = true;
+
+    bool enableEASU = false;
 };
 
 struct DenoisingParams

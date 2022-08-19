@@ -112,7 +112,7 @@ NVCUDA_COMPILE_PTX( SOURCES ${SHADERS}
                     DEPENDENCIES ${SHADERS_HEADERS}
                     TARGET_PATH "${PTX_DIR}"
                     GENERATED_FILES PTX_SOURCES
-                    NVCC_OPTIONS "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+                    NVCC_OPTIONS "-arch=sm_75" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
                   )
 
 source_group( "imgui"           FILES ${IMGUI} )

@@ -61,28 +61,29 @@ void BufferManager::init()
     {
         cudaChannelFormatDesc format;
         UInt2 dim;
+        uint usageFlag;
     };
 
     std::unordered_map<Buffer2DName, Buffer2DDesc> map =
     {
-        { RenderColorBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+        { RenderColorBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore/* | cudaArrayTextureGather*/ } } ,
 
-        { MaterialBuffer          , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
-        { MaterialHistoryBuffer   , { cudaCreateChannelDesc<ushort1>() , bufferSize                          } } ,
+        { MaterialBuffer          , { cudaCreateChannelDesc<ushort1>() , bufferSize, cudaArraySurfaceLoadStore } } ,
+        { MaterialHistoryBuffer   , { cudaCreateChannelDesc<ushort1>() , bufferSize, cudaArraySurfaceLoadStore } } ,
 
-        { AccumulationColorBuffer , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-        { HistoryColorBuffer      , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+        { AccumulationColorBuffer , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
+        { HistoryColorBuffer      , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
 
-        { NormalBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-        { DepthBuffer             , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
-        { HistoryDepthBuffer      , { cudaCreateChannelDescHalf1()     , bufferSize                          } } ,
+        { NormalBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
+        { DepthBuffer             , { cudaCreateChannelDescHalf1()     , bufferSize, cudaArraySurfaceLoadStore } } ,
+        { HistoryDepthBuffer      , { cudaCreateChannelDescHalf1()     , bufferSize, cudaArraySurfaceLoadStore } } ,
 
-        { MotionVectorBuffer      , { cudaCreateChannelDescHalf2()     , bufferSize                          } } ,
+        { MotionVectorBuffer      , { cudaCreateChannelDescHalf2()     , bufferSize, cudaArraySurfaceLoadStore } } ,
 
-        { AlbedoBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
-        { HistoryAlbedoBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize                          } } ,
+        { AlbedoBuffer            , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
+        { HistoryAlbedoBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
 
-        { OutputColorBuffer       , { cudaCreateChannelDescHalf4()     , outputSize                          } } ,
+        { OutputColorBuffer       , { cudaCreateChannelDescHalf4()     , outputSize, cudaArraySurfaceLoadStore } } ,
     };
 
     assert(map.size() == Buffer2DCount);
@@ -91,8 +92,35 @@ void BufferManager::init()
     for (int i = 0; i < Buffer2DCount; ++i)
     {
         const Buffer2DDesc& desc = map[static_cast<Buffer2DName>(i)];
-        m_buffers[i].init(&desc.format, desc.dim, cudaArraySurfaceLoadStore);
+        m_buffers[i].init(&desc.format, desc.dim, desc.usageFlag);
     }
+
+    // {
+    //     cudaResourceDesc resDesc = {};
+    //     resDesc.resType = cudaResourceTypeArray;
+    //     resDesc.res.array.array = m_buffers[static_cast<uint>(RenderColorBuffer)].bufferArray;
+
+    //     memset(&m_renderBufferTexDesc, 0, sizeof(cudaTextureDesc));
+
+    //     m_renderBufferTexDesc.addressMode[0] = cudaAddressModeClamp;
+    //     m_renderBufferTexDesc.addressMode[1] = cudaAddressModeClamp;
+    //     m_renderBufferTexDesc.addressMode[2] = cudaAddressModeClamp;
+    //     m_renderBufferTexDesc.filterMode = cudaFilterModePoint;
+    //     m_renderBufferTexDesc.readMode = cudaReadModeElementType;
+    //     m_renderBufferTexDesc.sRGB = 0;
+    //     m_renderBufferTexDesc.borderColor[0] = 0.0f;
+    //     m_renderBufferTexDesc.borderColor[1] = 0.0f;
+    //     m_renderBufferTexDesc.borderColor[2] = 0.0f;
+    //     m_renderBufferTexDesc.borderColor[3] = 0.0f;
+    //     m_renderBufferTexDesc.normalizedCoords = 1;
+    //     m_renderBufferTexDesc.maxAnisotropy = 1;
+    //     m_renderBufferTexDesc.mipmapFilterMode = cudaFilterModePoint;
+    //     m_renderBufferTexDesc.mipmapLevelBias = 0.0f;
+    //     m_renderBufferTexDesc.minMipmapLevelClamp = 0.0f;
+    //     m_renderBufferTexDesc.maxMipmapLevelClamp = 0.0f;
+
+    //     CUDA_CHECK(cudaCreateTextureObject(&m_renderBufferTexture, &resDesc, &m_renderBufferTexDesc, nullptr));
+    // }
 }
 
 }

@@ -485,6 +485,38 @@ struct Int4
     INL_HOST_DEVICE int  operator[] (int i) const { return _v[i]; }
 };
 
+struct UInt4
+{
+    union
+    {
+        struct { uint x, y, z, w; };
+        uint _v[4];
+    };
+
+    INL_HOST_DEVICE UInt4() : x{ 0 }, y{ 0 }, z{ 0 }, w{ 0 } {}
+    INL_HOST_DEVICE explicit UInt4(uint a) : x{ a }, y{ a }, z{ a }, w{ a } {}
+    INL_HOST_DEVICE UInt4(uint x, uint y, uint z, uint w) : x{ x }, y{ y }, z{ z }, w{ w } {}
+    INL_HOST_DEVICE UInt4(const uint4& v) : x{ v.x }, y{ v.y }, z{ v.z }, w{ v.w } {}
+
+    INL_HOST_DEVICE UInt4 operator + (uint a) const { return UInt4(x + a, y + a, z + a, w + a); }
+    INL_HOST_DEVICE UInt4 operator - (uint a) const { return UInt4(x - a, y - a, z - a, w - a); }
+
+    INL_HOST_DEVICE UInt4 operator += (uint a) { x += a; y += a; z += a; w += a; return *this; }
+    INL_HOST_DEVICE UInt4 operator -= (uint a) { x -= a; y -= a; z -= a; w -= a; return *this; }
+
+    INL_HOST_DEVICE UInt4 operator + (const UInt4& v) const { return UInt4(x + v.x, y + v.y, z + v.z, w + v.w); }
+    INL_HOST_DEVICE UInt4 operator - (const UInt4& v) const { return UInt4(x - v.x, y - v.y, z - v.z, w - v.w); }
+
+    INL_HOST_DEVICE UInt4 operator += (const UInt4& v) { x += v.x; y += v.y; z += v.z; w += v.w; return *this; }
+    INL_HOST_DEVICE UInt4 operator -= (const UInt4& v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; return *this; }
+
+    INL_HOST_DEVICE bool operator == (const UInt4& v) { return x == v.x && y == v.y && z == v.z && w == v.w; }
+    INL_HOST_DEVICE bool operator != (const UInt4& v) { return x != v.x || y != v.y || z != v.z || w != v.w; }
+
+    INL_HOST_DEVICE uint& operator[] (uint i) { return _v[i]; }
+    INL_HOST_DEVICE uint  operator[] (uint i) const { return _v[i]; }
+};
+
 struct Float4
 {
     union
@@ -1102,5 +1134,7 @@ INL_DEVICE void alignVector(Float3 const& axis, Float3& w)
     const float k = dot(w, h) / (1.0f + fabsf(axis.z));
     w = k * h - w;
 }
+
+INL_DEVICE float rcp(float a) { return 1.0f / a; }
 
 }

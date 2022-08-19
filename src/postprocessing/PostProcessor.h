@@ -32,11 +32,6 @@ private:
     int inputHeight;
     int outputWidth;
     int outputHeight;
-
-    TexObj m_scaledTexture;
-    SurfObj m_scaledBuffer;
-    cudaTextureDesc m_scaledTexDesc;
-    cudaArray_t m_scaledBufferArray;
 };
 
 }

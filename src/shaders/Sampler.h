@@ -58,6 +58,17 @@ INL_DEVICE void Store2DHalf4(
     surf2Dwrite(us4, tex, idx.x * 4 * sizeof(ushort), idx.y, cudaBoundaryModeClamp);
 }
 
+INL_DEVICE void Store2DHalf4(
+    Half4   hf4,
+    SurfObj tex,
+    Int2    idx)
+{
+    ushort4ToHalf4Converter conv(hf4);
+    ushort4 us4 = conv.us4;
+
+    surf2Dwrite(us4, tex, idx.x * 4 * sizeof(ushort), idx.y, cudaBoundaryModeClamp);
+}
+
 INL_DEVICE Float2 Load2DHalf2(SurfObj tex, Int2 idx)
 {
     ushort2ToHalf2Converter conv(surf2Dread<ushort2>(tex, idx.x * 2 * sizeof(short), idx.y, cudaBoundaryModeClamp));

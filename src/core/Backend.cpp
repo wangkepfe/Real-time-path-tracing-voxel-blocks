@@ -24,6 +24,9 @@ void Backend::init()
     m_width = 3840;
     m_height = 2160;
 
+    // m_width = 1920;
+    // m_height = 1080;
+
     m_dynamicResolution = false;
 
     m_minRenderWidth = 480;
@@ -515,6 +518,6 @@ void Backend::dumpSystemInformation()
         std::cout << "directManagedMemAccessFromHost = " << properties.directManagedMemAccessFromHost << '\n';
 #endif
     }
-    }
+}
 
 }
