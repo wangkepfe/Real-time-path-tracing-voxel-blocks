@@ -5,6 +5,7 @@
 #include "postprocessing/PostProcessor.h"
 #include "denoising/Denoiser.h"
 #include "core/InputHandler.h"
+#include "sky/Sky.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -88,6 +89,8 @@ void Backend::init()
     renderer.setHeight(m_maxRenderHeight);
 
     m_frameNum = 0;
+
+    SkyModel::Get().init();
 }
 
 void Backend::mainloop()
@@ -103,6 +106,8 @@ void Backend::mainloop()
     while (!glfwWindowShouldClose(m_window))
     {
         glfwPollEvents();
+
+        SkyModel::Get().update();
 
         float minFrameTimeAllowed = 1000.0f / m_maxFpsAllowed;
         m_timer.updateWithLimiter(minFrameTimeAllowed);

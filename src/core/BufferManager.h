@@ -28,6 +28,9 @@ enum Buffer2DName
 
     OutputColorBuffer,
 
+    SkyBuffer,
+    SunBuffer,
+
     Buffer2DCount,
 };
 

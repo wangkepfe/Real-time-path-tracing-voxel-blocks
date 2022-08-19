@@ -59,6 +59,7 @@ namespace jazzfusion
 
 struct Float3;
 struct Int2;
+struct UInt2;
 
 template<typename T>
 INL_HOST_DEVICE T max(const T& a, const T& b) { return a > b ? a : b; }
@@ -206,6 +207,8 @@ struct Int2
     INL_HOST_DEVICE Int2() : x{ 0 }, y{ 0 } {}
     INL_HOST_DEVICE explicit Int2(int a) : x{ a }, y{ a } {}
     INL_HOST_DEVICE Int2(int x, int y) : x{ x }, y{ y } {}
+    INL_HOST_DEVICE explicit Int2(const uint2& v) : x{ (int)v.x }, y{ (int)v.y } {}
+    INL_HOST_DEVICE explicit Int2(const uint3& v) : x{ (int)v.x }, y{ (int)v.y } {}
 
     INL_HOST_DEVICE Int2 operator + (int a) const { return Int2(x + a, y + a); }
     INL_HOST_DEVICE Int2 operator - (int a) const { return Int2(x - a, y - a); }
@@ -226,6 +229,7 @@ struct Int2
 
     INL_HOST_DEVICE int& operator[] (int i) { return _v[i]; }
     INL_HOST_DEVICE int  operator[] (int i) const { return _v[i]; }
+
 };
 
 INL_HOST_DEVICE Float2 ToFloat2(const Int2& v) { return Float2((float)v.x, (float)v.y); }
@@ -241,8 +245,9 @@ struct UInt2
     INL_HOST_DEVICE UInt2() : x{ 0 }, y{ 0 } {}
     INL_HOST_DEVICE explicit UInt2(uint a) : x{ a }, y{ a } {}
     INL_HOST_DEVICE UInt2(uint x, uint y) : x{ x }, y{ y } {}
-    INL_HOST_DEVICE UInt2(const uint2& v) : x{ v.x }, y{ v.y } {}
-    INL_HOST_DEVICE UInt2(const uint3& v) : x{ v.x }, y{ v.y } {}
+    INL_HOST_DEVICE explicit UInt2(Int2 a) : x{ (uint)a.x }, y{ (uint)a.y } {}
+    INL_HOST_DEVICE explicit UInt2(const uint2& v) : x{ v.x }, y{ v.y } {}
+    INL_HOST_DEVICE explicit UInt2(const uint3& v) : x{ v.x }, y{ v.y } {}
 
     INL_HOST_DEVICE UInt2 operator + (uint a) const { return UInt2(x + a, y + a); }
     INL_HOST_DEVICE UInt2 operator - (uint a) const { return UInt2(x - a, y - a); }
@@ -262,7 +267,7 @@ struct UInt2
     INL_HOST_DEVICE uint& operator[] (uint i) { return _v[i]; }
     INL_HOST_DEVICE uint  operator[] (uint i) const { return _v[i]; }
 
-    INL_HOST_DEVICE operator Int2() const { return Int2((int)x, (int)y); }
+    INL_HOST_DEVICE explicit operator Int2() const { return Int2((int)x, (int)y); }
 };
 
 INL_HOST_DEVICE Int2 operator + (int a, const Int2& v) { return Int2(v.x + a, v.y + a); }
@@ -1136,5 +1141,88 @@ INL_DEVICE void alignVector(Float3 const& axis, Float3& w)
 }
 
 INL_DEVICE float rcp(float a) { return 1.0f / a; }
+
+
+INL_DEVICE Float3 EqualRectMap(float u, float v)
+{
+    float theta = u * TWO_PI;
+    float phi = v * PI_OVER_2;
+
+    float x = cos(theta) * cos(phi);
+    float y = sin(phi);
+    float z = sin(theta) * cos(phi);
+
+    return Float3(x, y, z);
+}
+
+INL_DEVICE Float2 EqualRectMap(Float3 dir)
+{
+    float phi = asin(dir.y);
+    float theta = acos(dir.x / cos(phi));
+
+    float u = theta / TWO_PI;
+    float v = phi / PI_OVER_2;
+
+    return Float2(u, v);
+}
+
+INL_DEVICE Float3 EqualAreaMap(float u, float v)
+{
+    float z = v;
+    float r = sqrtf(1.0f - v * v);
+    float phi = TWO_PI * u;
+
+    return Float3(r * cosf(phi), z, r * sinf(phi));
+}
+
+INL_DEVICE Float2 EqualAreaMap(Float3 dir)
+{
+    float u = atan2f(-dir.z, -dir.x) / TWO_PI + 0.5f;
+    float v = max(dir.y, 0.05f);
+    return Float2(u, v);
+}
+
+INL_DEVICE Float3 EqualAreaMapCone(const Float3& sunDir, float u, float v, float cosThetaMax)
+{
+    float cosTheta = (1.0f - u) + u * cosThetaMax;
+    float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
+    float phi = v * TWO_PI;
+
+    Float3 t, b;
+    LocalizeSample(sunDir, t, b);
+    Mat3 trans(t, sunDir, b);
+
+    Float3 coords = Float3(cosf(phi) * sinTheta, cosTheta, sinf(phi) * sinTheta);
+
+    return trans * coords;
+}
+
+INL_DEVICE bool EqualAreaMapCone(Float2& uv, const Float3& sunDir, const Float3& rayDir, float cosThetaMax)
+{
+    Float3 t, b;
+    LocalizeSample(sunDir, t, b);
+    Mat3 trans(t, sunDir, b);
+    trans.transpose();
+
+    Float3 coords = trans * rayDir;
+    float cosTheta = coords.y;
+    if (cosTheta < cosThetaMax)
+    {
+        return false;
+    }
+    float u = (1.0f - cosTheta) / (1.0f - cosThetaMax);
+
+    float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
+    if (sinTheta < 1e-5f || (coords.x / sinTheta) < -1.0f || (coords.x / sinTheta) > 1.0f)
+    {
+        return false;
+    }
+
+    float v = acosf(coords.x / sinTheta) * INV_TWO_PI;
+
+    uv = Float2(u, v);
+
+    return true;
+}
 
 }

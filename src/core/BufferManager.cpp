@@ -2,6 +2,7 @@
 #include "core/Backend.h"
 #include "util/KernelHelper.h"
 #include "util/DebugUtils.h"
+#include "sky/Sky.h"
 
 #include <unordered_map>
 
@@ -57,6 +58,10 @@ void BufferManager::init()
 
     UInt2 outputSize = UInt2(backend.getWidth(), backend.getHeight());
 
+    const auto& skyModel = SkyModel::Get();
+    UInt2 skySize = (UInt2)skyModel.getSkyRes();
+    UInt2 sunSize = (UInt2)skyModel.getSunRes();
+
     struct Buffer2DDesc
     {
         cudaChannelFormatDesc format;
@@ -66,7 +71,7 @@ void BufferManager::init()
 
     std::unordered_map<Buffer2DName, Buffer2DDesc> map =
     {
-        { RenderColorBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore/* | cudaArrayTextureGather*/ } } ,
+        { RenderColorBuffer       , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
 
         { MaterialBuffer          , { cudaCreateChannelDesc<ushort1>() , bufferSize, cudaArraySurfaceLoadStore } } ,
         { MaterialHistoryBuffer   , { cudaCreateChannelDesc<ushort1>() , bufferSize, cudaArraySurfaceLoadStore } } ,
@@ -84,6 +89,11 @@ void BufferManager::init()
         { HistoryAlbedoBuffer     , { cudaCreateChannelDescHalf4()     , bufferSize, cudaArraySurfaceLoadStore } } ,
 
         { OutputColorBuffer       , { cudaCreateChannelDescHalf4()     , outputSize, cudaArraySurfaceLoadStore } } ,
+
+        { OutputColorBuffer       , { cudaCreateChannelDescHalf4()     , outputSize, cudaArraySurfaceLoadStore } } ,
+
+        { SkyBuffer               , { cudaCreateChannelDescHalf4()     , skySize   , cudaArraySurfaceLoadStore } } ,
+        { SunBuffer               , { cudaCreateChannelDescHalf4()     , sunSize   , cudaArraySurfaceLoadStore } } ,
     };
 
     assert(map.size() == Buffer2DCount);
@@ -95,6 +105,7 @@ void BufferManager::init()
         m_buffers[i].init(&desc.format, desc.dim, desc.usageFlag);
     }
 
+    // Code for creating a gather enabled texture
     // {
     //     cudaResourceDesc resDesc = {};
     //     resDesc.resType = cudaResourceTypeArray;

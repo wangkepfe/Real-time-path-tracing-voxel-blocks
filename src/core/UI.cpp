@@ -89,7 +89,24 @@ void UI::update()
                 std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
     }
 
-    ImGui::End();
+    if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_None))
+    {
+        SkyParams& skyParams = GlobalSettings::GetSkyParams();
+        for (auto& item : skyParams.GetValueList())
+        {
+            if (ImGui::SliderFloat(std::get<1>(item).c_str(),
+                std::get<0>(item),
+                std::get<2>(item),
+                std::get<3>(item),
+                "%.3f",
+                std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None))
+            {
+                skyParams.needRegenerate = true;
+            }
+        }
+
+        ImGui::End();
+    }
 }
 
 void UI::render()

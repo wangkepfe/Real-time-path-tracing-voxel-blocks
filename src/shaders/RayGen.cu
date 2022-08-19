@@ -168,8 +168,8 @@ extern "C" __global__ void __raygen__pathtracer()
     PerRayData perRayData;
     PerRayData* rayData = &perRayData;
 
-    const UInt2 imgSize = UInt2(optixGetLaunchDimensions());
-    UInt2 idx = UInt2(optixGetLaunchIndex());
+    const Int2 imgSize = Int2(optixGetLaunchDimensions());
+    Int2 idx = Int2(optixGetLaunchIndex());
 
     rayData->randIdx = 0;
 

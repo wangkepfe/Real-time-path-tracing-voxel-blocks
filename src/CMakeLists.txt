@@ -63,6 +63,9 @@ set( HEADERS
   shaders/Sampler.h
   shaders/SystemParameter.h
   shaders/RandGen.h
+
+  sky/Sky.h
+  sky/SkyData.h
 )
 
 set( SOURCES
@@ -82,6 +85,8 @@ set( SOURCES
   util/Texture.cpp
   util/TextureUtils.cpp
   util/RandGenHost.cpp
+
+  sky/Sky.cu
 )
 
 set( SHADERS

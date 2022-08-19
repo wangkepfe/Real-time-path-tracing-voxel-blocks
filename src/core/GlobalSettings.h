@@ -129,6 +129,21 @@ struct PostProcessParams
     float gamma = 2.2f;
 };
 
+struct SkyParams
+{
+    std::vector<std::tuple<float*, std::string, float, float, bool>> GetValueList()
+    {
+        return {
+            { &timeOfDay      , "Time of Day"    , 0.01f , 0.99f , false },
+            { &sunAxisAngle   , "Sun Axis Angle" , 5.0f , 85.0f, false }
+        };
+    }
+
+    bool needRegenerate = true;
+    float timeOfDay = 0.25f;
+    float sunAxisAngle = 45.0f;
+};
+
 class GlobalSettings
 {
 public:
@@ -152,12 +167,17 @@ public:
     {
         return Get().postProcessParams;
     }
+    static SkyParams& GetSkyParams()
+    {
+        return Get().skyParams;
+    }
 
     static const std::string& GetCameraSaveFileName() { return Get().cameraSaveFileName; }
 
     RenderPassSettings renderPassSettings{};
     DenoisingParams denoisingParams{};
     PostProcessParams postProcessParams{};
+    SkyParams skyParams{};
 
     std::string cameraSaveFileName = "mycamera.bin";
 
