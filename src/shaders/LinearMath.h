@@ -1225,4 +1225,28 @@ INL_DEVICE bool EqualAreaMapCone(Float2& uv, const Float3& sunDir, const Float3&
     return true;
 }
 
+template<typename T>
+INL_DEVICE T BinarySearch(const T* array, int left, int right, T target)
+{
+    int mid;
+
+    while (right - left > 1)
+    {
+        mid = (left + right) / 2;
+        float midVal = array[mid];
+
+        if (midVal < target)
+        {
+            left = mid;
+        }
+        else
+        {
+            right = mid;
+        }
+    }
+    mid = left;
+
+    return mid;
+}
+
 }

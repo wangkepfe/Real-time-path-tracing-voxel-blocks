@@ -82,15 +82,21 @@ struct SystemParameter
 
     MaterialParameter* materialParameters;
 
-    TexObj envTexture;
+    // TexObj envTexture;
+    // float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
+    // float* envCDF_V; // 1D, size (envHeight + 1)
+    // uint envWidth; // The original size of the environment texture.
+    // uint envHeight;
+    // float envIntegral;
+    // float envRotation;
 
-    float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
-    float* envCDF_V; // 1D, size (envHeight + 1)
-
-    uint envWidth; // The original size of the environment texture.
-    uint envHeight;
-    float envIntegral;
-    float envRotation;
+    SurfObj skyBuffer;
+    SurfObj sunBuffer;
+    float* skyCdf;
+    float* sunCdf;
+    Int2 skyRes;
+    Int2 sunRes;
+    Float3 sunDir;
 
     int iterationIndex;
     int samplePerIteration;

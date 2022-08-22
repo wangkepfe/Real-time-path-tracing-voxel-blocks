@@ -5,6 +5,7 @@
 #include "core/BufferManager.h"
 #include "util/TextureUtils.h"
 #include "core/GlobalSettings.h"
+#include "sky/Sky.h"
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -135,12 +136,15 @@ void OptixRenderer::render()
         m_systemParameter.historyCamera.Setup(m_camera);
     }
 
-    constexpr int samplePerIteration = 4;
+    constexpr int samplePerIteration = 1;
 
     m_systemParameter.camera = m_camera;
     m_systemParameter.noiseBlend = GlobalSettings::GetDenoisingParams().noiseBlend;
     m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
     m_systemParameter.samplePerIteration = samplePerIteration;
+
+    const auto& skyModel = SkyModel::Get();
+    m_systemParameter.sunDir = skyModel.getSunDir();
 
     for (int sampleIndex = 0; sampleIndex < samplePerIteration; ++sampleIndex)
     {
@@ -284,13 +288,33 @@ void OptixRenderer::init()
         m_systemParameter.outputBuffer = 0;
         m_systemParameter.lightDefinitions = nullptr;
         m_systemParameter.materialParameters = nullptr;
-        m_systemParameter.envTexture = 0;
-        m_systemParameter.envCDF_U = nullptr;
-        m_systemParameter.envCDF_V = nullptr;
-        m_systemParameter.envWidth = 0;
-        m_systemParameter.envHeight = 0;
-        m_systemParameter.envIntegral = 1.0f;
-        m_systemParameter.envRotation = 0.0f;
+
+        // m_systemParameter.envTexture = 0;
+        // m_systemParameter.envCDF_U = nullptr;
+        // m_systemParameter.envCDF_V = nullptr;
+        // m_systemParameter.envWidth = 0;
+        // m_systemParameter.envHeight = 0;
+        // m_systemParameter.envIntegral = 1.0f;
+        // m_systemParameter.envRotation = 0.0f;
+
+        const auto& bufferManager = BufferManager::Get();
+        const auto& skyModel = SkyModel::Get();
+        m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
+        m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalBuffer);
+        m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
+        m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
+        m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
+        m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
+
+        m_systemParameter.randGen = d_randGen;
+
+        m_systemParameter.skyBuffer = bufferManager.GetBuffer2D(SkyBuffer);
+        m_systemParameter.sunBuffer = bufferManager.GetBuffer2D(SunBuffer);
+        m_systemParameter.skyCdf = skyModel.getSkyCdf(); // This buffer is allocated in Backend::init()
+        m_systemParameter.sunCdf = skyModel.getSunCdf();
+        m_systemParameter.skyRes = skyModel.getSkyRes();
+        m_systemParameter.sunRes = skyModel.getSunRes();
+
         m_systemParameter.iterationIndex = 0;
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = 0;
@@ -878,12 +902,12 @@ void OptixRenderer::init()
         CUDA_CHECK(cudaMemcpy((void*)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice));
 
         // Setup the environment texture values. These are all defaults when there is no environment texture filename given.
-        m_systemParameter.envTexture = m_textureEnvironment->getTextureObject();
-        m_systemParameter.envCDF_U = (float*)m_textureEnvironment->getCDF_U();
-        m_systemParameter.envCDF_V = (float*)m_textureEnvironment->getCDF_V();
-        m_systemParameter.envWidth = m_textureEnvironment->getWidth();
-        m_systemParameter.envHeight = m_textureEnvironment->getHeight();
-        m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
+        //m_systemParameter.envTexture = m_textureEnvironment->getTextureObject();
+        //m_systemParameter.envCDF_U = (float*)m_textureEnvironment->getCDF_U();
+        //m_systemParameter.envCDF_V = (float*)m_textureEnvironment->getCDF_V();
+        //m_systemParameter.envWidth = m_textureEnvironment->getWidth();
+        //m_systemParameter.envHeight = m_textureEnvironment->getHeight();
+        //m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
         m_systemParameter.iterationIndex = 0;
@@ -899,7 +923,7 @@ void OptixRenderer::init()
     }
 
     // Output object
-    {
+    // {
         // auto format = cudaCreateChannelDesc<float4>();
         // CUDA_CHECK(cudaMallocArray(&m_outputBufferArray, &format, m_width, m_height, cudaArraySurfaceLoadStore | cudaArrayTextureGather));
 
@@ -930,18 +954,18 @@ void OptixRenderer::init()
 
         // CUDA_CHECK(cudaCreateTextureObject(&m_outputTexture, &resDesc, &m_outputTexDesc, nullptr));
 
-        auto& bufferManager = BufferManager::Get();
-        m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
-        m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalBuffer);
-        m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
-        m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
-        m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
-        m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
-    }
+    //     auto& bufferManager = BufferManager::Get();
+    //     m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
+    //     m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalBuffer);
+    //     m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
+    //     m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
+    //     m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
+    //     m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
+    // }
 
-    {
-        m_systemParameter.randGen = d_randGen;
-    }
+    // {
+    //     m_systemParameter.randGen = d_randGen;
+    // }
 }
 
 }

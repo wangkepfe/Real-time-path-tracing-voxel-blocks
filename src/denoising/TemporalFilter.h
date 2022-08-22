@@ -70,7 +70,7 @@ __global__ void TemporalFilter(
     Int2      historySize)
 {
     // Settings
-    constexpr float baseBlendFactor = 1.0f / 4.0f;
+    constexpr float baseBlendFactor = 1.0f / 16.0f;
     constexpr int blockdim = 8;
     constexpr int kernelRadius = 1;
     constexpr int threadCount = blockdim * blockdim;
@@ -236,7 +236,7 @@ __global__ void TemporalFilter2(
     Int2      historySize)
 {
     // Settings
-    constexpr float baseBlendFactor = 1.0f / 4.0f;
+    constexpr float baseBlendFactor = 1.0f / 16.0f;
     constexpr int blockdim = 8;
     constexpr int kernelRadius = 1;
     constexpr int threadCount = blockdim * blockdim;
