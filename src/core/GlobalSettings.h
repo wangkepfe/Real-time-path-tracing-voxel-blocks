@@ -125,7 +125,7 @@ struct PostProcessParams
 
     float exposure = 1.0f;
     float gain = 1.0f;
-    float maxWhite = 7.0f;
+    float maxWhite = 3.0f;
     float gamma = 2.2f;
 };
 

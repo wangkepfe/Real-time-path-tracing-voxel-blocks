@@ -320,7 +320,7 @@ INL_DEVICE VectorType SampleBicubicCatmullRom(
 
 template<typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
 INL_DEVICE VectorType SampleBicubicSmoothStep(
-    SurfObj             tex,
+    SurfObj tex,
     const Float2& UV,
     const Int2& texSize)
 {

@@ -27,7 +27,7 @@ extern "C" __global__ void __miss__env_sphere()
     const int sunSize = sunRes.x * sunRes.y;
     const float* skyCdf = sysParam.skyCdf;
     const float* sunCdf = sysParam.sunCdf;
-    const float sunAngle = 0.51f; // angular diagram in degrees
+    const float sunAngle = 5.0f; // angular diagram in degrees
     const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
 
     const Float3& rayDir = rayData->wi;
@@ -36,42 +36,21 @@ extern "C" __global__ void __miss__env_sphere()
     Float2 uv;
     bool hitDisk = EqualAreaMapCone(uv, sysParam.sunDir, rayDir, sunAngleCosThetaMax);
 
-    // Is the ray hitting the solar disk
-    if (hitDisk)
-    {
-        Int2 sunIdx((int)(uv.x * sunRes.x), (int)(uv.y * sunRes.y));
-
-        // Wrapping around on X dimension
-        if (sunIdx.x >= sunRes.x) { sunIdx.x %= sunRes.x; }
-        if (sunIdx.x < 0) { sunIdx.x = sunRes.x - (-sunIdx.x) % sunRes.x; }
-
-        Float3 sunEmission = Load2DHalf4(sysParam.sunBuffer, sunIdx).xyz;
-
-        // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
-        // then calculate light emission with multiple importance sampling for this implicit light hit as well.
-        if (rayData->flags & FLAG_DIFFUSED)
-        {
-            const float maxSunCdf = sunCdf[sunSize - 1];
-            float lightSamplePdf = dot(sunEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSunCdf;
-            lightSamplePdf *= sunSize / (TWO_PI * (1.0f - sunAngleCosThetaMax));
-            misWeight = powerHeuristic(rayData->pdf, lightSamplePdf);
-        }
-
-        // Add sun emission
-        emission = sunEmission;
-    }
-    else
+    // Sky
     {
         // Map the ray diretcion to uv
         uv = EqualAreaMap(rayDir);
-        Int2 skyIdx((int)(uv.x * skyRes.x), (int)(uv.y * skyRes.y));
+        // Int2 skyIdx((int)(uv.x * skyRes.x), (int)(uv.y * skyRes.y));
+        Float2 skyUv = uv * skyRes;
 
         // Wrapping around on X dimension
-        if (skyIdx.x >= skyRes.x) { skyIdx.x %= skyRes.x; }
-        if (skyIdx.x < 0) { skyIdx.x = skyRes.x - (-skyIdx.x) % skyRes.x; }
+        // if (skyIdx.x >= skyRes.x) { skyIdx.x %= skyRes.x; }
+        // if (skyIdx.x < 0) { skyIdx.x = skyRes.x - (-skyIdx.x) % skyRes.x; }
 
         // Load buffer
-        Float3 skyEmission = Load2DHalf4(sysParam.skyBuffer, skyIdx).xyz;
+        // Float3 skyEmission = Load2DHalf4(sysParam.skyBuffer, skyIdx).xyz;
+
+        Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, skyUv, skyRes);
 
         // Blend the sky color with mist
         Float3 mistColor = Float3(0.2f);
@@ -88,7 +67,34 @@ extern "C" __global__ void __miss__env_sphere()
         }
 
         // Add sky emission
-        emission = smoothstep3f(mistColor, skyEmission, blenderFactor);
+        emission += smoothstep3f(mistColor, skyEmission, blenderFactor);
+    }
+
+    // Is the ray hitting the solar disk, then compute the sun emission
+    if (hitDisk)
+    {
+        Int2 sunIdx((int)(uv.x * sunRes.x), (int)(uv.y * sunRes.y));
+        // Float2 sunUv = uv * sunRes;
+
+        // Wrapping around on X dimension
+        if (sunIdx.x >= sunRes.x) { sunIdx.x %= sunRes.x; }
+        if (sunIdx.x < 0) { sunIdx.x = sunRes.x - (-sunIdx.x) % sunRes.x; }
+        Float3 sunEmission = Load2DHalf4(sysParam.sunBuffer, sunIdx).xyz;
+
+        // Float3 sunEmission = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.sunBuffer, sunUv, sunRes);
+
+        // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
+        // then calculate light emission with multiple importance sampling for this implicit light hit as well.
+        if (rayData->flags & FLAG_DIFFUSED)
+        {
+            const float maxSunCdf = sunCdf[sunSize - 1];
+            float lightSamplePdf = dot(sunEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSunCdf;
+            lightSamplePdf *= sunSize / (TWO_PI * (1.0f - sunAngleCosThetaMax));
+            misWeight = powerHeuristic(rayData->pdf, lightSamplePdf);
+        }
+
+        // Add sun emission
+        emission += sunEmission;
     }
 
     // if ((rayData->flags & FLAG_DIFFUSED))

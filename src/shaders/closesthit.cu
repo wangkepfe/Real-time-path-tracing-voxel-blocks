@@ -340,7 +340,7 @@ extern "C" __global__ void __closesthit__radiance()
 
             const int skySize = skyRes.x * skyRes.y;
             const int sunSize = sunRes.x * sunRes.y;
-            const float sunAngle = 0.51f; // angular diagram in degrees
+            const float sunAngle = 5.0f; // angular diagram in degrees
             const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
 
             // The accumulated all sky luminance

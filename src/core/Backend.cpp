@@ -36,8 +36,8 @@ void Backend::init()
     m_maxRenderWidth = 1920;
     m_maxRenderHeight = 1080;
 
-    m_maxRenderWidth = 960;
-    m_maxRenderHeight = 540;
+    // m_maxRenderWidth = 960;
+    // m_maxRenderHeight = 540;
 
     // m_maxRenderWidth = 3840;
     // m_maxRenderHeight = 2160;
