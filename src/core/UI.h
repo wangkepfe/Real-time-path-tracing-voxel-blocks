@@ -32,6 +32,7 @@ public:
     }
     UI(UI const&) = delete;
     void operator=(UI const&) = delete;
+    ~UI();
 
     void init();
     void clear();

@@ -14,12 +14,13 @@ int main(int argc, char* argv[])
 {
     auto& backend = jazzfusion::Backend::Get();
     auto& renderer = jazzfusion::OptixRenderer::Get();
-    auto& ui = jazzfusion::UI::Get();
-    auto& bufferManager = jazzfusion::BufferManager::Get();
-    auto& textureManager = jazzfusion::TextureManager::Get();
 
     try
     {
+        auto& ui = jazzfusion::UI::Get();
+        auto& bufferManager = jazzfusion::BufferManager::Get();
+        auto& textureManager = jazzfusion::TextureManager::Get();
+
         backend.init();
         bufferManager.init();
         textureManager.init();
@@ -33,7 +34,6 @@ int main(int argc, char* argv[])
         std::cerr << e.what() << std::endl;
     }
 
-    ui.clear();
     renderer.clear();
     backend.clear();
 

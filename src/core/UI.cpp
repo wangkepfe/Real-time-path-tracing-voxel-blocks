@@ -18,7 +18,7 @@ void UI::init()
     ImGui_ImplOpenGL3_Init(backend.GlslVersion.c_str());
 }
 
-void UI::clear()
+UI::~UI()
 {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

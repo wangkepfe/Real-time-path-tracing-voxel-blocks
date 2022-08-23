@@ -37,7 +37,7 @@ enum Buffer2DName
 struct Buffer2D
 {
     Buffer2D() = default;
-    ~Buffer2D() { clear(); }
+    ~Buffer2D();
 
     void init(const cudaChannelFormatDesc* pFormat, UInt2 dim, uint usageFlag);
     void clear();

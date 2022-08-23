@@ -33,7 +33,7 @@ void Buffer2D::init(const cudaChannelFormatDesc* pFormat,
     CUDA_CHECK(cudaCreateSurfaceObject(&buffer, &resDesc));
 }
 
-void Buffer2D::clear()
+Buffer2D::~Buffer2D()
 {
     CUDA_CHECK(cudaDestroySurfaceObject(buffer));
     if (bufferArray != nullptr)
