@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <functional>
 
 struct GLFWwindow;
 
@@ -26,11 +27,16 @@ public:
 
     static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+    static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 
     static void SaveCameraToFile(const std::string& camFileName);
     static void LoadCameraFromFile(const std::string& camFileName);
 
     void update();
+    void setMouseButtonCallbackFunc(std::function<void(int, int, int)> mouseButtonCallbackFuncIn)
+    {
+        mouseButtonCallbackFunc = mouseButtonCallbackFuncIn;
+    }
 
 private:
     InputHandler() {}
@@ -52,6 +58,8 @@ private:
     float deltay = 0;
 
     int cursorReset = 1;
+
+    std::function<void(int, int, int)> mouseButtonCallbackFunc;
 
     AppMode appmode = AppMode::Gameplay;
 };

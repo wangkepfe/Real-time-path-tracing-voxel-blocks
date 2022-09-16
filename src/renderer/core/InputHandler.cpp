@@ -88,6 +88,21 @@ void InputHandler::CursorPosCallback(GLFWwindow* window, double xpos, double ypo
     }
 }
 
+void InputHandler::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    auto& inputHandler = InputHandler::Get();
+    inputHandler.mouseButtonCallbackFunc(button, action, mods);
+
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+    {
+
+    }
+    else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+    {
+
+    }
+}
+
 void InputHandler::update()
 {
     Camera& camera = OptixRenderer::Get().getCamera();

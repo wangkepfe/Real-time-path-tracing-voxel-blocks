@@ -2,9 +2,15 @@
 #include "BlockMesher.h"
 
 #include "core/Scene.h"
+#include "core/InputHandler.h"
 
 namespace vox
 {
+
+static void MouseButtonCallback(int button, int action, int mods)
+{
+    std::cout << button << "\n";
+}
 
 VoxelEngine::~VoxelEngine()
 {
@@ -15,6 +21,11 @@ void VoxelEngine::init()
 {
     using namespace jazzfusion;
 
+    // Input handling
+    auto& inputHandler = jazzfusion::InputHandler::Get();
+    inputHandler.setMouseButtonCallbackFunc(MouseButtonCallback);
+
+    // Generate scene voxel data
     VoxelChunk& voxelchunk = data[0];
     voxelchunk.clear();
     voxelchunk.set(Voxel(1), 0, 0, 0);
@@ -28,8 +39,10 @@ void VoxelEngine::init()
     sceneGeometryAttributes.resize(1);
     sceneGeometryIndices.resize(1);
 
+    // Meshing
     BlockMesher blockMesher(voxelchunk, sceneGeometryAttributes[0], sceneGeometryIndices[0]);
     blockMesher.process();
+
 
     // Square geometry test
     //

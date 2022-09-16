@@ -12,7 +12,7 @@ struct Ray
 };
 
 template<typename Lambda>
-void RayVoxelGridTraversal(Ray& ray, Lambda&& func)
+inline void RayVoxelGridTraversal(Ray& ray, Lambda&& func)
 {
     using namespace jazzfusion;
 

@@ -64,6 +64,7 @@ void Backend::init()
     }
     glfwSetKeyCallback(m_window, InputHandler::KeyCallback);
     glfwSetCursorPosCallback(m_window, InputHandler::CursorPosCallback);
+    glfwSetMouseButtonCallback(m_window, InputHandler::MouseButtonCallback);
 
     glfwMakeContextCurrent(m_window);
     if (glewInit() != GL_NO_ERROR)
