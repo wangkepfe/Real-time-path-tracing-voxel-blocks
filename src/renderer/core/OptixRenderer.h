@@ -10,8 +10,6 @@
 
 #include "shaders/SystemParameter.h"
 
-#include "util/Texture.h"
-
 #include "util/DebugUtils.h"
 #include "core/Scene.h"
 
@@ -67,9 +65,6 @@ private:
     int                                        m_height;
 
     SystemParameter                            m_systemParameter;
-
-    Texture* m_textureEnvironment;
-    Texture* m_textureAlbedo;
 
     OptixFunctionTable                         m_api;
     OptixDeviceContext                         m_context;

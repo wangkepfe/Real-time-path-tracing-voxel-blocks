@@ -23,25 +23,16 @@ static void errorCallback(int error, const char* description)
 
 void Backend::init()
 {
-    m_width = 3840;
-    m_height = 2160;
-
-    // m_width = 1920;
-    // m_height = 1080;
+    m_width = 2560;
+    m_height = 1440;
 
     m_dynamicResolution = false;
 
     m_minRenderWidth = 480;
     m_minRenderHeight = 270;
 
-    m_maxRenderWidth = 1920;
-    m_maxRenderHeight = 1080;
-
-    // m_maxRenderWidth = 960;
-    // m_maxRenderHeight = 540;
-
-    // m_maxRenderWidth = 3840;
-    // m_maxRenderHeight = 2160;
+    m_maxRenderWidth = 1280;
+    m_maxRenderHeight = 720;
 
     glfwSetErrorCallback(errorCallback);
     if (!glfwInit())
@@ -72,9 +63,6 @@ void Backend::init()
     {
         throw std::runtime_error("GLEW failed to initialize.");
     }
-
-    // Initialize DevIL once.
-    ilInit();
 
     initOpenGL();
     initInterop();
@@ -201,7 +189,6 @@ void Backend::clear()
     glDeleteBuffers(1, &m_vboIndices);
     glDeleteProgram(m_glslProgram);
 
-    ilShutDown();
     glfwTerminate();
 }
 

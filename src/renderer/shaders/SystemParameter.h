@@ -24,7 +24,7 @@ struct __align__(16) MaterialParameter
     float ior;          // Index of refraction
 
     Float2 texSize = Float2(1024.0f);
-    uint flags; // Thin-walled on/off
+    uint flags;
     float uvScale = 1.0f;
 };
 
@@ -82,14 +82,6 @@ struct SystemParameter
 
     MaterialParameter* materialParameters;
 
-    // TexObj envTexture;
-    // float* envCDF_U; // 2D, size (envWidth + 1) * envHeight
-    // float* envCDF_V; // 1D, size (envHeight + 1)
-    // uint envWidth; // The original size of the environment texture.
-    // uint envHeight;
-    // float envIntegral;
-    // float envRotation;
-
     SurfObj skyBuffer;
     SurfObj sunBuffer;
     float* skyCdf;
@@ -107,18 +99,6 @@ struct SystemParameter
     BlueNoiseRandGenerator randGen;
     float noiseBlend;
     int accumulationCounter;
-
-    // INL_DEVICE float rand(int& randIdx) const
-    // {
-    //     UInt2 idx = UInt2(optixGetLaunchIndex());
-    //     return randGen.rand(idx.x, idx.y, iterationIndex, randIdx++);
-    // }
-
-    // INL_DEVICE Float2 rand2(int& randIdx) const
-    // {
-    //     return Float2(rand(randIdx), rand(randIdx));
-    // }
-
 };
 
 struct VertexAttributes

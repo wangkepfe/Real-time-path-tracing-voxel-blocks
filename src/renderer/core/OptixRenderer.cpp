@@ -97,9 +97,6 @@ void OptixRenderer::clear()
     auto& backend = jazzfusion::Backend::Get();
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    delete m_textureEnvironment;
-    delete m_textureAlbedo;
-
     CUDA_CHECK(cudaFree((void*)m_systemParameter.lightDefinitions));
     CUDA_CHECK(cudaFree((void*)m_systemParameter.materialParameters));
     CUDA_CHECK(cudaFree((void*)m_d_systemParameter));
@@ -292,14 +289,6 @@ void OptixRenderer::init()
         m_systemParameter.lightDefinitions = nullptr;
         m_systemParameter.materialParameters = nullptr;
 
-        // m_systemParameter.envTexture = 0;
-        // m_systemParameter.envCDF_U = nullptr;
-        // m_systemParameter.envCDF_V = nullptr;
-        // m_systemParameter.envWidth = 0;
-        // m_systemParameter.envHeight = 0;
-        // m_systemParameter.envIntegral = 1.0f;
-        // m_systemParameter.envRotation = 0.0f;
-
         const auto& bufferManager = BufferManager::Get();
         const auto& skyModel = SkyModel::Get();
         m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
@@ -321,9 +310,6 @@ void OptixRenderer::init()
         m_systemParameter.iterationIndex = 0;
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = 0;
-
-        m_textureEnvironment = nullptr;
-        m_textureAlbedo = nullptr;
 
         m_root = 0;
         m_d_ias = 0;
@@ -464,7 +450,7 @@ void OptixRenderer::init()
         // Rebuild BVH
         {
             CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
-            //CUDA_CHECK(cudaFree((void*)m_d_ias));
+            CUDA_CHECK(cudaFree((void*)m_d_ias));
 
             CUdeviceptr d_instances;
 
@@ -488,7 +474,7 @@ void OptixRenderer::init()
 
             OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-            // CUDA_CHECK(cudaMalloc((void**)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void**)&m_d_ias, iasBufferSizes.outputSizeInBytes));
 
             CUdeviceptr d_tmp;
 
@@ -511,167 +497,6 @@ void OptixRenderer::init()
         m_systemParameter.topObject = m_root;
         CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
     };
-
-    // Plane
-    // {
-    //     OptixInstance instance = {};
-    //     OptixTraversableHandle geoPlane = Scene::createPlane(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, 1, 1, 1);
-    //     const float trafoPlane[12] =
-    //     {
-    //         8.0f, 0.0f, 0.0f, 0.0f,
-    //         0.0f, 8.0f, 0.0f, 0.0f,
-    //         0.0f, 0.0f, 8.0f, 0.0f
-    //     };
-    //     unsigned int id = static_cast<unsigned int>(m_instances.size());
-
-    //     memcpy(instance.transform, trafoPlane, sizeof(float) * 12);
-    //     instance.instanceId = id;
-    //     instance.visibilityMask = 255;
-    //     instance.sbtOffset = id;
-    //     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    //     instance.traversableHandle = geoPlane;
-
-    //     m_instances.push_back(instance);
-    // }
-
-    // // Box
-    // {
-    //     OptixInstance instance = {};
-    //     OptixTraversableHandle geoBox = Scene::createBox(m_api, m_context, Backend::Get().getCudaStream(), m_geometries);
-    //     const float trafoBox[12] =
-    //     {
-    //         1.0f, 0.0f, 0.0f, -2.5f, // Move to the left.
-    //         0.0f, 1.0f, 0.0f, 1.25f, // The box is modeled with unit coordinates in the range [-1, 1], Move it above the floor plane.
-    //         0.0f, 0.0f, 1.0f, -1.0f
-    //     };
-    //     unsigned int id = static_cast<unsigned int>(m_instances.size());
-
-    //     memcpy(instance.transform, trafoBox, sizeof(float) * 12);
-    //     instance.instanceId = id;
-    //     instance.visibilityMask = 255;
-    //     instance.sbtOffset = id;
-    //     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    //     instance.traversableHandle = geoBox;
-
-    //     m_instances.push_back(instance);
-    // }
-
-    // // Sphere
-    // {
-    //     OptixInstance instance = {};
-    //     OptixTraversableHandle geoSphere = Scene::createSphere(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, 180, 90, 1.0f, M_PIf);
-    //     const float trafoSphere[12] =
-    //     {
-    //         1.0f, 0.0f, 0.0f, 0.0f,  // In the center, to the right of the box.
-    //         0.0f, 1.0f, 0.0f, 1.25f, // The sphere is modeled with radius 1.0f. Move it above the floor plane to show shadows.
-    //         0.0f, 0.0f, 1.0f, 1.0f
-    //     };
-    //     unsigned int id = static_cast<unsigned int>(m_instances.size());
-
-    //     memcpy(instance.transform, trafoSphere, sizeof(float) * 12);
-    //     instance.instanceId = id;
-    //     instance.visibilityMask = 255;
-    //     instance.sbtOffset = id;
-    //     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    //     instance.traversableHandle = geoSphere;
-
-    //     m_instances.push_back(instance);
-    // }
-
-    // // Torus
-    // {
-    //     OptixInstance instance = {};
-    //     OptixTraversableHandle geoTorus = Scene::createTorus(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, 180, 180, 0.75f, 0.25f);
-    //     const float trafoTorus[12] =
-    //     {
-    //         1.0f, 0.0f, 0.0f, 2.5f,  // Move it to the right of the sphere.
-    //         0.0f, 1.0f, 0.0f, 1.25f, // The torus has an outer radius of 0.5f. Move it above the floor plane.
-    //         0.0f, 0.0f, 1.0f, -1.5f
-    //     };
-    //     unsigned int id = static_cast<unsigned int>(m_instances.size());
-
-    //     memcpy(instance.transform, trafoTorus, sizeof(float) * 12);
-    //     instance.instanceId = id;
-    //     instance.visibilityMask = 255;
-    //     instance.sbtOffset = id;
-    //     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    //     instance.traversableHandle = geoTorus;
-
-    //     m_instances.push_back(instance);
-    // }
-
-    // // Lights
-    // {
-    //     LightDefinition light;
-
-    //     // Unused in environment lights.
-    //     light.position = Float3(0.0f, 0.0f, 0.0f);
-    //     light.vecU = Float3(1.0f, 0.0f, 0.0f);
-    //     light.vecV = Float3(0.0f, 1.0f, 0.0f);
-    //     light.normal = Float3(0.0f, 0.0f, 1.0f);
-    //     light.area = 1.0f;
-    //     light.emission = Float3(1.0f, 1.0f, 1.0f);
-
-    //     m_textureEnvironment = new Texture(); // Allocate an empty environment texture to be able to initialize the sysParameters unconditionally.
-
-    //     // HDR Environment mapping with loaded texture.
-    //     {
-    //         Picture* picture = new Picture; // Separating image file handling from CUDA texture handling.
-
-    //         const unsigned int flags = IMAGE_FLAG_2D | IMAGE_FLAG_ENV;
-    //         std::string hdrMapName = "data/NV_Default_HDR_3000x1500.hdr";
-    //         // std::string hdrMapName = "data/HDR_111_Parking_Lot_2_Ref.hdr";
-    //         if (!picture->load(hdrMapName, flags))
-    //         {
-    //             picture->generateEnvironment(8, 8); // Generate a white 8x8 RGBA32F dummy environment picture.
-    //         }
-    //         m_textureEnvironment->create(picture, flags);
-
-    //         delete picture;
-    //     }
-
-    //     light.type = LIGHT_ENVIRONMENT;
-    //     light.area = 4.0f * M_PIf; // Unused.
-
-    //     m_lightDefinitions.push_back(light);
-
-    //     // Add a square area light over the scene objects.
-    //     if (g_useGeometrySquareLight)
-    //     {
-    //         light.type = LIGHT_PARALLELOGRAM;                 // A geometric area light with diffuse emission distribution function.
-    //         light.position = Float3(-2.0f, 4.0f, -2.0f); // Corner position.
-    //         light.vecU = Float3(4.0f, 0.0f, 0.0f);       // To the right.
-    //         light.vecV = Float3(0.0f, 0.0f, 4.0f);       // To the front.
-    //         Float3 n = cross(light.vecU, light.vecV);         // Length of the cross product is the area.
-    //         light.area = n.length();                           // Calculate the world space area of that rectangle, unit is [m^2]
-    //         light.normal = n / light.area;                    // Normalized normal
-    //         light.emission = Float3(10.0f);              // Radiant exitance in Watt/m^2.
-
-    //         m_lightDefinitions.push_back(light);
-
-    //         OptixTraversableHandle geoLight = Scene::createParallelogram(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, light.position, light.vecU, light.vecV, light.normal);
-
-    //         OptixInstance instance = {};
-
-    //         // The geometric light is stored in world coordinates for now.
-    //         const float trafoLight[12] =
-    //         {
-    //             1.0f, 0.0f, 0.0f, 0.0f,
-    //             0.0f, 1.0f, 0.0f, 0.0f,
-    //             0.0f, 0.0f, 1.0f, 0.0f
-    //         };
-    //         const unsigned int id = static_cast<unsigned int>(m_instances.size());
-
-    //         memcpy(instance.transform, trafoLight, sizeof(float) * 12);
-    //         instance.instanceId = id;
-    //         instance.visibilityMask = 255;
-    //         instance.sbtOffset = id;
-    //         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-    //         instance.traversableHandle = geoLight;
-
-    //         m_instances.push_back(instance); // Parallelogram light.
-    //     }
-    // }
 
     // Build BVH
     {
@@ -913,14 +738,6 @@ void OptixRenderer::init()
             m_sbtRecordGeometryInstanceData[idx].data.lightIndex = -1;
         }
 
-        // if (g_useGeometrySquareLight)
-        // {
-        //     const int idx = (numInstances - 1); // HACK The last instance is the parallelogram light.
-        //     const int lightIndex = 1;           // HACK If there is any environment light that is in sysParam.lightDefinitions[0] and the area light in index [1] then.
-        //     m_sbtRecordGeometryInstanceData[idx].data.lightIndex = lightIndex;
-        //     m_sbtRecordGeometryInstanceData[idx + 1].data.lightIndex = lightIndex;
-        // }
-
         CUDA_CHECK(cudaMalloc((void**)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
         CUDA_CHECK(cudaMemcpy((void*)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice));
     }
@@ -968,13 +785,6 @@ void OptixRenderer::init()
         CUDA_CHECK(cudaMalloc((void**)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
         CUDA_CHECK(cudaMemcpy((void*)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice));
 
-        // Setup the environment texture values. These are all defaults when there is no environment texture filename given.
-        //m_systemParameter.envTexture = m_textureEnvironment->getTextureObject();
-        //m_systemParameter.envCDF_U = (float*)m_textureEnvironment->getCDF_U();
-        //m_systemParameter.envCDF_V = (float*)m_textureEnvironment->getCDF_V();
-        //m_systemParameter.envWidth = m_textureEnvironment->getWidth();
-        //m_systemParameter.envHeight = m_textureEnvironment->getHeight();
-        //m_systemParameter.envIntegral = m_textureEnvironment->getIntegral();
         m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
         m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
         m_systemParameter.iterationIndex = 0;
@@ -988,53 +798,6 @@ void OptixRenderer::init()
     {
         OPTIX_CHECK(m_api.optixModuleDestroy(module));
     }
-
-
-
-    // Output object
-    // {
-        // auto format = cudaCreateChannelDesc<float4>();
-        // CUDA_CHECK(cudaMallocArray(&m_outputBufferArray, &format, m_width, m_height, cudaArraySurfaceLoadStore | cudaArrayTextureGather));
-
-        // cudaResourceDesc resDesc = {};
-        // resDesc.resType = cudaResourceTypeArray;
-        // resDesc.res.array.array = m_outputBufferArray;
-
-        // memset(&m_outputTexDesc, 0, sizeof(cudaTextureDesc));
-
-        // m_outputTexDesc.addressMode[0] = cudaAddressModeWrap;
-        // m_outputTexDesc.addressMode[1] = cudaAddressModeWrap;
-        // m_outputTexDesc.addressMode[2] = cudaAddressModeWrap;
-        // m_outputTexDesc.filterMode = cudaFilterModePoint;
-        // m_outputTexDesc.readMode = cudaReadModeElementType;
-        // m_outputTexDesc.sRGB = 0;
-        // m_outputTexDesc.borderColor[0] = 0.0f;
-        // m_outputTexDesc.borderColor[1] = 0.0f;
-        // m_outputTexDesc.borderColor[2] = 0.0f;
-        // m_outputTexDesc.borderColor[3] = 0.0f;
-        // m_outputTexDesc.normalizedCoords = 1;
-        // m_outputTexDesc.maxAnisotropy = 1;
-        // m_outputTexDesc.mipmapFilterMode = cudaFilterModePoint;
-        // m_outputTexDesc.mipmapLevelBias = 0.0f;
-        // m_outputTexDesc.minMipmapLevelClamp = 0.0f;
-        // m_outputTexDesc.maxMipmapLevelClamp = 0.0f;
-
-        // CUDA_CHECK(cudaCreateSurfaceObject(&m_outputBuffer, &resDesc));
-
-        // CUDA_CHECK(cudaCreateTextureObject(&m_outputTexture, &resDesc, &m_outputTexDesc, nullptr));
-
-    //     auto& bufferManager = BufferManager::Get();
-    //     m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
-    //     m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalBuffer);
-    //     m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
-    //     m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
-    //     m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
-    //     m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
-    // }
-
-    // {
-    //     m_systemParameter.randGen = d_randGen;
-    // }
 }
 
 }

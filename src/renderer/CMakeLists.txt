@@ -7,7 +7,6 @@ find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 10.0 REQUIRED)
-find_package(DevIL_1_8_0 REQUIRED)
 find_package(NVTT REQUIRED)
 
 set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
@@ -50,8 +49,6 @@ set( HEADERS
 
   util/KernelHelper.h
   util/DebugUtils.h
-  util/Picture.h
-  util/Texture.h
   util/Timer.h
   util/TextureUtils.h
   util/RandGenData.h
@@ -81,8 +78,6 @@ set( SOURCES
 
   denoising/Denoiser.cu
 
-  util/Picture.cpp
-  util/Texture.cpp
   util/TextureUtils.cpp
   util/RandGenHost.cpp
 
@@ -147,7 +142,6 @@ target_include_directories( jazzfusion PUBLIC
   ${GLFW_INCLUDE_DIR}
   ${OPTIX_INCLUDE_DIR}
   ${CUDAToolkit_INCLUDE_DIRS}
-  ${IL_INCLUDE_DIR}
   ${NVTT_INCLUDE_DIR}
 )
 
@@ -159,9 +153,6 @@ target_link_libraries( jazzfusion
   ${GLFW_LIBRARIES}
   CUDA::cudart
   CUDA::cuda_driver
-  ${IL_LIBRARIES}
-  ${ILU_LIBRARIES}
-  ${ILUT_LIBRARIES}
   ${NVTT_LIBRARIES}
 )
 

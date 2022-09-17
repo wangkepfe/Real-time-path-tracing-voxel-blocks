@@ -12,9 +12,9 @@ void Scene::updateGeometry(
     std::vector<OptixInstance>& instances,
     int objectId)
 {
-    //CUDA_CHECK(cudaFree((void*)geometries[objectId].indices));
-    //CUDA_CHECK(cudaFree((void*)geometries[objectId].attributes));
-    //CUDA_CHECK(cudaFree((void*)geometries[objectId].gas));
+    CUDA_CHECK(cudaFree((void*)geometries[objectId].indices));
+    CUDA_CHECK(cudaFree((void*)geometries[objectId].attributes));
+    CUDA_CHECK(cudaFree((void*)geometries[objectId].gas));
 
     OptixInstance& instance = instances[objectId];
     instance = OptixInstance{};
