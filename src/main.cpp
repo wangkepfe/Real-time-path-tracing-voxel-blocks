@@ -31,7 +31,7 @@ int main(int argc, char* argv[])
         renderer.init();
         ui.init();
 
-        backend.mainloop();
+        backend.mainloop(vox::UpdateFunc);
 
 
     }

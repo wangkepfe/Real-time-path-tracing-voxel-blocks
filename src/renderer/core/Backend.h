@@ -27,6 +27,7 @@
 
 #include <GLFW/glfw3.h>
 #include <vector>
+#include <functional>
 
 #include "util/Timer.h"
 
@@ -45,7 +46,7 @@ public:
     void operator=(Backend const&) = delete;
 
     void init();
-    void mainloop();
+    void mainloop(std::function<void()> voxelEngineUpdateFunc);
     void clear();
     CUstream getCudaStream() const { return m_cudaStream; }
     GLFWwindow* getWindow() { return m_window; }

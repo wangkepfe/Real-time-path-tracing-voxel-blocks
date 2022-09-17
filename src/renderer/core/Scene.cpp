@@ -4,6 +4,39 @@
 namespace jazzfusion
 {
 
+void Scene::updateGeometry(
+    OptixFunctionTable& api,
+    OptixDeviceContext& context,
+    CUstream cudaStream,
+    std::vector<GeometryData>& geometries,
+    std::vector<OptixInstance>& instances,
+    int objectId)
+{
+    //CUDA_CHECK(cudaFree((void*)geometries[objectId].indices));
+    //CUDA_CHECK(cudaFree((void*)geometries[objectId].attributes));
+    //CUDA_CHECK(cudaFree((void*)geometries[objectId].gas));
+
+    OptixInstance& instance = instances[objectId];
+    instance = OptixInstance{};
+
+    OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometries, m_geometryAttibutes[objectId], m_geometryIndices[objectId]);
+
+    const float transformMatrix[12] =
+    {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+
+    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+
+    instance.instanceId = objectId;
+    instance.visibilityMask = 255;
+    instance.sbtOffset = objectId;
+    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+    instance.traversableHandle = blasHandle;
+}
+
 void Scene::createGeometries(
     OptixFunctionTable& api,
     OptixDeviceContext& context,

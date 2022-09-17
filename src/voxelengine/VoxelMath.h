@@ -21,8 +21,10 @@ inline void RayVoxelGridTraversal(Ray& ray, Lambda&& func)
     int z = static_cast<int>(ray.orig.z);
 
     bool needToContinue = true;
+    static const int maxIteration = 10;
+    int i = 0;
 
-    while (needToContinue)
+    while (needToContinue && (i++ < maxIteration))
     {
         Float3 aabbMin = Float3(x, y, z);
         Float3 aabbMax = Float3(x + 1, y + 1, z + 1);

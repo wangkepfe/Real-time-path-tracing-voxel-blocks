@@ -34,6 +34,7 @@ set( HEADERS
   core/InputHandler.h
   core/GlobalSettings.h
   core/BufferManager.h
+  core/RenderCamera.h
 
   postprocessing/BicubicFilter.h
   postprocessing/ScalingFilter.h

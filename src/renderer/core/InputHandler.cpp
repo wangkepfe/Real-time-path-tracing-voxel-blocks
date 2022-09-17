@@ -4,6 +4,7 @@
 #include "core/Backend.h"
 #include "shaders/LinearMath.h"
 #include "core/GlobalSettings.h"
+#include "core/RenderCamera.h"
 
 #include <iostream>
 #include <fstream>
@@ -78,7 +79,7 @@ void InputHandler::CursorPosCallback(GLFWwindow* window, double xpos, double ypo
         inputHandler.xpos = xpos;
         inputHandler.ypos = ypos;
 
-        Camera& camera = OptixRenderer::Get().getCamera();
+        auto& camera = RenderCamera::Get().camera;
 
         camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
         camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
@@ -105,7 +106,7 @@ void InputHandler::MouseButtonCallback(GLFWwindow* window, int button, int actio
 
 void InputHandler::update()
 {
-    Camera& camera = OptixRenderer::Get().getCamera();
+    auto& camera = RenderCamera::Get().camera;
     Backend& backend = Backend::Get();
 
     if (moveW || moveS || moveA || moveD || moveC || moveX)
@@ -128,7 +129,7 @@ void InputHandler::update()
 
 void InputHandler::SaveCameraToFile(const std::string& camFileName)
 {
-    Camera& camera = OptixRenderer::Get().getCamera();
+    auto& camera = RenderCamera::Get().camera;
     using namespace std;
     ofstream myfile(camFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
     if (myfile.is_open())
@@ -146,7 +147,7 @@ void InputHandler::SaveCameraToFile(const std::string& camFileName)
 
 void InputHandler::LoadCameraFromFile(const std::string& camFileName)
 {
-    Camera& camera = OptixRenderer::Get().getCamera();
+    auto& camera = RenderCamera::Get().camera;
     using namespace std;
     if (camFileName.empty())
     {

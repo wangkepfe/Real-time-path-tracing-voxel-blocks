@@ -6,6 +6,7 @@
 #include "util/TextureUtils.h"
 #include "core/GlobalSettings.h"
 #include "sky/Sky.h"
+#include "core/RenderCamera.h"
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -130,15 +131,17 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    m_camera.update();
+    auto& camera = RenderCamera::Get().camera;
+
+    camera.update();
     if (backend.getFrameNum() == 0)
     {
-        m_systemParameter.historyCamera.Setup(m_camera);
+        m_systemParameter.historyCamera.Setup(camera);
     }
 
     constexpr int samplePerIteration = 1;
 
-    m_systemParameter.camera = m_camera;
+    m_systemParameter.camera = camera;
     m_systemParameter.noiseBlend = GlobalSettings::GetDenoisingParams().noiseBlend;
     m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
     m_systemParameter.samplePerIteration = samplePerIteration;
@@ -155,7 +158,7 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    m_systemParameter.historyCamera.Setup(m_camera);
+    m_systemParameter.historyCamera.Setup(camera);
 }
 
 #ifdef _WIN32
@@ -336,7 +339,8 @@ void OptixRenderer::init()
 
         m_d_sbtRecordGeometryInstanceData = nullptr;
 
-        m_camera.init(m_width, m_height);
+        auto& camera = RenderCamera::Get().camera;
+        camera.init(m_width, m_height);
     }
 
     // Create function table
@@ -446,6 +450,67 @@ void OptixRenderer::init()
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
     Scene::Get().createGeometries(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances);
+    Scene::Get().m_updateCallback = [&](int objectId)
+    {
+        Scene::Get().updateGeometry(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances, objectId);
+
+        // Shader binding table record hit group geometry
+        m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3*)m_geometries[objectId].indices;
+        m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes*)m_geometries[objectId].attributes;
+        CUDA_CHECK(cudaMemcpy((void*)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice));
+
+        m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
+
+        // Rebuild BVH
+        {
+            CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
+            //CUDA_CHECK(cudaFree((void*)m_d_ias));
+
+            CUdeviceptr d_instances;
+
+            const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+
+            CUDA_CHECK(cudaMalloc((void**)&d_instances, instancesSizeInBytes));
+            CUDA_CHECK(cudaMemcpy((void*)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice));
+
+            OptixBuildInput instanceInput = {};
+
+            instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+            instanceInput.instanceArray.instances = d_instances;
+            instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+
+            OptixAccelBuildOptions accelBuildOptions = {};
+
+            accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+            accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+            OptixAccelBufferSizes iasBufferSizes = {};
+
+            OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+
+            // CUDA_CHECK(cudaMalloc((void**)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+
+            CUdeviceptr d_tmp;
+
+            CUDA_CHECK(cudaMalloc((void**)&d_tmp, iasBufferSizes.tempSizeInBytes));
+
+            auto& backend = jazzfusion::Backend::Get();
+            OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
+                &accelBuildOptions, &instanceInput, 1,
+                d_tmp, iasBufferSizes.tempSizeInBytes,
+                m_d_ias, iasBufferSizes.outputSizeInBytes,
+                &m_root, nullptr, 0));
+
+            CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+
+            CUDA_CHECK(cudaFree((void*)d_tmp));
+            CUDA_CHECK(cudaFree((void*)d_instances)); // Don't need the instances anymore.
+        }
+
+        // Update system param
+        m_systemParameter.topObject = m_root;
+        CUDA_CHECK(cudaMemcpy((void*)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+    };
 
     // Plane
     // {
@@ -923,6 +988,8 @@ void OptixRenderer::init()
     {
         OPTIX_CHECK(m_api.optixModuleDestroy(module));
     }
+
+
 
     // Output object
     // {

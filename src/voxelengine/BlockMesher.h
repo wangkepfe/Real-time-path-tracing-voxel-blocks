@@ -1,6 +1,6 @@
 #pragma once
 
-#include "VoxelEngine.h"
+#include "VoxelChunk.h"
 
 #include "shaders/LinearMath.h"
 #include "shaders/SystemParameter.h"
@@ -62,6 +62,7 @@ public:
     ~BlockMesher() {}
 
     void process();
+    void update(const Voxel& voxel, int x, int y, int z);
 
 private:
 
@@ -69,6 +70,8 @@ private:
     void facesToMesh();
 
     VoxelChunk& voxelChunk;
+
+    // Mesh
     std::vector<jazzfusion::VertexAttributes>& attributes;
     std::vector<uint>& indices;
 

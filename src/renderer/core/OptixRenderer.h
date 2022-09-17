@@ -52,7 +52,6 @@ public:
     void clear();
     void render();
 
-    Camera& getCamera() { return m_camera; }
     SystemParameter& getSystemParameter() { return m_systemParameter; }
 
     void setWidth(int width) { m_width = width; }
@@ -67,7 +66,6 @@ private:
     int                                        m_width;
     int                                        m_height;
 
-    Camera                                     m_camera;
     SystemParameter                            m_systemParameter;
 
     Texture* m_textureEnvironment;

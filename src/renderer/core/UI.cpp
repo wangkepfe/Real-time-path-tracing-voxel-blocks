@@ -3,6 +3,7 @@
 #include "core/Backend.h"
 #include "core/InputHandler.h"
 #include "core/GlobalSettings.h"
+#include "core/RenderCamera.h"
 
 namespace jazzfusion
 {
@@ -42,7 +43,7 @@ void UI::update()
         return;
     }
 
-    auto& camera = renderer.getCamera();
+    auto& camera = RenderCamera::Get().camera;
 
     ImGui::Text("ms/frame: %.2f FPS: %.1f", 1000.0f / backend.getCurrentFPS(), backend.getCurrentFPS());
     ImGui::Text("Resolution: (%d, %d)", backend.getCurrentRenderWidth(), backend.getCurrentRenderWidth() / 16 * 9);

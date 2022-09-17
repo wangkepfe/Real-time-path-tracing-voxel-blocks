@@ -6,6 +6,7 @@
 #include "denoising/Denoiser.h"
 #include "core/InputHandler.h"
 #include "sky/Sky.h"
+#include "core/RenderCamera.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -94,7 +95,7 @@ void Backend::init()
     SkyModel::Get().init();
 }
 
-void Backend::mainloop()
+void Backend::mainloop(std::function<void()> voxelEngineUpdateFunc)
 {
     auto& ui = UI::Get();
     auto& renderer = OptixRenderer::Get();
@@ -116,6 +117,8 @@ void Backend::mainloop()
         dynamicResolution();
 
         inputHandler.update();
+
+        voxelEngineUpdateFunc();
 
         renderer.render();
 
@@ -174,7 +177,7 @@ void Backend::dynamicResolution()
 
     renderer.setWidth(renderWidth);
     renderer.setHeight(renderHeight);
-    renderer.getCamera().resolution = Float2(renderWidth, renderHeight);
+    RenderCamera::Get().camera.resolution = Float2(renderWidth, renderHeight);
 
     static float timerCounter = 0.0f;
     timerCounter += deltaTime;

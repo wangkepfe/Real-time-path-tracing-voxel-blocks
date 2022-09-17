@@ -112,4 +112,14 @@ void BlockMesher::process()
     facesToMesh();
 }
 
+void BlockMesher::update(const Voxel& voxel, int x, int y, int z)
+{
+    addVoxel(voxel, x, y, z);
+
+    attributes.clear();
+    indices.clear();
+
+    facesToMesh();
+}
+
 }

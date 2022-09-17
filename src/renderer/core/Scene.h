@@ -9,6 +9,7 @@
 #include <optix_function_table.h>
 
 #include <vector>
+#include <functional>
 
 #include "shaders/SystemParameter.h"
 
@@ -78,8 +79,7 @@ public:
     //     Float3 const& vecV,
     //     Float3 const& normal);
 
-    std::vector<std::vector<VertexAttributes>>& getGeometryAttibutes() { return m_geometryAttibutes; }
-    std::vector<std::vector<uint>>& getGeometryIndices() { return m_geometryIndices; }
+
 
     void createGeometries(
         OptixFunctionTable& api,
@@ -87,6 +87,21 @@ public:
         CUstream cudaStream,
         std::vector<GeometryData>& geometries,
         std::vector<OptixInstance>& instances);
+
+    void updateGeometry(
+        OptixFunctionTable& api,
+        OptixDeviceContext& context,
+        CUstream cudaStream,
+        std::vector<GeometryData>& geometries,
+        std::vector<OptixInstance>& instances,
+        int objectId);
+
+    // Scene meshes
+    std::vector<std::vector<VertexAttributes>> m_geometryAttibutes;
+    std::vector<std::vector<uint>>             m_geometryIndices;
+
+    // Scene update callback
+    std::function<void(int)> m_updateCallback;
 
 private:
     Scene() {}
@@ -99,8 +114,7 @@ private:
         std::vector<VertexAttributes> const& attributes,
         std::vector<unsigned int> const& indices);
 
-    std::vector<std::vector<VertexAttributes>> m_geometryAttibutes;
-    std::vector<std::vector<uint>>             m_geometryIndices;
+
 };
 
 }
