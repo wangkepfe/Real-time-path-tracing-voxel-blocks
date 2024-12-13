@@ -127,7 +127,6 @@ add_library( jazzfusion
 
 target_include_directories( jazzfusion PUBLIC
   "."
-  "inc"
   "ext/imgui"
   "ext/imgui/backends"
   ${CMAKE_CURRENT_SOURCE_DIR}

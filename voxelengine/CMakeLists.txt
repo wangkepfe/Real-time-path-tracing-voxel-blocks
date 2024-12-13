@@ -3,7 +3,7 @@ project( voxelengine LANGUAGES CUDA CXX )
 
 set( SOURCES
   VoxelEngine.cpp
-  BlockMesher.cpp
+  VoxelSceneGen.cu
 )
 
 add_library( voxelengine

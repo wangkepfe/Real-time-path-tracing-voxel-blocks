@@ -34,7 +34,7 @@ namespace jazzfusion
     OPTIX_DEBUG_PRINT_IMPL(const Int2 &v, "(%d,%d)", v.x COMMA v.y)
     OPTIX_DEBUG_PRINT_IMPL(const Int3 &v, "(%d,%d,%d)", v.x COMMA v.y COMMA v.z)
     OPTIX_DEBUG_PRINT_IMPL(const Int4 &v, "(%d,%d,%d,%d)", v.x COMMA v.y COMMA v.z COMMA v.w)
-    OPTIX_DEBUG_PRINT_IMPL(uint v, "%d", v)
+    OPTIX_DEBUG_PRINT_IMPL(unsigned int v, "%d", v)
     OPTIX_DEBUG_PRINT_IMPL(const UInt2 &v, "(%d,%d)", v.x COMMA v.y)
     OPTIX_DEBUG_PRINT_IMPL(const UInt3 &v, "(%d,%d,%d)", v.x COMMA v.y COMMA v.z)
 

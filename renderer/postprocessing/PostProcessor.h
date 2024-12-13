@@ -12,26 +12,26 @@
 namespace jazzfusion
 {
 
-class PostProcessor
-{
-public:
-    static PostProcessor& Get()
+    class PostProcessor
     {
-        static PostProcessor instance;
-        return instance;
-    }
-    PostProcessor(PostProcessor const&) = delete;
-    void operator=(PostProcessor const&) = delete;
+    public:
+        static PostProcessor &Get()
+        {
+            static PostProcessor instance;
+            return instance;
+        }
+        PostProcessor(PostProcessor const &) = delete;
+        void operator=(PostProcessor const &) = delete;
 
-    void run(Float4* interopBuffer, int inputWidth, int inputHeight, int outputWidth, int outputHeight);
+        void run(Float4 *interopBuffer, int inputWidth, int inputHeight, int outputWidth, int outputHeight);
 
-private:
-    PostProcessor() {}
+    private:
+        PostProcessor() {}
 
-    int inputWidth;
-    int inputHeight;
-    int outputWidth;
-    int outputHeight;
-};
+        int inputWidth;
+        int inputHeight;
+        int outputWidth;
+        int outputHeight;
+    };
 
 }

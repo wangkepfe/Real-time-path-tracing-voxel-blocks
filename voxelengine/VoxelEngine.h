@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BlockMesher.h"
+#include "VoxelSceneGen.h"
 #include "VoxelChunk.h"
 
 #include "shaders/SystemParameter.h"
@@ -11,36 +11,34 @@
 namespace vox
 {
 
-class VoxelEngine
-{
-public:
-    static VoxelEngine& Get()
+    class VoxelEngine
     {
-        static VoxelEngine instance;
-        return instance;
+    public:
+        static VoxelEngine &Get()
+        {
+            static VoxelEngine instance;
+            return instance;
+        }
+        VoxelEngine(VoxelEngine const &) = delete;
+        void operator=(VoxelEngine const &) = delete;
+        ~VoxelEngine();
+
+        void init();
+        void update();
+        void generateVoxels();
+
+        VoxelChunk voxelChunk;
+        bool leftMouseButtonClicked = false;
+
+        // static std::function<void()> UpdateFunc;
+
+    private:
+        VoxelEngine() {}
+    };
+
+    static inline void UpdateFunc()
+    {
+        VoxelEngine::Get().update();
     }
-    VoxelEngine(VoxelEngine const&) = delete;
-    void operator=(VoxelEngine const&) = delete;
-    ~VoxelEngine();
-
-    void init();
-    void update();
-    void generateVoxels();
-
-    VoxelChunk data[1] = {};
-    bool leftMouseButtonClicked = false;
-
-    // static std::function<void()> UpdateFunc;
-
-private:
-    VoxelEngine() {}
-
-    std::vector<BlockMesher> blockMeshers;
-};
-
-static inline void UpdateFunc()
-{
-    VoxelEngine::Get().update();
-}
 
 }

@@ -2,7 +2,7 @@
 
 #include "Voxel.h"
 
-#include "shaders/LinearMath.h"
+#include "VoxelMath.h"
 
 #include <optional>
 #include <iostream>
@@ -10,93 +10,44 @@
 namespace vox
 {
 
-/*
- *              -------------
- *              |\           \
- *              | \           \
- *              |  \           \
- *   height(y)  |   -------------
- *              |   |           |
- *              |   |           |
- *              |   |           |
- *              |   |           |
- *              |   |           |
- *               \  |           |
- *     width(z)   \ |           |
- *                 \|           |
- *                  -------------
- *                     width(x)
- */
-struct VoxelChunk
-{
-    static const uint width = 2;
-    static const uint height = 2;
-
-    uint getLinearId(uint x, uint y, uint z)
+    /*
+     *              -------------
+     *              |\           \
+     *              | \           \
+     *              |  \           \
+     *   height(y)  |   -------------
+     *              |   |           |
+     *              |   |           |
+     *              |   |           |
+     *              |   |           |
+     *              |   |           |
+     *               \  |           |
+     *     width(z)   \ |           |
+     *                 \|           |
+     *                  -------------
+     *                     width(x)
+     */
+    struct VoxelChunk
     {
-        if (x < width && y < height && z < width)
-        {
-            return x + width * (z + height * y);
-        }
-        else
-        {
-            return UINT_MAX;
-        }
-    }
+        static const unsigned int width = 256;
+        static const unsigned int height = 64;
 
-    void clear()
-    {
-        memset(data, 0, width * width * height * sizeof(Voxel));
-    }
-
-    bool inBound(uint x, uint y, uint z)
-    {
-        return getLinearId(x, y, z) != UINT_MAX;
-    }
-
-    void set(const Voxel& v, uint x, uint y, uint z)
-    {
-        uint linearId = getLinearId(x, y, z);
-        if (linearId != UINT_MAX)
+        VoxelChunk()
         {
-            data[linearId] = v;
+            cudaMallocManaged(&data, width * width * height * sizeof(Voxel));
         }
-        else
-        {
-            std::cout << "warning: set invalid voxel\n";
-        }
-    }
 
-    std::optional<Voxel> get(uint x, uint y, uint z)
-    {
-        uint linearId = getLinearId(x, y, z);
-        if (linearId != UINT_MAX)
+        ~VoxelChunk()
         {
-            return data[linearId];
+            cudaFree(data);
         }
-        else
-        {
-            return std::nullopt;
-        }
-    }
 
-    template<typename Lambda>
-    void foreach(Lambda&& func)
-    {
-        for (int y = 0; y < VoxelChunk::height; ++y)
+        void clear()
         {
-            for (int z = 0; z < VoxelChunk::width; ++z)
-            {
-                for (int x = 0; x < VoxelChunk::width; ++x)
-                {
-                    uint linearId = getLinearId(x, y, z);
-                    func(data[linearId], x, y, z);
-                }
-            }
+            cudaMemset(data, 0, width * width * height * sizeof(Voxel));
         }
-    }
 
-    Voxel data[width * width * height] = {};
-};
+        Voxel *data;
+    };
 
 }
