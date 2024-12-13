@@ -4,6 +4,8 @@ set(BUILD_ARCH x64)
 set(GENERATOR "Visual Studio 17 2022")
 set(MSVC_TOOLSET "msvc-14.3")
 
+include("nvcuda_compile_ptx")
+
 message("Creating 3rdparty library folder for ${GENERATOR} ${BUILD_ARCH}")
 
 set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty" CACHE PATH "default install path" FORCE)
@@ -50,7 +52,7 @@ macro(glfw_sourceforge)
     message("  extracting")
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf "${DOWNLOAD_DIR}/${FILENAME}" WORKING_DIRECTORY "${CMAKE_INSTALL_PREFIX}")
     message("  renaming")
-    file(RENAME "${CMAKE_INSTALL_PREFIX}/glfw-3.3.2.bin.WIN64" "${CMAKE_INSTALL_PREFIX}/glfw")
+    file(RENAME "${CMAKE_INSTALL_PREFIX}/glfw-3.3.7.bin.WIN64" "${CMAKE_INSTALL_PREFIX}/glfw")
 endmacro()
 
 macro(glfw_github)
@@ -105,7 +107,6 @@ endmacro()
 
 glew_sourceforge()
 glfw_sourceforge()
-assimp_github()
 
 # If the 3rdparty tools should be updated with additional libraries, commenting out these two lines avoids expensive recompilation of existing tools again.
 message("deleting temp folder")

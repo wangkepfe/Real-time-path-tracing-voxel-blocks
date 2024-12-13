@@ -1,13 +1,15 @@
+set(NVTT_PATH "C:/Program Files/NVIDIA Corporation/NVIDIA Texture Tools")
+
 FIND_PATH(NVTT_INCLUDE_DIR nvtt/nvtt_lowlevel.h
   PATHS
-  ${LOCAL_3RDPARTY}/nvtt/include
+  ${NVTT_PATH}
   PATH_SUFFIXES include
 )
 
 FIND_LIBRARY(NVTT_LIBRARIES
-  NAMES nvtt nvtt30106
+  NAMES nvtt nvtt30106 nvtt30200
   PATHS
-  ${LOCAL_3RDPARTY}/nvtt
+  ${NVTT_PATH}
   PATH_SUFFIXES lib lib/x64-v142
 )
 

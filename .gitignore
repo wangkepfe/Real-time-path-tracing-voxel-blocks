@@ -1,9 +1,5 @@
-data
-3rdparty/*
-!3rdparty/CMake
 .vscode
 build
-dll
-profiledata
-ref
-tex
+3rdparty/glew
+3rdparty/glfw
+3rdparty/downloads

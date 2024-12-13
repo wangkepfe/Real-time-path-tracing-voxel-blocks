@@ -1,76 +1,31 @@
 cmake_minimum_required(VERSION 3.20)
 
-project( JazzFusionRenderer )
+project(voxelgame LANGUAGES CUDA CXX)
 
 set(LOCAL_3RDPARTY "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty")
-message("LOCAL_3RDPARTY = " "${LOCAL_3RDPARTY}")
-
 set(CMAKE_MODULE_PATH "${LOCAL_3RDPARTY}/CMake")
-message("CMAKE_MODULE_PATH = " "${CMAKE_MODULE_PATH}")
 
-# Use the NVCUDA_COMPILE_PTX function to produce the desired custom rule and output filenames when compiling OptiX programs from *.cu to *.ptx.
-include("nvcuda_compile_ptx")
-
-# amd64 is the only supported platform here. # DAR FIXME Remove all other remaining cases.
 set(LOCAL_ARCH "amd64")
-
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-
-if(UNIX)
-  set(OS "linux")
-  add_definitions("-DLINUX")
-  add_definitions("-Wno-unused-local-typedefs -Wno-delete-non-virtual-dtor")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-else(UNIX)
-  if(APPLE)
-  else(APPLE)
-    if(WIN32)
-      set(OS "win")
-      add_definitions("-DNOMINMAX")
-    endif(WIN32)
-  endif(APPLE)
-endif(UNIX)
-
+set(OS "win")
+add_definitions("-DNOMINMAX")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+find_package(OptiX81)
+set(OPTIX_INCLUDE_DIR "${OPTIX81_INCLUDE_DIR}")
 
-if(WIN32 AND "${CMAKE_GENERATOR}" MATCHES "^(Visual Studio).*")
-  # Enable multi-processor build on all Visual Studio versions.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
-endif()
+set(JAZZFUSION_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/renderer")
+set(VOXEL_ENGINE_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/voxelengine")
+set(PTX_DIR "${CMAKE_CURRENT_BINARY_DIR}/ptx")
 
-# Some useful macros
-macro(ADD_TARGET_PROPERTIES _target _name)
-  set(_properties)
-  foreach(_prop ${ARGN})
-    set(_properties "${_properties} ${_prop}")
-  endforeach(_prop)
-  get_target_property(_old_properties ${_target} ${_name})
-  if(NOT _old_properties)
-    # In case it's NOTFOUND
-    set(_old_properties)
-  endif(NOT _old_properties)
-  set_target_properties(${_target} PROPERTIES ${_name} "${_old_properties} ${_properties}")
-endmacro(ADD_TARGET_PROPERTIES)
+include("nvcuda_compile_ptx")
 
-macro(TARGET_INCLUDE_SYMBOL target symbol)
-  if (WIN32)
-    if ( LOCAL_ARCH STREQUAL "amd64" )
-      add_target_properties( ${target} LINK_FLAGS /include:${symbol} )
-    endif()
-  endif()
-  if(UNIX)
-    add_target_properties( ${target} LINK_FLAGS "-Wl,--undefined=${symbol}" )
-  endif()
-endmacro()
+add_subdirectory(renderer)
+add_subdirectory(voxelengine)
 
-find_package(OptiX74)
-
-FILE(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/data" DATA_DIR)
-
-add_subdirectory( src )
+set(SOURCES main.cpp)
+add_executable(voxelgame ${SOURCES})
+target_include_directories( voxelgame PUBLIC ${JAZZFUSION_INCLUDE_DIR} ${VOXEL_ENGINE_INCLUDE_DIR})
+target_link_libraries(voxelgame jazzfusion voxelengine)

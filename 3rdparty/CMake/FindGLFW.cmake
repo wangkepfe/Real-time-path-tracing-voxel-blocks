@@ -14,12 +14,12 @@ if ("${GLFW_PATH}" STREQUAL "")
   set(GLFW_PATH "${LOCAL_3RDPARTY}/glfw")
 endif()
 
-# message("GLFW_PATH = " "${GLFW_PATH}")
+message("GLFW_PATH = " "${GLFW_PATH}")
 
 find_path( GLFW_INCLUDE_DIR "GLFW/glfw3.h"
   PATHS /usr/include ${GLFW_PATH}/include )
 
-# message("GLFW_INCLUDE_DIR = " "${GLFW_INCLUDE_DIR}")
+message("GLFW_INCLUDE_DIR = " "${GLFW_INCLUDE_DIR}")
 
 # GLFW as download from glfw_sourceforge comes with precompiled libraries per MSVS version.
 if (WIN32)
@@ -33,14 +33,14 @@ if (WIN32)
     set(MSVS_VERSION "2022")
   endif()
   set(GLFW_LIBRARY_DIR ${GLFW_PATH}/lib-vc${MSVS_VERSION})
-  # message("GLFW_LIBRARY_DIR = " "${GLFW_LIBRARY_DIR}")
+  message("GLFW_LIBRARY_DIR = " "${GLFW_LIBRARY_DIR}")
 endif()
 
 find_library(GLFW_LIBRARIES
   NAMES glfw3 glfw
-  PATHS /usr/lib64 ${GLFW_LIBRARY_DIR} )
+  PATHS "${GLFW_PATH}/lib-vc2022" ${GLFW_LIBRARY_DIR} )
 
-# message("GLFW_LIBRARIES = " "${GLFW_LIBRARIES}")
+message("GLFW_LIBRARIES = " "${GLFW_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 
@@ -48,4 +48,4 @@ find_package_handle_standard_args(GLFW DEFAULT_MSG GLFW_INCLUDE_DIR GLFW_LIBRARI
 
 mark_as_advanced(GLFW_INCLUDE_DIR GLFW_LIBRARIES)
 
-# message("GLFW_FOUND = " "${GLFW_FOUND}")
+message("GLFW_FOUND = " "${GLFW_FOUND}")
