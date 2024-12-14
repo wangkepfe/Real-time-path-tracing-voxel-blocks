@@ -8,5 +8,10 @@
 
 namespace vox
 {
-    void generateMesh(std::vector<jazzfusion::VertexAttributes> &attr, std::vector<unsigned int> &idx, VoxelChunk &voxelChunk);
+    void initVoxelChunk(VoxelChunk &voxelChunk);
+    void generateMesh(jazzfusion::VertexAttributes **attr,
+                      unsigned int **indices,
+                      unsigned int &attrSize,
+                      unsigned int &indicesSize,
+                      VoxelChunk &voxelChunk);
 }

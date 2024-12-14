@@ -53,13 +53,13 @@ namespace vox
         }
     }
 
-    INL_HOST_DEVICE unsigned int GetLinearId(unsigned int x, unsigned int y, unsigned int z, unsigned int width, unsigned int height)
+    INL_HOST_DEVICE unsigned int GetLinearId(unsigned int x, unsigned int y, unsigned int z, unsigned int width)
     {
         x = x < width - 1 ? x : width - 1;
-        y = y < height - 1 ? y : height - 1;
+        y = y < width - 1 ? y : width - 1;
         z = z < width - 1 ? z : width - 1;
 
-        return x + width * (z + height * y);
+        return x + width * (z + width * y);
     }
 
 }

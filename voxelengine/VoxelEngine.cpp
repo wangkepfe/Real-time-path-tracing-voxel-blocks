@@ -31,64 +31,78 @@ namespace vox
         auto &scene = jazzfusion::Scene::Get();
         auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
         auto &sceneGeometryIndices = scene.m_geometryIndices;
+        auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
+        auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
         sceneGeometryAttributes.resize(1);
         sceneGeometryIndices.resize(1);
+        sceneGeometryAttributeSize.resize(1);
+        sceneGeometryIndicesSize.resize(1);
 
-        generateMesh(sceneGeometryAttributes[0], sceneGeometryIndices[0], voxelChunk);
+        sceneGeometryAttributes[0] = nullptr;
+        sceneGeometryIndices[0] = nullptr;
+        sceneGeometryAttributeSize[0] = 0;
+        sceneGeometryIndicesSize[0] = 0;
+
+        initVoxelChunk(voxelChunk);
+        generateMesh(&(sceneGeometryAttributes[0]), &(sceneGeometryIndices[0]), sceneGeometryAttributeSize[0], sceneGeometryIndicesSize[0], voxelChunk);
     }
 
     void VoxelEngine::update()
     {
         using namespace jazzfusion;
 
-        // if (leftMouseButtonClicked)
-        // {
-        //     leftMouseButtonClicked = false;
+        if (leftMouseButtonClicked)
+        {
+            leftMouseButtonClicked = false;
 
-        //     auto &camera = RenderCamera::Get().camera;
+            auto &camera = RenderCamera::Get().camera;
 
-        //     Ray ray{camera.pos, camera.dir};
+            Ray ray{camera.pos, camera.dir};
 
-        //     bool hasSpaceToCreate = false;
-        //     bool hitSurface = false;
-        //     Int3 createPos;
+            bool hasSpaceToCreate = false;
+            bool hitSurface = false;
+            Int3 createPos;
 
-        //     RayVoxelGridTraversal(ray, [&](int x, int y, int z) -> bool
-        //                           {
-        //         auto& voxelEngine = VoxelEngine::Get();
-        //         voxelChunk& voxelChunk = voxelEngine.voxelChunk;
-        //         auto voxel = voxelChunk.get(x, y, z);
-        //         if (voxel == std::nullopt)
-        //         {
-        //             // std::cout << "out of bound traversal: " << x << " " << y << " " << z << std::endl;
-        //             return true;
-        //         }
+            RayVoxelGridTraversal(ray, [&](int x, int y, int z) -> bool
+                                  {
+                auto& voxelEngine = VoxelEngine::Get();
+                VoxelChunk& voxelChunk = voxelEngine.voxelChunk;
 
-        //         if (voxel->id == 0)
-        //         {
-        //             hasSpaceToCreate = true;
-        //             createPos = Int3(x, y, z);
+                if (x < 0 || x >= voxelChunk.width || y < 0 || y >= voxelChunk.width || z < 0 || z >= voxelChunk.width) {
+                    return false;
+                }
 
-        //             // std::cout << "in bound traversal: " << x << " " << y << " " << z << std::endl;
-        //             return true;
-        //         }
-        //         else
-        //         {
-        //             hitSurface = true;
+                Voxel voxel = voxelChunk.get(x, y, z);
 
-        //             // std::cout << "hit: " << x << " " << y << " " << z << std::endl;
-        //             return false;
-        //         } });
+                if (voxel.id == 0)
+                {
+                    hasSpaceToCreate = true;
+                    createPos = Int3(x, y, z);
 
-        //     if (hasSpaceToCreate)
-        //     {
-        //         blockMeshers[0].update(Voxel(1), createPos.x, createPos.y, createPos.z);
+                    return true;
+                }
+                else
+                {
+                    hitSurface = true;
+                    return false;
+                } });
 
-        //         auto &scene = jazzfusion::Scene::Get();
-        //         scene.m_updateCallback(0);
-        //     }
-        // }
+            if (hasSpaceToCreate && hitSurface)
+            {
+                auto &scene = jazzfusion::Scene::Get();
+
+                voxelChunk.set(createPos.x, createPos.y, createPos.z, 1);
+
+                auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
+                auto &sceneGeometryIndices = scene.m_geometryIndices;
+                auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
+                auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+                generateMesh(&(sceneGeometryAttributes[0]), &(sceneGeometryIndices[0]), sceneGeometryAttributeSize[0], sceneGeometryIndicesSize[0], voxelChunk);
+
+                scene.m_updateCallback(0);
+            }
+        }
     }
 
 }

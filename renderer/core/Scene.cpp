@@ -12,14 +12,14 @@ namespace jazzfusion
         std::vector<OptixInstance> &instances,
         int objectId)
     {
-        CUDA_CHECK(cudaFree((void *)geometries[objectId].indices));
-        CUDA_CHECK(cudaFree((void *)geometries[objectId].attributes));
-        CUDA_CHECK(cudaFree((void *)geometries[objectId].gas));
+        GeometryData &geometry = geometries[objectId];
+
+        CUDA_CHECK(cudaFree((void *)geometry.gas));
 
         OptixInstance &instance = instances[objectId];
         instance = OptixInstance{};
 
-        OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometries, m_geometryAttibutes[objectId], m_geometryIndices[objectId]);
+        OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometry, m_geometryAttibutes[objectId], m_geometryIndices[objectId], m_geometryAttibuteSize[objectId], m_geometryIndicesSize[objectId]);
 
         const float transformMatrix[12] =
             {
@@ -45,8 +45,10 @@ namespace jazzfusion
     {
         for (int i = 0; i < m_geometryAttibutes.size(); ++i)
         {
+            GeometryData geometry = {};
+
             OptixInstance instance = {};
-            OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometries, m_geometryAttibutes[i], m_geometryIndices[i]);
+            OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometry, m_geometryAttibutes[i], m_geometryIndices[i], m_geometryAttibuteSize[i], m_geometryIndicesSize[i]);
 
             const float transformMatrix[12] =
                 {
@@ -63,6 +65,7 @@ namespace jazzfusion
             instance.traversableHandle = blasHandle;
 
             instances.push_back(instance);
+            geometries.push_back(geometry);
         }
     }
 
@@ -70,22 +73,14 @@ namespace jazzfusion
         OptixFunctionTable &api,
         OptixDeviceContext &context,
         CUstream cudaStream,
-        std::vector<GeometryData> &geometries,
-        std::vector<VertexAttributes> const &attributes,
-        std::vector<unsigned int> const &indices)
+        GeometryData &geometry,
+        VertexAttributes *d_attributes,
+        unsigned int *d_indices,
+        unsigned int attributeSize,
+        unsigned int indicesSize)
     {
-        CUdeviceptr d_attributes;
-        CUdeviceptr d_indices;
-
-        const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributes.size();
-
-        CUDA_CHECK(cudaMalloc((void **)&d_attributes, attributesSizeInBytes));
-        CUDA_CHECK(cudaMemcpy((void *)d_attributes, attributes.data(), attributesSizeInBytes, cudaMemcpyHostToDevice));
-
-        const size_t indicesSizeInBytes = sizeof(unsigned int) * indices.size();
-
-        CUDA_CHECK(cudaMalloc((void **)&d_indices, indicesSizeInBytes));
-        CUDA_CHECK(cudaMemcpy((void *)d_indices, indices.data(), indicesSizeInBytes, cudaMemcpyHostToDevice));
+        const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributeSize;
+        const size_t indicesSizeInBytes = sizeof(unsigned int) * indicesSize;
 
         OptixBuildInput triangleInput = {};
 
@@ -93,14 +88,14 @@ namespace jazzfusion
 
         triangleInput.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
         triangleInput.triangleArray.vertexStrideInBytes = sizeof(VertexAttributes);
-        triangleInput.triangleArray.numVertices = (unsigned int)attributes.size();
-        triangleInput.triangleArray.vertexBuffers = &d_attributes;
+        triangleInput.triangleArray.numVertices = attributeSize;
+        triangleInput.triangleArray.vertexBuffers = (const CUdeviceptr *)(&d_attributes);
 
         triangleInput.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
         triangleInput.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
 
-        triangleInput.triangleArray.numIndexTriplets = (unsigned int)indices.size() / 3;
-        triangleInput.triangleArray.indexBuffer = d_indices;
+        triangleInput.triangleArray.numIndexTriplets = indicesSize / 3;
+        triangleInput.triangleArray.indexBuffer = (CUdeviceptr)d_indices;
 
         unsigned int triangleInputFlags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
 
@@ -137,15 +132,11 @@ namespace jazzfusion
         CUDA_CHECK(cudaFree((void *)d_tmp));
 
         // Track the GeometryData to be able to set them in the SBT record GeometryInstanceData and free them on exit.
-        GeometryData geometry;
-
         geometry.indices = d_indices;
         geometry.attributes = d_attributes;
-        geometry.numIndices = indices.size();
-        geometry.numAttributes = attributes.size();
+        geometry.numAttributes = attributeSize;
+        geometry.numIndices = indicesSize;
         geometry.gas = d_gas;
-
-        geometries.push_back(geometry);
 
         return traversableHandle;
     }

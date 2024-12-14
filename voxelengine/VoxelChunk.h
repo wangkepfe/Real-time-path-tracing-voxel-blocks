@@ -9,32 +9,13 @@
 
 namespace vox
 {
-
-    /*
-     *              -------------
-     *              |\           \
-     *              | \           \
-     *              |  \           \
-     *   height(y)  |   -------------
-     *              |   |           |
-     *              |   |           |
-     *              |   |           |
-     *              |   |           |
-     *              |   |           |
-     *               \  |           |
-     *     width(z)   \ |           |
-     *                 \|           |
-     *                  -------------
-     *                     width(x)
-     */
     struct VoxelChunk
     {
-        static const unsigned int width = 256;
-        static const unsigned int height = 64;
+        static const unsigned int width = 128;
 
         VoxelChunk()
         {
-            cudaMallocManaged(&data, width * width * height * sizeof(Voxel));
+            cudaMallocManaged(&data, width * width * width * sizeof(Voxel));
         }
 
         ~VoxelChunk()
@@ -44,7 +25,17 @@ namespace vox
 
         void clear()
         {
-            cudaMemset(data, 0, width * width * height * sizeof(Voxel));
+            cudaMemset(data, 0, width * width * width * sizeof(Voxel));
+        }
+
+        Voxel get(unsigned int x, unsigned int y, unsigned int z)
+        {
+            return data[GetLinearId(x, y, z, width)];
+        }
+
+        void set(unsigned int x, unsigned int y, unsigned int z, unsigned int id)
+        {
+            data[GetLinearId(x, y, z, width)].id = id;
         }
 
         Voxel *data;

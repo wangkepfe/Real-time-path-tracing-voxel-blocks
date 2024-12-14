@@ -1,5 +1,9 @@
 #include "VoxelSceneGen.h"
+#include "util/KernelHelper.h"
+
 #include <cub/cub.cuh> // For prefix sums
+
+#include <fstream>
 
 using namespace jazzfusion;
 using namespace vox;
@@ -47,42 +51,41 @@ __device__ void ComputeFaceVertices(Float3 basePos, int faceId, Float3 outVerts[
     }
 }
 
-__global__ void GenerateVoxelChunk(Voxel *voxels, unsigned int width, unsigned int height)
+__global__ void GenerateVoxelChunk(Voxel *voxels, unsigned int width)
 {
     Int3 idx;
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
     idx.y = blockIdx.y * blockDim.y + threadIdx.y;
     idx.z = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (idx.x >= width || idx.y >= height || idx.z >= width)
+    if (idx.x >= width || idx.y >= width || idx.z >= width)
         return;
 
     Voxel val;
     val.id = 0;
-    if (idx.y < 32)
+    if (idx.y < 64)
     {
         val.id = 1;
     }
 
-    unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width, height);
+    unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width);
     voxels[linearId] = val;
 }
 
 __global__ void MarkValidFaces(
     Voxel *voxels,
     unsigned int *d_faceValid,
-    unsigned int width,
-    unsigned int height)
+    unsigned int width)
 {
     Int3 idx;
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
     idx.y = blockIdx.y * blockDim.y + threadIdx.y;
     idx.z = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (idx.x >= width || idx.y >= height || idx.z >= width)
+    if (idx.x >= width || idx.y >= width || idx.z >= width)
         return;
 
-    unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width, height);
+    unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width);
     Voxel center = voxels[linearId];
 
     if (center.id == 0)
@@ -110,9 +113,9 @@ __global__ void MarkValidFaces(
         int nz = idx.z + dir.z;
 
         bool neighborEmpty = true;
-        if (nx >= 0 && nx < width && ny >= 0 && ny < height && nz >= 0 && nz < width)
+        if (nx >= 0 && nx < width && ny >= 0 && ny < width && nz >= 0 && nz < width)
         {
-            Voxel neighbor = voxels[GetLinearId(nx, ny, nz, width, height)];
+            Voxel neighbor = voxels[GetLinearId(nx, ny, nz, width)];
             if (neighbor.id != 0)
                 neighborEmpty = false;
         }
@@ -127,18 +130,17 @@ __global__ void CompactMesh(
     unsigned int *d_idxOut,
     Voxel *voxels,
     unsigned int *d_faceValidPrefixSum,
-    unsigned int width,
-    unsigned int height)
+    unsigned int width)
 {
     Int3 idx;
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
     idx.y = blockIdx.y * blockDim.y + threadIdx.y;
     idx.z = blockIdx.z * blockDim.z + threadIdx.z;
 
-    if (idx.x >= width || idx.y >= height || idx.z >= width)
+    if (idx.x >= width || idx.y >= width || idx.z >= width)
         return;
 
-    unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width, height);
+    unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width);
     Voxel center = voxels[linearId];
     if (center.id == 0)
         return;
@@ -178,26 +180,77 @@ __global__ void CompactMesh(
     }
 }
 
+namespace
+{
+    bool dumpMeshToOBJ(
+        const jazzfusion::VertexAttributes *attr,
+        const unsigned int *indices,
+        unsigned int attrSize,
+        unsigned int indicesSize,
+        const std::string &filename)
+    {
+        std::ofstream out(filename);
+        if (!out.is_open())
+        {
+            return false;
+        }
+
+        out << "# Exported mesh\n";
+        out << "# Vertices: " << attrSize << "\n";
+        out << "# Faces: " << indicesSize / 3 << "\n\n";
+
+        // Write vertices
+        // OBJ format vertex line: v x y z
+        for (size_t i = 0; i < attrSize; i++)
+        {
+            const Float3 &v = attr[i].vertex;
+            // Y is up, which aligns with typical OBJ interpretation, no change needed
+            out << "v " << v.x << " " << v.y << " " << v.z << "\n";
+        }
+        out << "\n";
+
+        // Write faces
+        // OBJ faces are 1-based indices. Each face line: f i j k
+        // indices vector is assumed to be composed of triangles
+        for (size_t i = 0; i < indicesSize; i += 3)
+        {
+            // Add 1 to each index because OBJ indexing starts at 1
+            out << "f " << (indices[i] + 1) << " " << (indices[i + 1] + 1) << " " << (indices[i + 2] + 1) << "\n";
+        }
+
+        out.close();
+        return true;
+    }
+}
+
 namespace vox
 {
-    void generateMesh(std::vector<jazzfusion::VertexAttributes> &attr,
-                      std::vector<unsigned int> &indices,
-                      VoxelChunk &voxelChunk)
+    void initVoxelChunk(VoxelChunk &voxelChunk)
     {
-        dim3 blockDim(4, 4, 4);
-        dim3 gridDim((voxelChunk.width + 3) / 4, (voxelChunk.height + 3) / 4, (voxelChunk.width + 3) / 4);
+        dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
+        dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
 
         // 1. Generate voxel data
-        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(voxelChunk.data, voxelChunk.width, voxelChunk.height);
+        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(voxelChunk.data, voxelChunk.width);
         cudaDeviceSynchronize();
+    }
+
+    void generateMesh(jazzfusion::VertexAttributes **attr,
+                      unsigned int **indices,
+                      unsigned int &attrSize,
+                      unsigned int &indicesSize,
+                      VoxelChunk &voxelChunk)
+    {
+        dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
+        dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
 
         // 2. Mark valid faces
         unsigned int *d_faceValid;
-        size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.height;
+        size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
         size_t totalFaces = totalVoxels * 6;
         cudaMallocManaged(&d_faceValid, totalFaces * sizeof(unsigned int));
 
-        MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(voxelChunk.data, d_faceValid, voxelChunk.width, voxelChunk.height);
+        MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(voxelChunk.data, d_faceValid, voxelChunk.width);
         cudaDeviceSynchronize();
 
         // 3. Prefix sum on face validity
@@ -220,28 +273,30 @@ namespace vox
 
         // Now we know how large our final arrays should be:
         // Each valid face: 4 vertices, 6 indices
-        unsigned int finalVertexCount = totalValidFaces * 4;
-        unsigned int finalIndexCount = totalValidFaces * 6;
+        attrSize = totalValidFaces * 4;
+        indicesSize = totalValidFaces * 6;
 
-        jazzfusion::VertexAttributes *d_attrOut;
-        unsigned int *d_idxOut;
-        cudaMallocManaged(&d_attrOut, finalVertexCount * sizeof(jazzfusion::VertexAttributes));
-        cudaMallocManaged(&d_idxOut, finalIndexCount * sizeof(unsigned int));
+        if (*attr != nullptr)
+        {
+            cudaFree(*attr);
+        }
+        if (*indices != nullptr)
+        {
+            cudaFree(*indices);
+        }
+
+        cudaMallocManaged(attr, attrSize * sizeof(jazzfusion::VertexAttributes));
+        cudaMallocManaged(indices, indicesSize * sizeof(unsigned int));
 
         // 5. Compact the mesh
-        CompactMesh KERNEL_ARGS2(gridDim, blockDim)(d_attrOut, d_idxOut, voxelChunk.data, d_faceValidPrefixSum, voxelChunk.width, voxelChunk.height);
+        CompactMesh KERNEL_ARGS2(gridDim, blockDim)(*attr, *indices, voxelChunk.data, d_faceValidPrefixSum, voxelChunk.width);
+        CUDA_CHECK(cudaPeekAtLastError());
         cudaDeviceSynchronize();
 
-        // 6. Copy back to host
-        attr.resize(finalVertexCount);
-        indices.resize(finalIndexCount);
-        cudaMemcpy(attr.data(), d_attrOut, finalVertexCount * sizeof(jazzfusion::VertexAttributes), cudaMemcpyDeviceToHost);
-        cudaMemcpy(indices.data(), d_idxOut, finalIndexCount * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+        dumpMeshToOBJ(*attr, *indices, attrSize, indicesSize, "debug.obj");
 
         // Cleanup
         cudaFree(d_faceValid);
         cudaFree(d_faceValidPrefixSum);
-        cudaFree(d_attrOut);
-        cudaFree(d_idxOut);
     }
 }

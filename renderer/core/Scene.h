@@ -21,8 +21,8 @@ namespace jazzfusion
     // The actual geometries are tracked in m_geometries.
     struct GeometryData
     {
-        CUdeviceptr indices;
-        CUdeviceptr attributes;
+        unsigned int *indices;
+        VertexAttributes *attributes;
         size_t numIndices;    // Count of unsigned ints, not triplets.
         size_t numAttributes; // Count of VertexAttributes structs.
         CUdeviceptr gas;
@@ -54,8 +54,10 @@ namespace jazzfusion
             int objectId);
 
         // Scene meshes
-        std::vector<std::vector<VertexAttributes>> m_geometryAttibutes;
-        std::vector<std::vector<unsigned int>> m_geometryIndices;
+        std::vector<VertexAttributes *> m_geometryAttibutes;
+        std::vector<unsigned int *> m_geometryIndices;
+        std::vector<unsigned int> m_geometryAttibuteSize;
+        std::vector<unsigned int> m_geometryIndicesSize;
 
         // Scene update callback
         std::function<void(int)> m_updateCallback;
@@ -67,9 +69,11 @@ namespace jazzfusion
             OptixFunctionTable &api,
             OptixDeviceContext &context,
             CUstream cudaStream,
-            std::vector<GeometryData> &geometries,
-            std::vector<VertexAttributes> const &attributes,
-            std::vector<unsigned int> const &indices);
+            GeometryData &geometry,
+            VertexAttributes *d_attributes,
+            unsigned int *d_indices,
+            unsigned int attributeSize,
+            unsigned int indicesSize);
     };
 
 }

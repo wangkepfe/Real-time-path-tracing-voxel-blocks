@@ -547,8 +547,6 @@ namespace jazzfusion
         moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
         moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
         moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_DEFAULT;
-        // moduleCompileOptions.optLevel                        = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-        // moduleCompileOptions.debugLevel                      = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 
         OptixPipelineCompileOptions pipelineCompileOptions = {};
         pipelineCompileOptions.usesMotionBlur = 0;
@@ -678,7 +676,7 @@ namespace jazzfusion
             OptixStackSizes stackSizesPipeline = {};
             for (size_t i = 0; i < programGroups.size(); ++i)
             {
-                OptixStackSizes stackSizes; 
+                OptixStackSizes stackSizes;
 
                 OPTIX_CHECK(m_api.optixProgramGroupGetStackSize(programGroups[i], &stackSizes, m_pipeline));
 
