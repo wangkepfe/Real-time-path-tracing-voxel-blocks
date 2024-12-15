@@ -90,6 +90,8 @@ namespace jazzfusion
         Int2 sunRes;
         Float3 sunDir;
 
+        Float3 *edgeToHighlight;
+
         int iterationIndex;
         int samplePerIteration;
         int sampleIndex;

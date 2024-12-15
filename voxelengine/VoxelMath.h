@@ -2,6 +2,8 @@
 
 #include "shaders/LinearMath.h"
 
+#include <limits>
+
 namespace vox
 {
 
@@ -12,45 +14,110 @@ namespace vox
     };
 
     template <typename Lambda>
-    inline void RayVoxelGridTraversal(Ray &ray, Lambda &&func)
+    inline void RayVoxelGridTraversal(Ray &ray, Lambda &&func, int maxIteration = 1000,
+                                      int *hitAxisOut = nullptr, int *stepXOut = nullptr, int *stepYOut = nullptr, int *stepZOut = nullptr)
     {
         using namespace jazzfusion;
 
-        int x = static_cast<int>(ray.orig.x);
-        int y = static_cast<int>(ray.orig.y);
-        int z = static_cast<int>(ray.orig.z);
-
-        bool needToContinue = true;
-        static const int maxIteration = 10;
-        int i = 0;
-
-        while (needToContinue && (i++ < maxIteration))
+        // Normalize the ray direction if needed
+        Float3 dir = ray.dir;
         {
-            Float3 aabbMin = Float3(x, y, z);
-            Float3 aabbMax = Float3(x + 1, y + 1, z + 1);
-
-            int axis;
-            float t = RayVoxelGridIntersect(ray.orig, ray.dir, aabbMin, aabbMax, axis);
-
-            const float epsilon = 0.001f;
-
-            ray.orig += ray.dir * (t + epsilon);
-
-            if (axis == 0)
+            float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+            if (len > 1e-8f)
             {
-                x += (ray.dir.x > 0) ? 1 : -1;
+                dir.x /= len;
+                dir.y /= len;
+                dir.z /= len;
             }
-            else if (axis == 1)
+            else
             {
-                y += (ray.dir.y > 0) ? 1 : -1;
+                // Degenerate direction vector: no traversal possible
+                return;
             }
-            else if (axis == 2)
-            {
-                z += (ray.dir.z > 0) ? 1 : -1;
-            }
-
-            needToContinue = func(x, y, z);
         }
+
+        // Find the starting voxel indices
+        int x = static_cast<int>(std::floor(ray.orig.x));
+        int y = static_cast<int>(std::floor(ray.orig.y));
+        int z = static_cast<int>(std::floor(ray.orig.z));
+
+        // Determine step direction along each axis
+        int stepX = (dir.x > 0.0f) ? 1 : -1;
+        int stepY = (dir.y > 0.0f) ? 1 : -1;
+        int stepZ = (dir.z > 0.0f) ? 1 : -1;
+
+        // Compute tDeltaX, tDeltaY, tDeltaZ
+        float tDeltaX = (std::fabs(dir.x) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(dir.x));
+        float tDeltaY = (std::fabs(dir.y) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(dir.y));
+        float tDeltaZ = (std::fabs(dir.z) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(dir.z));
+
+        float nextBoundaryX = (stepX > 0) ? (float)(x + 1) : (float)(x);
+        float nextBoundaryY = (stepY > 0) ? (float)(y + 1) : (float)(y);
+        float nextBoundaryZ = (stepZ > 0) ? (float)(z + 1) : (float)(z);
+
+        float tMaxX = (std::fabs(dir.x) < 1e-8f) ? FLT_MAX : (nextBoundaryX - ray.orig.x) / dir.x;
+        float tMaxY = (std::fabs(dir.y) < 1e-8f) ? FLT_MAX : (nextBoundaryY - ray.orig.y) / dir.y;
+        float tMaxZ = (std::fabs(dir.z) < 1e-8f) ? FLT_MAX : (nextBoundaryZ - ray.orig.z) / dir.z;
+
+        int iterationCount = 0;
+
+        // This will track the axis along which we moved last:
+        // 0 = x-axis, 1 = y-axis, 2 = z-axis.
+        // We initialize it to -1 meaning we haven't moved yet.
+        int lastAxis = -1;
+
+        while (iterationCount++ < maxIteration)
+        {
+            // Check the current voxel
+            if (!func(x, y, z))
+            {
+                // We found a solid voxel and want to stop. We break here.
+                // lastAxis indicates along which axis we stepped to get here.
+                break;
+            }
+
+            // Move to the next voxel:
+            // Choose the axis with the smallest tMax
+            if (tMaxX < tMaxY)
+            {
+                if (tMaxX < tMaxZ)
+                {
+                    x += stepX;
+                    tMaxX += tDeltaX;
+                    lastAxis = 0; // moved along x-axis
+                }
+                else
+                {
+                    z += stepZ;
+                    tMaxZ += tDeltaZ;
+                    lastAxis = 2; // moved along z-axis
+                }
+            }
+            else
+            {
+                if (tMaxY < tMaxZ)
+                {
+                    y += stepY;
+                    tMaxY += tDeltaY;
+                    lastAxis = 1; // moved along y-axis
+                }
+                else
+                {
+                    z += stepZ;
+                    tMaxZ += tDeltaZ;
+                    lastAxis = 2; // moved along z-axis
+                }
+            }
+        }
+
+        if (hitAxisOut)
+            *hitAxisOut = lastAxis;
+        if (stepXOut)
+            *stepXOut = stepX;
+        if (stepYOut)
+            *stepYOut = stepY;
+        if (stepZOut)
+            *stepZOut = stepZ;
     }
 
     INL_HOST_DEVICE unsigned int GetLinearId(unsigned int x, unsigned int y, unsigned int z, unsigned int width)

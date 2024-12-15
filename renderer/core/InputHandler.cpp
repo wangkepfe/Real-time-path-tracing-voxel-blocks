@@ -139,7 +139,8 @@ namespace jazzfusion
 
     void InputHandler::MouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
     {
-        auto& inputHandler = InputHandler::Get();
+        auto &inputHandler = InputHandler::Get();
+        Backend& backend = Backend::Get();
         if (inputHandler.appmode == AppMode::Gameplay)
         {
             inputHandler.mouseButtonCallbackFunc(button, action, mods);
@@ -150,6 +151,7 @@ namespace jazzfusion
             else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
             {
             }
+            backend.resetAccumulationCounter();
         }
     }
 

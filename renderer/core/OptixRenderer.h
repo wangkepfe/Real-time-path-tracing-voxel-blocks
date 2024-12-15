@@ -21,83 +21,83 @@
 namespace jazzfusion
 {
 
-struct SbtRecordHeader
-{
-    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-};
-
-template <typename T>
-struct SbtRecordData
-{
-    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-    T data;
-};
-
-typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
-
-class OptixRenderer
-{
-public:
-    static OptixRenderer& Get()
+    struct SbtRecordHeader
     {
-        static OptixRenderer instance;
-        return instance;
-    }
-    OptixRenderer(OptixRenderer const&) = delete;
-    void operator=(OptixRenderer const&) = delete;
+        __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+    };
 
-    void init();
-    void clear();
-    void render();
+    template <typename T>
+    struct SbtRecordData
+    {
+        __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+        T data;
+    };
 
-    SystemParameter& getSystemParameter() { return m_systemParameter; }
+    typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
 
-    void setWidth(int width) { m_width = width; }
-    void setHeight(int height) { m_height = height; }
+    class OptixRenderer
+    {
+    public:
+        static OptixRenderer &Get()
+        {
+            static OptixRenderer instance;
+            return instance;
+        }
+        OptixRenderer(OptixRenderer const &) = delete;
+        void operator=(OptixRenderer const &) = delete;
 
-    int getWidth() const { return m_width; }
-    int getHeight() const { return m_height; }
+        void init();
+        void clear();
+        void update();
+        void render();
 
-private:
-    OptixRenderer() {}
+        SystemParameter &getSystemParameter() { return m_systemParameter; }
 
-    int                                        m_width;
-    int                                        m_height;
+        void setWidth(int width) { m_width = width; }
+        void setHeight(int height) { m_height = height; }
 
-    SystemParameter                            m_systemParameter;
+        int getWidth() const { return m_width; }
+        int getHeight() const { return m_height; }
 
-    OptixFunctionTable                         m_api;
-    OptixDeviceContext                         m_context;
-    OptixTraversableHandle                     m_root;
-    CUdeviceptr                                m_d_ias;
-    OptixPipeline                              m_pipeline;
+    private:
+        OptixRenderer() {}
 
-    SystemParameter* m_d_systemParameter;
+        int m_width;
+        int m_height;
 
-    std::vector<OptixInstance>                 m_instances;
+        SystemParameter m_systemParameter;
 
-    std::vector<GeometryData>                  m_geometries;
+        OptixFunctionTable m_api;
+        OptixDeviceContext m_context;
+        CUdeviceptr m_d_ias;
+        OptixPipeline m_pipeline;
 
-    OptixShaderBindingTable                    m_sbt;
+        SystemParameter *m_d_systemParameter;
 
-    std::vector<SbtRecordGeometryInstanceData> m_sbtRecordGeometryInstanceData;
+        std::vector<OptixInstance> m_instances;
 
-    CUdeviceptr                                m_d_sbtRecordRaygeneration;
-    CUdeviceptr                                m_d_sbtRecordMiss;
-    CUdeviceptr                                m_d_sbtRecordCallables;
+        std::vector<GeometryData> m_geometries;
 
-    SbtRecordGeometryInstanceData              m_sbtRecordHitRadiance;
-    SbtRecordGeometryInstanceData              m_sbtRecordHitShadow;
-    SbtRecordGeometryInstanceData              m_sbtRecordHitRadianceCutout;
-    SbtRecordGeometryInstanceData              m_sbtRecordHitShadowCutout;
+        OptixShaderBindingTable m_sbt;
 
-    SbtRecordGeometryInstanceData* m_d_sbtRecordGeometryInstanceData;
+        std::vector<SbtRecordGeometryInstanceData> m_sbtRecordGeometryInstanceData;
 
-    std::vector<LightDefinition>               m_lightDefinitions;
-    std::vector<MaterialParameter>             m_materialParameters;
+        CUdeviceptr m_d_sbtRecordRaygeneration;
+        CUdeviceptr m_d_sbtRecordMiss;
+        CUdeviceptr m_d_sbtRecordCallables;
 
-    BlueNoiseRandGeneratorHost  h_randGen{};
-    BlueNoiseRandGenerator      d_randGen{ static_cast<BlueNoiseRandGenerator>(h_randGen) };
-};
+        SbtRecordGeometryInstanceData m_sbtRecordHitRadiance;
+        SbtRecordGeometryInstanceData m_sbtRecordHitShadow;
+        SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
+        SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
+
+        SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
+
+        std::vector<LightDefinition> m_lightDefinitions;
+        std::vector<MaterialParameter> m_materialParameters;
+
+        BlueNoiseRandGeneratorHost h_randGen{};
+        BlueNoiseRandGenerator d_randGen{static_cast<BlueNoiseRandGenerator>(h_randGen)};
+    };
 
 }

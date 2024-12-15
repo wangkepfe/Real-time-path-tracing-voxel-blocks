@@ -30,10 +30,17 @@ namespace vox
         VoxelChunk voxelChunk;
         bool leftMouseButtonClicked = false;
 
+        unsigned int currentFaceCount = 0;
+        unsigned int maxFaceCount = 0;
+        std::vector<unsigned int> freeFaces;
+        std::vector<unsigned int> faceLocation;
+
         // static std::function<void()> UpdateFunc;
 
     private:
-        VoxelEngine() {}
+        VoxelEngine()
+        {
+        }
     };
 
     static inline void UpdateFunc()

@@ -59,11 +59,13 @@ namespace jazzfusion
         std::vector<unsigned int> m_geometryAttibuteSize;
         std::vector<unsigned int> m_geometryIndicesSize;
 
-        // Scene update callback
-        std::function<void(int)> m_updateCallback;
+        bool needSceneUpdate = false;
+        std::vector<unsigned int> sceneUpdateObjectId;
+        Float3 *edgeToHighlight;
 
     private:
-        Scene() {}
+        Scene();
+        ~Scene();
 
         static OptixTraversableHandle CreateGeometry(
             OptixFunctionTable &api,

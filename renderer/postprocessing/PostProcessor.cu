@@ -45,7 +45,7 @@ namespace jazzfusion
         const auto &postProcessParams = GlobalSettings::GetPostProcessParams();
         const auto &renderPassSettings = GlobalSettings::GetRenderPassSettings();
 
-        // ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(RenderColorBuffer), Int2(inputWidth, inputHeight), postProcessParams);
+        ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(RenderColorBuffer), Int2(inputWidth, inputHeight), postProcessParams);
 
         // if (renderPassSettings.enableSharpening)
         // {

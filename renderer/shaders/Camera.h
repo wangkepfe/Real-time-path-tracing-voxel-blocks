@@ -43,7 +43,7 @@ namespace jazzfusion
 
         void init(int width, int height)
         {
-            pos = Float3(2.0f, 68.0f, 2.0f);
+            pos = Float3(64.0f, 68.0f, 64.0f);
             Float2 yawPitch = DirToYawPitch(-pos);
             yaw = yawPitch.x;
             pitch = yawPitch.y;

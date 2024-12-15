@@ -4,6 +4,16 @@
 namespace jazzfusion
 {
 
+    Scene::Scene()
+    {
+        CUDA_CHECK(cudaMallocManaged(&edgeToHighlight, 4 * sizeof(Float3)));
+    }
+
+    Scene::~Scene()
+    {
+        CUDA_CHECK(cudaFree(edgeToHighlight));
+    }
+
     void Scene::updateGeometry(
         OptixFunctionTable &api,
         OptixDeviceContext &context,
@@ -17,8 +27,6 @@ namespace jazzfusion
         CUDA_CHECK(cudaFree((void *)geometry.gas));
 
         OptixInstance &instance = instances[objectId];
-        instance = OptixInstance{};
-
         OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometry, m_geometryAttibutes[objectId], m_geometryIndices[objectId], m_geometryAttibuteSize[objectId], m_geometryIndicesSize[objectId]);
 
         const float transformMatrix[12] =

@@ -1763,4 +1763,31 @@ namespace jazzfusion
         return t;
     }
 
+    INL_HOST_DEVICE float PointToSegmentDistance(const Float3 &P, const Float3 &A, const Float3 &B, Float3 &closestPoint)
+    {
+        Float3 v = B - A;
+        Float3 w = P - A;
+        float c1 = dot(w, v);
+
+        // If projection falls before A on the line
+        if (c1 <= 0.0f)
+        {
+            closestPoint = A;
+            return length(P - A);
+        }
+
+        float c2 = dot(v, v);
+        // If projection falls beyond B on the line
+        if (c2 <= c1)
+        {
+            closestPoint = B;
+            return length(P - B);
+        }
+
+        // Projection falls between A and B
+        float t = c1 / c2;
+        closestPoint = A + v * t;
+        return length(P - closestPoint);
+    }
+
 }

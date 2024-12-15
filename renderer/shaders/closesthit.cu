@@ -91,6 +91,31 @@ namespace jazzfusion
     {
         PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
+        rayData->distance = optixGetRayTmax();
+        rayData->pos = rayData->pos + rayData->wi * rayData->distance;
+
+        Float3 highlightPoint[4];
+        highlightPoint[0] = sysParam.edgeToHighlight[0];
+        highlightPoint[1] = sysParam.edgeToHighlight[1];
+        highlightPoint[2] = sysParam.edgeToHighlight[2];
+        highlightPoint[3] = sysParam.edgeToHighlight[3];
+
+        // Check each line segment: (0->1), (1->2), (2->3), (3->0)
+        const float tolerance = 0.01f;
+        Float3 dummy;
+        float d0 = PointToSegmentDistance(rayData->pos, highlightPoint[0], highlightPoint[1], dummy);
+        float d1 = PointToSegmentDistance(rayData->pos, highlightPoint[1], highlightPoint[2], dummy);
+        float d2 = PointToSegmentDistance(rayData->pos, highlightPoint[2], highlightPoint[3], dummy);
+        float d3 = PointToSegmentDistance(rayData->pos, highlightPoint[3], highlightPoint[0], dummy);
+
+        if (d0 < tolerance || d1 < tolerance || d2 < tolerance || d3 < tolerance)
+        {
+            rayData->radiance = Float3(0.0f, 0.0f, 0.0f);
+            return;
+        }
+
+        // if rayData->pos is near the line segment highlightPoint[0] to highlightPoint[1], 1 to 2, 2 to 3 and 3 to 0, then set rayData->radiance to 0 and return
+
         GeometryInstanceData *instanceData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
         const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex]; // Use a const reference, not all BSDFs need all values.
         int materialId = parameters.indexBSDF;
@@ -103,8 +128,6 @@ namespace jazzfusion
             {
                 rayData->flags |= FLAG_SHADOW_GLASS_HIT;
                 rayData->absorption_ior.xyz = parameters.absorption;
-                rayData->distance = optixGetRayTmax();
-                rayData->pos = rayData->pos + rayData->wi * rayData->distance;
             }
 
             return;
@@ -133,8 +156,6 @@ namespace jazzfusion
         // state.normal = normalize(transformNormal(worldToObject, ns));
         state.normal = normalize(transformNormal(worldToObject, ng));
 
-        rayData->distance = optixGetRayTmax();
-        rayData->pos = rayData->pos + rayData->wi * rayData->distance;
         // rayData->totalDistance += rayData->distance;
 
         if (abs(state.normal.x) > 0.9f)

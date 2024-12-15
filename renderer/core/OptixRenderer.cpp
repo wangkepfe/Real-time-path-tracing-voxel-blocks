@@ -150,7 +150,7 @@ namespace jazzfusion
         for (int sampleIndex = 0; sampleIndex < samplePerIteration; ++sampleIndex)
         {
             m_systemParameter.sampleIndex = sampleIndex;
-            CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
             OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
         }
 
@@ -282,6 +282,74 @@ namespace jazzfusion
     }
 #endif
 
+    void OptixRenderer::update()
+    {
+        if (Scene::Get().needSceneUpdate)
+        {
+            Scene::Get().needSceneUpdate = false;
+
+            for (auto objectId : Scene::Get().sceneUpdateObjectId)
+            {
+                Scene::Get().updateGeometry(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances, objectId);
+
+                // Shader binding table record hit group geometry
+                m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
+                m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+
+                m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
+
+                // Rebuild BVH
+                {
+                    CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
+                    CUDA_CHECK(cudaFree((void *)m_d_ias));
+
+                    CUdeviceptr d_instances;
+
+                    const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+
+                    CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+                    CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+
+                    OptixBuildInput instanceInput = {};
+
+                    instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+                    instanceInput.instanceArray.instances = d_instances;
+                    instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+
+                    OptixAccelBuildOptions accelBuildOptions = {};
+
+                    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+                    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+                    OptixAccelBufferSizes iasBufferSizes = {};
+
+                    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+
+                    CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+
+                    CUdeviceptr d_tmp;
+
+                    CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+
+                    auto &backend = jazzfusion::Backend::Get();
+                    OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
+                                                      &accelBuildOptions, &instanceInput, 1,
+                                                      d_tmp, iasBufferSizes.tempSizeInBytes,
+                                                      m_d_ias, iasBufferSizes.outputSizeInBytes,
+                                                      &m_systemParameter.topObject, nullptr, 0));
+
+                    CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+
+                    CUDA_CHECK(cudaFree((void *)d_tmp));
+                    CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
+                }
+            }
+
+            Scene::Get().sceneUpdateObjectId.clear();
+        }
+    }
+
     void OptixRenderer::init()
     {
         {
@@ -308,11 +376,12 @@ namespace jazzfusion
             m_systemParameter.skyRes = skyModel.getSkyRes();
             m_systemParameter.sunRes = skyModel.getSunRes();
 
+            m_systemParameter.edgeToHighlight = Scene::Get().edgeToHighlight;
+
             m_systemParameter.iterationIndex = 0;
             m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
             m_systemParameter.numLights = 0;
 
-            m_root = 0;
             m_d_ias = 0;
 
             m_pipeline = nullptr;
@@ -437,67 +506,6 @@ namespace jazzfusion
         assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
         Scene::Get().createGeometries(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances);
-        Scene::Get().m_updateCallback = [&](int objectId)
-        {
-            Scene::Get().updateGeometry(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances, objectId);
-
-            // Shader binding table record hit group geometry
-            m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice));
-
-            m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
-
-            // Rebuild BVH
-            {
-                CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
-                CUDA_CHECK(cudaFree((void *)m_d_ias));
-
-                CUdeviceptr d_instances;
-
-                const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-
-                CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-                CUDA_CHECK(cudaMemcpy((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice));
-
-                OptixBuildInput instanceInput = {};
-
-                instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-                instanceInput.instanceArray.instances = d_instances;
-                instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-                OptixAccelBuildOptions accelBuildOptions = {};
-
-                accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-                accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-                OptixAccelBufferSizes iasBufferSizes = {};
-
-                OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-                CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
-
-                CUdeviceptr d_tmp;
-
-                CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-                auto &backend = jazzfusion::Backend::Get();
-                OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
-                                                  &accelBuildOptions, &instanceInput, 1,
-                                                  d_tmp, iasBufferSizes.tempSizeInBytes,
-                                                  m_d_ias, iasBufferSizes.outputSizeInBytes,
-                                                  &m_root, nullptr, 0));
-
-                CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
-
-                CUDA_CHECK(cudaFree((void *)d_tmp));
-                CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
-            }
-
-            // Update system param
-            m_systemParameter.topObject = m_root;
-            CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
-        };
 
         // Build BVH
         {
@@ -506,7 +514,7 @@ namespace jazzfusion
             const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
 
             CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-            CUDA_CHECK(cudaMemcpy((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
             OptixBuildInput instanceInput = {};
 
@@ -534,7 +542,7 @@ namespace jazzfusion
                                               &accelBuildOptions, &instanceInput, 1,
                                               d_tmp, iasBufferSizes.tempSizeInBytes,
                                               m_d_ias, iasBufferSizes.outputSizeInBytes,
-                                              &m_root, nullptr, 0));
+                                              &m_systemParameter.topObject, nullptr, 0));
 
             CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
@@ -707,7 +715,7 @@ namespace jazzfusion
             SbtRecordHeader sbtRecordRaygeneration;
             OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[0], &sbtRecordRaygeneration));
             CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordRaygeneration, sizeof(SbtRecordHeader)));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
         }
 
         // Miss group
@@ -715,7 +723,7 @@ namespace jazzfusion
             SbtRecordHeader sbtRecordMiss;
             OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[1], &sbtRecordMiss));
             CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader)));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordMiss, &sbtRecordMiss, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, &sbtRecordMiss, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
         }
 
         // Hit group
@@ -736,7 +744,7 @@ namespace jazzfusion
             }
 
             CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
         }
 
         // Direct callables
@@ -748,7 +756,7 @@ namespace jazzfusion
             }
 
             CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
         }
 
         // Setup the OptixShaderBindingTable
@@ -773,21 +781,19 @@ namespace jazzfusion
 
         // Setup "sysParam" data.
         {
-            m_systemParameter.topObject = m_root;
-
             assert((sizeof(LightDefinition) & 15) == 0); // Check alignment to float4
             CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
-            CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
             CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
-            CUDA_CHECK(cudaMemcpy((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
             m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
             m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
             m_systemParameter.iterationIndex = 0;
 
             CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
-            CUDA_CHECK(cudaMemcpy((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
         }
 
         // Destroy modules
