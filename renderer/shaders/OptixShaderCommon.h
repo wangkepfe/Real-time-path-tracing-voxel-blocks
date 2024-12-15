@@ -31,6 +31,7 @@ namespace jazzfusion
         // Float3 normalGeo;
         Float3 normal;
         Float3 texcoord;
+        float roughness;
     };
 
     // Note that the fields are ordered by CUDA alignment restrictions.
@@ -62,6 +63,8 @@ namespace jazzfusion
 
         Float3 albedo;
         unsigned int sampleIdx;
+
+        float roughness;
 
         // float totalDistance;
         // Float3 lightEmission;

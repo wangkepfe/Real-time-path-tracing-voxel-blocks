@@ -71,25 +71,14 @@ namespace jazzfusion
 
         std::unordered_map<Buffer2DName, Buffer2DDesc> map =
             {
-                {RenderColorBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
-
-                {MaterialBuffer, {cudaCreateChannelDesc<ushort1>(), bufferSize, cudaArraySurfaceLoadStore}},
-                {MaterialHistoryBuffer, {cudaCreateChannelDesc<ushort1>(), bufferSize, cudaArraySurfaceLoadStore}},
-
-                {AccumulationColorBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
-                {HistoryColorBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
-
-                {NormalBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
+                {IlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
+                {IlluminationPingBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
+                {NormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
                 {DepthBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore}},
-                {HistoryDepthBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore}},
-
-                {MotionVectorBuffer, {cudaCreateChannelDesc<float2>(), bufferSize, cudaArraySurfaceLoadStore}},
-
+                {MaterialBuffer, {cudaCreateChannelDesc<ushort1>(), bufferSize, cudaArraySurfaceLoadStore}},
                 {AlbedoBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
-                {HistoryAlbedoBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore}},
-
+                {MotionVectorBuffer, {cudaCreateChannelDesc<float2>(), bufferSize, cudaArraySurfaceLoadStore}},
                 {OutputColorBuffer, {cudaCreateChannelDesc<float4>(), outputSize, cudaArraySurfaceLoadStore}},
-
                 {SkyBuffer, {cudaCreateChannelDesc<float4>(), skySize, cudaArraySurfaceLoadStore}},
                 {SunBuffer, {cudaCreateChannelDesc<float4>(), sunSize, cudaArraySurfaceLoadStore}},
             };

@@ -360,8 +360,8 @@ namespace jazzfusion
 
             const auto &bufferManager = BufferManager::Get();
             const auto &skyModel = SkyModel::Get();
-            m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(RenderColorBuffer);
-            m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalBuffer);
+            m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
+            m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalRoughnessBuffer);
             m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
             m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
             m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);

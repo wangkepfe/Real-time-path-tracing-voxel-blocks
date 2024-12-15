@@ -197,6 +197,7 @@ namespace jazzfusion
         rayData->flags = 0;
         rayData->albedo = Float3(1.0f);
         rayData->normal = Float3(0.0f, 1.0f, 0.0f);
+        rayData->roughness = 0.0f;
         rayData->rayConeWidth = 0.0f;
         rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
         rayData->material = 0u;
@@ -208,6 +209,7 @@ namespace jazzfusion
         Float2 outMotionVector = Float2(0.5f);
         Float3 outNormal = Float3(0.0f, 0.0f, 0.0f);
         Float3 outAlbedo = Float3(1.0f);
+        float outRoughness = 0.0f;
         float outDepth = RayMax;
         bool hitFirstDefuseSurface = false;
 
@@ -344,10 +346,14 @@ namespace jazzfusion
 
         if (sysParam.sampleIndex == 0)
         {
+            // if (OPTIX_CENTER_PIXEL())
+            // {
+            //     DEBUG_PRINT(outDepth);
+            // }
             Store2DUshort1((unsigned short)rayData->material, sysParam.outMaterial, idx);
-            Store2DHalf4(Float4(outNormal, 0.0f), sysParam.outNormal, idx);
-            Store2DHalf1(outDepth, sysParam.outDepth, idx);
-            Store2DHalf2(outMotionVector, sysParam.outMotionVector, idx);
+            Store2DFloat4(Float4(outNormal, 0.0f), sysParam.outNormal, idx);
+            Store2DFloat1(outDepth, sysParam.outDepth, idx);
+            Store2DFloat2(outMotionVector, sysParam.outMotionVector, idx);
         }
 
         if (sysParam.sampleIndex > 0)

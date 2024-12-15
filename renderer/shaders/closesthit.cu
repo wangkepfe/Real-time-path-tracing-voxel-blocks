@@ -207,6 +207,12 @@ namespace jazzfusion
             albedo *= texColor;
         }
 
+        state.roughness = 0.0f;
+        if (parameters.textureRoughness != 0)
+        {
+            state.roughness = tex2DLod<float1>(parameters.textureRoughness, state.texcoord.x, state.texcoord.y, lod).x;
+        }
+
         if (parameters.textureNormal != 0)
         {
             Float3 texNormal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
@@ -215,20 +221,8 @@ namespace jazzfusion
             state.normal = LocalizeAlignZUp(state.normal, texNormal);
         }
 
-        // if (parameters.textureRoughness != 0)
-        // {
-        //     float texRoughness = tex2DLod<float1>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod).x;
-        //     if (texRoughness < 0.1f)
-        //     {
-        //         materialId = INDEX_BSDF_SPECULAR_REFLECTION;
-        //     }
-        //     else
-        //     {
-        //         materialId = INDEX_BSDF_DIFFUSE_REFLECTION;
-        //     }
-        // }
-
         rayData->normal = state.normal;
+        rayData->roughness = state.roughness;
 
         rayData->flags = rayData->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
 

@@ -150,6 +150,38 @@ namespace jazzfusion
         return Float4(val.x, val.y, val.z, val.w);
     }
 
+    INL_DEVICE void Store2DFloat2(
+        Float2 fl2,
+        SurfObj tex,
+        Int2 idx)
+    {
+        surf2Dwrite(make_float2(fl2.x, fl2.y), tex, idx.x * sizeof(float2), idx.y, cudaBoundaryModeClamp);
+    }
+
+    INL_DEVICE Float2 Load2DFloat2(
+        SurfObj tex,
+        Int2 idx)
+    {
+        float2 val = surf2Dread<float2>(tex, idx.x * sizeof(float2), idx.y, cudaBoundaryModeClamp);
+        return Float2(val.x, val.y);
+    }
+
+    INL_DEVICE void Store2DFloat1(
+        float fl1,
+        SurfObj tex,
+        Int2 idx)
+    {
+        surf2Dwrite(fl1, tex, idx.x * sizeof(float), idx.y, cudaBoundaryModeClamp);
+    }
+
+    INL_DEVICE float Load2DFloat1(
+        SurfObj tex,
+        Int2 idx)
+    {
+        float val = surf2Dread<float>(tex, idx.x * sizeof(float), idx.y, cudaBoundaryModeClamp);
+        return val;
+    }
+
     //----------------------------------------------------------------------------------------------
     //
     //                                   Boundary Functors

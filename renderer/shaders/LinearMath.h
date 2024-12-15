@@ -966,6 +966,7 @@ namespace jazzfusion
     }
     INL_HOST_DEVICE int clampi(int a, int lo = 0, int hi = 1) { return a < lo ? lo : a > hi ? hi
                                                                                             : a; }
+    INL_HOST_DEVICE Int2 clamp2i(Int2 a, Int2 lo, Int2 hi) { return Int2(clampi(a.x, lo.x, hi.x), clampi(a.y, lo.y, hi.y)); }
     INL_HOST_DEVICE float clampf(float a, float lo = 0.0f, float hi = 1.0f) { return a < lo ? lo : a > hi ? hi
                                                                                                           : a; }
     INL_HOST_DEVICE Float3 clamp3f(Float3 a, Float3 lo = Float3(0.0f), Float3 hi = Float3(1.0f)) { return Float3(clampf(a.x, lo.x, hi.x), clampf(a.y, lo.y, hi.y), clampf(a.z, lo.z, hi.z)); }
@@ -977,6 +978,7 @@ namespace jazzfusion
     INL_HOST_DEVICE float distance(const Float3 &v1, const Float3 &v2) { return sqrtf((v1.x - v2.x) * (v1.x - v2.x) + (v1.y - v2.y) * (v1.y - v2.y) + (v1.z - v2.z) * (v1.z - v2.z)); }
     INL_HOST_DEVICE Float3 lerp3f(Float3 a, Float3 b, float w) { return a + w * (b - a); }
     INL_HOST_DEVICE float lerpf(float a, float b, float w) { return a + w * (b - a); }
+    INL_HOST_DEVICE float lerp(float a, float b, float w) { return a + w * (b - a); }
     INL_HOST_DEVICE Float3 reflect3f(Float3 i, Float3 n) { return i - 2.0f * n * dot(n, i); }
     INL_HOST_DEVICE float pow2(float a) { return a * a; }
     INL_HOST_DEVICE float pow3(float a) { return a * a * a; }

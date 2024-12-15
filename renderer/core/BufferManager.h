@@ -9,28 +9,16 @@ namespace jazzfusion
 
     enum Buffer2DName
     {
-        RenderColorBuffer,
-
-        MaterialBuffer,
-        MaterialHistoryBuffer,
-
-        AccumulationColorBuffer,
-        HistoryColorBuffer,
-
-        NormalBuffer,
+        IlluminationBuffer,
+        IlluminationPingBuffer,
+        NormalRoughnessBuffer,
         DepthBuffer,
-        HistoryDepthBuffer,
-
-        MotionVectorBuffer,
-
+        MaterialBuffer,
         AlbedoBuffer,
-        HistoryAlbedoBuffer,
-
+        MotionVectorBuffer,
         OutputColorBuffer,
-
         SkyBuffer,
         SunBuffer,
-
         Buffer2DCount,
     };
 

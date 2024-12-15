@@ -38,12 +38,6 @@ set( HEADERS
   postprocessing/PostProcessor.h
 
   denoising/Denoiser.h
-  denoising/DenoisingUtils.h
-  denoising/NoiseVisualization.h
-  denoising/SpatialFilter.h
-  denoising/SpatialWideFilter.h
-  denoising/TemporalFilter.h
-  denoising/BilateralFilter.h
 
   util/KernelHelper.h
   util/DebugUtils.h

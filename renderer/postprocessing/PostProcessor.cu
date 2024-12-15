@@ -25,13 +25,24 @@ namespace jazzfusion
         int linearId = idx.y * outSize.x + idx.x;
 
         Float3 color = Load2DFloat4(outColorBuffer, idx).xyz;
+        out[linearId] = Float4(color, 0);
+
+        // float debugVisualization = Load2DFloat4(outColorBuffer, idx).w;
 
         // if (CUDA_CENTER_PIXEL())
         // {
-        //     DEBUG_PRINT(color);
+        //     DEBUG_PRINT(debugVisualization);
         // }
+        // float depth = debugVisualization;
+        // float depthMin = 0.0f;
+        // float depthMax = 10.0f;
+        // // Apply a logarithmic curve to enhance visualization
+        // float normalizedDepth = (depth > depthMin) ? logf(depth - depthMin + 1.0f) / logf(depthMax - depthMin + 1.0f) : 0.0f;
 
-        out[linearId] = Float4(color, 0);
+        // // Clamp to [0.0, 1.0] to avoid artifacts
+        // normalizedDepth = fminf(fmaxf(normalizedDepth, 0.0f), 1.0f);
+
+        // out[linearId] = Float4(Float3(normalizedDepth), 0);
     }
 
     void PostProcessor::run(Float4 *interopBuffer, int inputWidthIn, int inputHeightIn, int outputWidthIn, int outputHeightIn)
@@ -45,7 +56,9 @@ namespace jazzfusion
         const auto &postProcessParams = GlobalSettings::GetPostProcessParams();
         const auto &renderPassSettings = GlobalSettings::GetRenderPassSettings();
 
-        ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(RenderColorBuffer), Int2(inputWidth, inputHeight), postProcessParams);
+        // ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+        //     bufferManager.GetBuffer2D(IlluminationPingBuffer),
+        //     Int2(inputWidth, inputHeight), postProcessParams);
 
         // if (renderPassSettings.enableSharpening)
         // {
@@ -59,10 +72,14 @@ namespace jazzfusion
         // }
         // else
         // {
-        BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(OutputColorBuffer), bufferManager.GetBuffer2D(RenderColorBuffer), Int2(inputWidth, inputHeight), Int2(outputWidth, outputHeight));
+        // BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+        //     bufferManager.GetBuffer2D(OutputColorBuffer),
+        //     bufferManager.GetBuffer2D(IlluminationPingBuffer),
+        //     Int2(inputWidth, inputHeight),
+        //     Int2(outputWidth, outputHeight));
         // }
 
-        CopyToInteropBuffer KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(interopBuffer, bufferManager.GetBuffer2D(OutputColorBuffer), Int2(outputWidth, outputHeight));
+        CopyToInteropBuffer KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(interopBuffer, bufferManager.GetBuffer2D(IlluminationPingBuffer), Int2(outputWidth, outputHeight));
 
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaPeekAtLastError());

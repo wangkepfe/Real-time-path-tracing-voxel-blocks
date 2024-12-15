@@ -31,8 +31,11 @@ namespace jazzfusion
         m_minRenderWidth = 480;
         m_minRenderHeight = 270;
 
-        m_maxRenderWidth = 1280;
-        m_maxRenderHeight = 720;
+        // m_maxRenderWidth = 1280;
+        // m_maxRenderHeight = 720;
+
+        m_maxRenderWidth = 2560;
+        m_maxRenderHeight = 1440;
 
         glfwSetErrorCallback(errorCallback);
         if (!glfwInit())
