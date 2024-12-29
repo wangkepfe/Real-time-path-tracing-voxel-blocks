@@ -94,26 +94,6 @@ namespace jazzfusion
         rayData->distance = optixGetRayTmax();
         rayData->pos = rayData->pos + rayData->wi * rayData->distance;
 
-        Float3 highlightPoint[4];
-        highlightPoint[0] = sysParam.edgeToHighlight[0];
-        highlightPoint[1] = sysParam.edgeToHighlight[1];
-        highlightPoint[2] = sysParam.edgeToHighlight[2];
-        highlightPoint[3] = sysParam.edgeToHighlight[3];
-
-        // Check each line segment: (0->1), (1->2), (2->3), (3->0)
-        const float tolerance = 0.01f;
-        Float3 dummy;
-        float d0 = PointToSegmentDistance(rayData->pos, highlightPoint[0], highlightPoint[1], dummy);
-        float d1 = PointToSegmentDistance(rayData->pos, highlightPoint[1], highlightPoint[2], dummy);
-        float d2 = PointToSegmentDistance(rayData->pos, highlightPoint[2], highlightPoint[3], dummy);
-        float d3 = PointToSegmentDistance(rayData->pos, highlightPoint[3], highlightPoint[0], dummy);
-
-        if (d0 < tolerance || d1 < tolerance || d2 < tolerance || d3 < tolerance)
-        {
-            rayData->radiance = Float3(0.0f, 0.0f, 0.0f);
-            return;
-        }
-
         // if rayData->pos is near the line segment highlightPoint[0] to highlightPoint[1], 1 to 2, 2 to 3 and 3 to 0, then set rayData->radiance to 0 and return
 
         GeometryInstanceData *instanceData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
@@ -131,6 +111,29 @@ namespace jazzfusion
             }
 
             return;
+        }
+
+        // UI Box
+        if (rayData->depth == 0)
+        {
+            Float3 highlightPoint[4];
+            highlightPoint[0] = sysParam.edgeToHighlight[0];
+            highlightPoint[1] = sysParam.edgeToHighlight[1];
+            highlightPoint[2] = sysParam.edgeToHighlight[2];
+            highlightPoint[3] = sysParam.edgeToHighlight[3];
+
+            // Check each line segment: (0->1), (1->2), (2->3), (3->0)
+            const float tolerance = 0.005f;
+            Float3 dummy;
+            float d0 = PointToSegmentDistance(rayData->pos, highlightPoint[0], highlightPoint[1], dummy);
+            float d1 = PointToSegmentDistance(rayData->pos, highlightPoint[1], highlightPoint[2], dummy);
+            float d2 = PointToSegmentDistance(rayData->pos, highlightPoint[2], highlightPoint[3], dummy);
+            float d3 = PointToSegmentDistance(rayData->pos, highlightPoint[3], highlightPoint[0], dummy);
+
+            if (d0 < tolerance || d1 < tolerance || d2 < tolerance || d3 < tolerance)
+            {
+                Store2DFloat4(Float4(1.0f), sysParam.outUiBuffer, Int2(optixGetLaunchIndex().x, optixGetLaunchIndex().y));
+            }
         }
 
         const unsigned int thePrimtiveIndex = optixGetPrimitiveIndex();
@@ -199,7 +202,7 @@ namespace jazzfusion
         float lod = log2f(rayData->rayConeWidth / max(dot(state.normal, rayData->wo), 0.01f) * parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
         // lod = 0.0f;
 
-        state.texcoord *= 2.0f;
+        // state.texcoord *= 2.0f;
 
         if (parameters.textureAlbedo != 0)
         {
@@ -228,8 +231,6 @@ namespace jazzfusion
 
         const bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
 
-        rayData->albedo *= albedo;
-
         const int indexBsdfSample = NUM_LIGHT_TYPES + materialId;
 
         Float3 surfWi;
@@ -238,9 +239,18 @@ namespace jazzfusion
 
         optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
 
+        if (rayData->depth == 0)
+        {
+            rayData->albedo = albedo;
+            albedo = Float3(1.0f);
+        }
+        else
+        {
+            surfBsdfOverPdf *= albedo;
+        }
+
         if (isDiffuse)
         {
-            // rayData->albedo *= (1.0f + abs(dot(state.normal, rayData->centerRayDir)));
             bool shadowRayOnly = false;
             if (rayData->flags & FLAG_DIFFUSED)
             {
@@ -423,7 +433,7 @@ namespace jazzfusion
                             float misWeightLightSample = powerHeuristic(lightSampleLightDistPdf, lightSampleSurfDistPdf);
                             const float cosTheta = fmaxf(0.0f, dot(lightSample.direction, state.normal));
                             Float3 shadowRayBsdfOverPdf = lightSampleSurfDistBsdf * cosTheta / lightSampleLightDistPdf;
-                            Float3 shadowRayRadiance = lightSample.emission * misWeightLightSample * shadowRayBsdfOverPdf * glassThroughput;
+                            Float3 shadowRayRadiance = lightSample.emission * misWeightLightSample * shadowRayBsdfOverPdf * glassThroughput * albedo;
                             rayData->radiance += shadowRayRadiance;
 
                             // if (OPTIX_CENTER_PIXEL() && shadowRayIter == 2)

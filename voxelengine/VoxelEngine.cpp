@@ -44,7 +44,6 @@ namespace vox
         sceneGeometryAttributeSize[0] = 0;
         sceneGeometryIndicesSize[0] = 0;
 
-        initVoxelChunk(voxelChunk);
         generateMesh(
             &(sceneGeometryAttributes[0]),
             &(sceneGeometryIndices[0]),
@@ -58,6 +57,7 @@ namespace vox
 
     void VoxelEngine::update()
     {
+
         using namespace jazzfusion;
 
         auto &camera = RenderCamera::Get().camera;
@@ -66,6 +66,8 @@ namespace vox
         bool hasSpaceToCreate = false;
         bool hitSurface = false;
         Int3 createPos(-1, -1, -1);
+
+        cudaDeviceSynchronize();
 
         // Normalize the ray direction
         {
@@ -111,9 +113,6 @@ namespace vox
 
         int hitAxis = -1; // 0=x,1=y,2=z
         int hitX = -1, hitY = -1, hitZ = -1;
-
-        auto &voxelEngine = VoxelEngine::Get();
-        VoxelChunk &voxelChunk = voxelEngine.voxelChunk;
 
         // Traverse the voxel grid
         while (iterationCount++ < maxIteration)

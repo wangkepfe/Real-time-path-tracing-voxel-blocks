@@ -249,16 +249,6 @@ namespace
 
 namespace vox
 {
-    void initVoxelChunk(VoxelChunk &voxelChunk)
-    {
-        dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
-        dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
-
-        // 1. Generate voxel data
-        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(voxelChunk.data, voxelChunk.width);
-        cudaDeviceSynchronize();
-    }
-
     void generateMesh(jazzfusion::VertexAttributes **attr,
                       unsigned int **indices,
                       std::vector<unsigned int> &faceLocation,
@@ -271,7 +261,6 @@ namespace vox
         dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
         dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
 
-        // 2. Mark valid faces
         unsigned int *d_faceValid;
         unsigned int *d_faceLocation;
         size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
@@ -279,8 +268,20 @@ namespace vox
         cudaMalloc(&d_faceValid, totalFaces * sizeof(unsigned int));
         cudaMalloc(&d_faceLocation, totalFaces * sizeof(unsigned int));
 
-        MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(voxelChunk.data, d_faceValid, voxelChunk.width);
-        cudaDeviceSynchronize();
+        Voxel *d_data;
+        cudaMalloc(&d_data, totalVoxels * sizeof(Voxel));
+
+        // 1. generate
+        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(d_data, voxelChunk.width);
+
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaPeekAtLastError());
+
+        // 2. Mark valid faces
+        MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(d_data, d_faceValid, voxelChunk.width);
+
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaPeekAtLastError());
 
         // 3. Prefix sum on face validity
         unsigned int *d_faceValidPrefixSum;
@@ -294,7 +295,8 @@ namespace vox
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
         cudaFree(d_temp_storage);
 
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaPeekAtLastError());
 
         // 4. Find how many faces are valid total
         cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
@@ -316,9 +318,10 @@ namespace vox
         cudaMallocManaged(indices, maxFaceCount * 6 * sizeof(unsigned int));
 
         // 5. Compact the mesh
-        CompactMesh KERNEL_ARGS2(gridDim, blockDim)(*attr, *indices, d_faceLocation, voxelChunk.data, d_faceValidPrefixSum, voxelChunk.width);
+        CompactMesh KERNEL_ARGS2(gridDim, blockDim)(*attr, *indices, d_faceLocation, d_data, d_faceValidPrefixSum, voxelChunk.width);
+
+        CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaPeekAtLastError());
-        cudaDeviceSynchronize();
 
         faceLocation.resize(totalFaces);
         cudaMemcpy(faceLocation.data(), d_faceLocation, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
@@ -328,10 +331,14 @@ namespace vox
             dumpMeshToOBJ(*attr, *indices, attrSize, indicesSize, "debug0.obj");
         }
 
+        cudaMemcpy(voxelChunk.data, d_data, totalVoxels * sizeof(Voxel), cudaMemcpyDeviceToHost);
+
         // Cleanup
         cudaFree(d_faceValid);
         cudaFree(d_faceLocation);
         cudaFree(d_faceValidPrefixSum);
+
+        cudaFree(d_data);
     }
 
     // CPU function to update the mesh for a single changed voxel (add or remove).

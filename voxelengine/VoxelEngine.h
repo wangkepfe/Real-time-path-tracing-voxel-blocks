@@ -35,17 +35,10 @@ namespace vox
         std::vector<unsigned int> freeFaces;
         std::vector<unsigned int> faceLocation;
 
-        // static std::function<void()> UpdateFunc;
-
     private:
         VoxelEngine()
         {
         }
     };
-
-    static inline void UpdateFunc()
-    {
-        VoxelEngine::Get().update();
-    }
 
 }

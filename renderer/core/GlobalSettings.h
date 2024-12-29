@@ -180,6 +180,7 @@ namespace jazzfusion
         SkyParams skyParams{};
 
         std::string cameraSaveFileName = "mycamera.bin";
+        int iterationIndex = 0;
 
     private:
         GlobalSettings() {}

@@ -8,8 +8,6 @@
 
 namespace vox
 {
-    void initVoxelChunk(VoxelChunk &voxelChunk);
-
     void generateMesh(jazzfusion::VertexAttributes **attr,
                       unsigned int **indices,
                       std::vector<unsigned int> &faceLocation,

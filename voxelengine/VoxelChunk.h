@@ -11,21 +11,24 @@ namespace vox
 {
     struct VoxelChunk
     {
-        static const unsigned int width = 128;
+        static const unsigned int width = 32;
 
         VoxelChunk()
         {
-            cudaMallocManaged(&data, width * width * width * sizeof(Voxel));
+            // cudaMallocManaged(&data, width * width * width * sizeof(Voxel));
+            data = new Voxel[width * width * width];
         }
 
         ~VoxelChunk()
         {
-            cudaFree(data);
+            // cudaFree(data);
+            delete[] data;
         }
 
         void clear()
         {
-            cudaMemset(data, 0, width * width * width * sizeof(Voxel));
+            // cudaMemset(data, 0, width * width * width * sizeof(Voxel));
+            memset(data, 0, width * width * width * sizeof(Voxel));
         }
 
         Voxel get(unsigned int x, unsigned int y, unsigned int z)

@@ -13,64 +13,6 @@ namespace jazzfusion
     __device__ static constexpr int MaterialStackLast = 0;
     __device__ static constexpr int MaterialStackSize = 1;
 
-    __device__ void inline GenerateRay(
-        Float3 &orig,
-        Float3 &dir,
-        Float3 &centerDir,
-        Float2 &sampleUv,
-        Float2 &centerUv,
-        Camera camera,
-        Int2 idx,
-        Int2 imgSize,
-        Float2 randPixelOffset,
-        Float2 randAperture)
-    {
-        // [0, 1] coordinates
-        Float2 uv = (Float2(idx.x, idx.y) + randPixelOffset) * camera.inversedResolution;
-        Float2 uvCenter = (Float2(idx.x, idx.y) + 0.5f) * camera.inversedResolution;
-        sampleUv = uv;
-        centerUv = uvCenter;
-
-        // [0, 1] -> [1, -1], since left/up vector should be 1 when uv is 0
-        uv = uv * Float2(-2.0f, 2.0f) + Float2(1.0f, -1.0f);
-
-        // Point on the image plane
-        Float3 pointOnImagePlane = camera.adjustedFront + camera.adjustedLeft * uv.x + camera.adjustedUp * uv.y;
-
-        // Point on the aperture
-        Float2 diskSample = ConcentricSampleDisk(randAperture);
-        Float3 pointOnAperture = diskSample.x * camera.apertureLeft + diskSample.y * camera.apertureUp;
-
-        // ray
-        orig = camera.pos + pointOnAperture;
-        dir = normalize(pointOnImagePlane - pointOnAperture);
-
-        // center
-        uvCenter = uvCenter * Float2(-2.0f, 2.0f) + Float2(1.0f, -1.0f);
-        Float3 pointOnImagePlaneCenter = camera.adjustedFront + camera.adjustedLeft * uvCenter.x + camera.adjustedUp * uvCenter.y;
-        centerDir = normalize(pointOnImagePlaneCenter);
-    }
-
-    __device__ float inline GetRayConeWidth(Camera camera, Int2 idx)
-    {
-        Float2 pixelCenter = (Float2(idx.x, idx.y) + 0.5f) - Float2(camera.resolution.x, camera.resolution.y) / 2;
-        Float2 pixelOffset = copysignf2(Float2(0.5f), pixelCenter);
-
-        Float2 uvNear = (pixelCenter - pixelOffset) * camera.inversedResolution * 2; // [-1, 1]
-        Float2 uvFar = (pixelCenter + pixelOffset) * camera.inversedResolution * 2;
-
-        Float2 halfFovLength = Float2(tanf(camera.fov.x / 2), tanf(camera.fov.y / 2));
-
-        Float2 pointOnPlaneNear = uvNear * halfFovLength;
-        Float2 pointOnPlaneFar = uvFar * halfFovLength;
-
-        float angleNear = atanf(pointOnPlaneNear.length());
-        float angleFar = atanf(pointOnPlaneFar.length());
-        float pixelAngleWidth = angleFar - angleNear;
-
-        return pixelAngleWidth;
-    }
-
     __device__ __inline__ bool TraceNextPath(
         PerRayData *rayData,
         Float4 *absorptionStack,
@@ -169,20 +111,22 @@ namespace jazzfusion
         PerRayData *rayData = &perRayData;
 
         const Int2 imgSize = Int2(optixGetLaunchDimensions());
-        Int2 idx = Int2(optixGetLaunchIndex());
+        const Int2 idx = Int2(optixGetLaunchIndex());
+        const Float2 pixelIdx = Float2(idx.x, idx.y);
 
         rayData->randIdx = 0;
 
-        const Float2 screen = Float2(imgSize.x, imgSize.y);
-        const Float2 pixel = Float2(idx.x, idx.y);
+        Float2 samplePixelJitterOffset = rayData->rand2(sysParam);
+        samplePixelJitterOffset = Float2(0.5f);
 
-        Float2 samplePixelJitterOffset = rayData->rand2(sysParam); // Float2(sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, rayData->randIdx++), sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, rayData->randIdx++));
-        Float2 sampleApertureJitterOffset = rayData->rand2(sysParam);
+        Float2 sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
+        Float2 centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
 
-        Float2 sampleUv;
-        Float3 centerRayDir;
-        Float2 centerUv;
-        GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, centerUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+        Float3 rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
+        Float3 centerRayDir = sysParam.camera.uvToWorldDirection(centerUv);
+
+        rayData->pos = sysParam.camera.pos;
+        rayData->wi = rayDir;
 
         // This renderer supports nested volumes. The absorption coefficient and IOR of the volume the ray is currently inside.
         Float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
@@ -199,7 +143,7 @@ namespace jazzfusion
         rayData->normal = Float3(0.0f, 1.0f, 0.0f);
         rayData->roughness = 0.0f;
         rayData->rayConeWidth = 0.0f;
-        rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
+        rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
         rayData->material = 0u;
         rayData->sampleIdx = 0;
         rayData->depth = 0;
@@ -230,17 +174,18 @@ namespace jazzfusion
                 {
                     outNormal = rayData->normal;
                     outDepth = rayData->distance;
+                    outAlbedo = rayData->albedo;
 
-                    Float2 lastFrameSampleUv;
-                    if (rayData->material == 0)
-                    {
-                        lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->wi, sysParam.camera.tanHalfFov);
-                    }
-                    else
-                    {
-                        lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos - sysParam.historyCamera.pos, sysParam.camera.tanHalfFov);
-                    }
-                    outMotionVector += lastFrameSampleUv - sampleUv;
+                    // Float2 lastFrameSampleUv;
+                    // if (rayData->material == RAY_MAT_FLAG_SKY)
+                    // {
+                    //     lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->wi, sysParam.camera.tanHalfFov);
+                    // }
+                    // else
+                    // {
+                    //     lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos - sysParam.historyCamera.pos, sysParam.camera.tanHalfFov);
+                    // }
+                    // outMotionVector += lastFrameSampleUv - sampleUv;
                 }
             }
 
@@ -253,8 +198,9 @@ namespace jazzfusion
             if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
             {
                 hitFirstDefuseSurface = true;
-                outAlbedo = rayData->albedo;
-                rayData->albedo = Float3(1.0f);
+
+                // outAlbedo = rayData->albedo;
+                // rayData->albedo = Float3(1.0f);
             }
 
             ++depth; // Next path segment.
@@ -291,8 +237,16 @@ namespace jazzfusion
         if (hasGlass)
         {
             samplePixelJitterOffset = rayData->rand2(sysParam);
-            sampleApertureJitterOffset = rayData->rand2(sysParam);
-            GenerateRay(rayData->pos, rayData->wi, centerRayDir, sampleUv, centerUv, sysParam.camera, idx, imgSize, samplePixelJitterOffset, sampleApertureJitterOffset);
+
+            sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
+            centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
+
+            rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
+            centerRayDir = sysParam.camera.uvToWorldDirection(centerUv);
+
+            rayData->pos = sysParam.camera.pos;
+            rayData->wi = rayDir;
+
             throughput = Float3(1.0f);
             stackIdx = MaterialStackEmpty;
             depth = 0;
@@ -301,7 +255,7 @@ namespace jazzfusion
             rayData->albedo = Float3(1.0f);
             rayData->normal = Float3(0.0f, -1.0f, 0.0f);
             rayData->rayConeWidth = 0.0f;
-            rayData->rayConeSpread = GetRayConeWidth(sysParam.camera, idx);
+            rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
             rayData->sampleIdx = 1;
             hitFirstDefuseSurface = false;
             pathTerminated = false;
@@ -350,7 +304,7 @@ namespace jazzfusion
             // {
             //     DEBUG_PRINT(outDepth);
             // }
-            Store2DUshort1((unsigned short)rayData->material, sysParam.outMaterial, idx);
+            Store2DFloat1(rayData->material, sysParam.outMaterial, idx);
             Store2DFloat4(Float4(outNormal, 0.0f), sysParam.outNormal, idx);
             Store2DFloat1(outDepth, sysParam.outDepth, idx);
             Store2DFloat2(outMotionVector, sysParam.outMotionVector, idx);
@@ -371,7 +325,7 @@ namespace jazzfusion
         // }
 
         Store2DFloat4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
-        Store2DFloat4(Float4(radiance, 1.0f), sysParam.outputBuffer, idx);
+        Store2DFloat4(Float4(radiance, outDepth), sysParam.outputBuffer, idx);
     }
 
 }

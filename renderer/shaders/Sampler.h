@@ -150,6 +150,14 @@ namespace jazzfusion
         return Float4(val.x, val.y, val.z, val.w);
     }
 
+    INL_DEVICE Float4 Sample2DFloat4(
+        TexObj tex,
+        Float2 idx)
+    {
+        float4 val = tex2D<float4>(tex, idx.x, idx.y);
+        return Float4(val.x, val.y, val.z, val.w);
+    }
+
     INL_DEVICE void Store2DFloat2(
         Float2 fl2,
         SurfObj tex,
@@ -292,6 +300,18 @@ namespace jazzfusion
         INL_DEVICE VectorType operator()(SurfObj tex, Int2 uv) { return Load2DFloat4(tex, uv).xyz; }
     };
 
+    template <>
+    struct Load2DFuncFloat4<Float4>
+    {
+        INL_DEVICE Float4 operator()(SurfObj tex, Int2 uv) { return Load2DFloat4(tex, uv); }
+    };
+
+    template <typename VectorType = float>
+    struct Load2DFuncFloat1
+    {
+        INL_DEVICE VectorType operator()(SurfObj tex, Int2 uv) { return Load2DFloat1(tex, uv); }
+    };
+
     //----------------------------------------------------------------------------------------------
     //
     //                                   Sample Functions
@@ -306,6 +326,28 @@ namespace jazzfusion
     {
         Int2 tc = floori(UV - 0.5f);
         return LoadFunc()(tex, BoundaryFunc()(tc, texSize));
+    }
+
+    INL_DEVICE Float4 GetBilinearWeight(
+        const Float2 &uv,
+        const Int2 &texSize)
+    {
+        Float2 UV = uv * texSize;
+        Float2 invTexSize = 1.0f / texSize;
+        Float2 tc = floor(UV - 0.5f) + 0.5f;
+        Float2 f = UV - tc;
+
+        Float2 w1 = f;
+        Float2 w0 = 1.0f - f;
+
+        float weights[4] = {
+            w0.x * w0.y,
+            w1.x * w0.y,
+            w0.x * w1.y,
+            w1.x * w1.y,
+        };
+
+        return Float4(weights[0], weights[1], weights[2], weights[3]);
     }
 
     template <typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
@@ -354,12 +396,117 @@ namespace jazzfusion
         return OutColor;
     }
 
+    INL_DEVICE float SampleBilinearCustomFloat1(
+        SurfObj tex,
+        const Float2 &uv,
+        const Int2 &texSize,
+        const Float4 &customWeight)
+    {
+        Float2 UV = uv * texSize;
+        Float2 invTexSize = 1.0f / texSize;
+        Float2 tc = floor(UV - 0.5f) + 0.5f;
+        Float2 f = UV - tc;
+
+        Float2 w1 = f;
+        Float2 w0 = 1.0f - f;
+
+        Int2 tc0 = floori(UV - 0.5f);
+        Int2 tc1 = tc0 + 1;
+
+        Int2 sampleUV[4] = {
+            {tc0.x, tc0.y},
+            {tc1.x, tc0.y},
+            {tc0.x, tc1.y},
+            {tc1.x, tc1.y},
+        };
+
+        float weights[4] = {
+            w0.x * w0.y * customWeight.x,
+            w1.x * w0.y * customWeight.y,
+            w0.x * w1.y * customWeight.z,
+            w1.x * w1.y * customWeight.w,
+        };
+
+        float OutColor = 0.0f;
+        float sumWeight = 0.0f;
+
+        for (int i = 0; i < 4; i++)
+        {
+            float val = Load2DFloat1(tex, sampleUV[i]);
+            float weight = max1f(weights[i], 1e-6f);
+
+            sumWeight += weight;
+            OutColor += val * weight;
+
+            // if (CUDA_PIXEL(0.5f, 0.5f))
+            // {
+            //     DEBUG_PRINT(val);
+            //     DEBUG_PRINT(sampleUV[i]);
+            //     DEBUG_PRINT(weight);
+            //     DEBUG_PRINT(OutColor);
+            // }
+        }
+
+        OutColor /= sumWeight;
+
+        return OutColor;
+    }
+
+    INL_DEVICE Float4 SampleBilinearCustomFloat4(
+        SurfObj tex,
+        const Float2 &uv,
+        const Int2 &texSize,
+        const Float4 &customWeight)
+    {
+        Float2 UV = uv * texSize;
+        Float2 invTexSize = 1.0f / texSize;
+        Float2 tc = floor(UV - 0.5f) + 0.5f;
+        Float2 f = UV - tc;
+
+        Float2 w1 = f;
+        Float2 w0 = 1.0f - f;
+
+        Int2 tc0 = floori(UV - 0.5f);
+        Int2 tc1 = tc0 + 1;
+
+        Int2 sampleUV[4] = {
+            {tc0.x, tc0.y},
+            {tc1.x, tc0.y},
+            {tc0.x, tc1.y},
+            {tc1.x, tc1.y},
+        };
+
+        float weights[4] = {
+            w0.x * w0.y * customWeight.x,
+            w1.x * w0.y * customWeight.y,
+            w0.x * w1.y * customWeight.z,
+            w1.x * w1.y * customWeight.w,
+        };
+
+        Float4 OutColor = Float4(0.0f);
+        float sumWeight = 0.0f;
+
+        for (int i = 0; i < 4; i++)
+        {
+            Float4 val = Load2DFloat4(tex, sampleUV[i]);
+            float weight = max1f(weights[i], 1e-6f);
+
+            sumWeight += weight;
+            OutColor += val * weight;
+        }
+
+        OutColor /= sumWeight;
+
+        return OutColor;
+    }
+
     template <typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
     INL_DEVICE VectorType SampleBicubicCatmullRom(
         SurfObj tex,
-        const Float2 &UV,
+        const Float2 &uv,
         const Int2 &texSize)
     {
+        Float2 UV = uv * texSize;
         Float2 tc = floor(UV - 0.5f) + 0.5f;
         Float2 f = UV - tc;
 
@@ -430,11 +577,88 @@ namespace jazzfusion
     }
 
     template <typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
-    INL_DEVICE VectorType SampleBicubicSmoothStep(
+    INL_DEVICE VectorType SampleBicubic12Taps(
         SurfObj tex,
-        const Float2 &UV,
+        const Float2 &uv,
         const Int2 &texSize)
     {
+        Float2 UV = uv * texSize;
+        Float2 tc = floor(UV - 0.5f) + 0.5f;
+        Float2 f = UV - tc;
+
+        Float2 f2 = f * f;
+        Float2 f3 = f2 * f;
+
+        Float2 w0 = f2 - 0.5f * (f3 + f);
+        Float2 w1 = 1.5f * f3 - 2.5f * f2 + 1.0f;
+        Float2 w3 = 0.5f * (f3 - f2);
+        Float2 w2 = 1.0f - w0 - w1 - w3;
+
+        Int2 tc1 = floori(UV - 0.5f);
+        Int2 tc0 = tc1 - 1;
+        Int2 tc2 = tc1 + 1;
+        Int2 tc3 = tc1 + 2;
+
+        Int2 sampleUV[12] = {
+
+            {tc1.x, tc0.y},
+            {tc2.x, tc0.y},
+
+            {tc0.x, tc1.y},
+            {tc1.x, tc1.y},
+            {tc2.x, tc1.y},
+            {tc3.x, tc1.y},
+            {tc0.x, tc2.y},
+            {tc1.x, tc2.y},
+            {tc2.x, tc2.y},
+            {tc3.x, tc2.y},
+
+            {tc1.x, tc3.y},
+            {tc2.x, tc3.y},
+
+        };
+
+        float weights[12] = {
+
+            w1.x * w0.y,
+            w2.x * w0.y,
+
+            w0.x * w1.y,
+            w1.x * w1.y,
+            w2.x * w1.y,
+            w3.x * w1.y,
+            w0.x * w2.y,
+            w1.x * w2.y,
+            w2.x * w2.y,
+            w3.x * w2.y,
+
+            w1.x * w3.y,
+            w2.x * w3.y,
+
+        };
+
+        VectorType OutColor;
+        float sumWeight = 0;
+
+#pragma unroll
+        for (int i = 0; i < 12; i++)
+        {
+            sumWeight += weights[i];
+            OutColor += LoadFunc()(tex, BoundaryFunc()(sampleUV[i], texSize)) * weights[i];
+        }
+
+        OutColor /= sumWeight;
+
+        return OutColor;
+    }
+
+    template <typename LoadFunc, typename VectorType = Float3, typename BoundaryFunc = BoundaryFuncDefault>
+    INL_DEVICE VectorType SampleBicubicSmoothStep(
+        SurfObj tex,
+        const Float2 &uv,
+        const Int2 &texSize)
+    {
+        Float2 UV = uv * texSize;
         Float2 tc = floor(UV - 0.5f) + 0.5f;
         Float2 f = UV - tc;
 
@@ -475,5 +699,4 @@ namespace jazzfusion
 
         return OutColor;
     }
-
 }

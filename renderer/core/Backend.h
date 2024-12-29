@@ -46,7 +46,7 @@ namespace jazzfusion
         void operator=(Backend const &) = delete;
 
         void init();
-        void mainloop(std::function<void()> voxelEngineUpdateFunc);
+        void mainloop();
         void clear();
         CUstream getCudaStream() const { return m_cudaStream; }
         GLFWwindow *getWindow() { return m_window; }

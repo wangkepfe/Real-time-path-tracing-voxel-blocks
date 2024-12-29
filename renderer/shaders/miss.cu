@@ -41,8 +41,6 @@ namespace jazzfusion
             // Map the ray diretcion to uv
             uv = EqualAreaMap(rayDir);
             // Int2 skyIdx((int)(uv.x * skyRes.x), (int)(uv.y * skyRes.y));
-            Float2 skyUv = uv * skyRes;
-
             // Wrapping around on X dimension
             // if (skyIdx.x >= skyRes.x) { skyIdx.x %= skyRes.x; }
             // if (skyIdx.x < 0) { skyIdx.x = skyRes.x - (-skyIdx.x) % skyRes.x; }
@@ -50,7 +48,7 @@ namespace jazzfusion
             // Load buffer
             // Float3 skyEmission = Load2DHalf4(sysParam.skyBuffer, skyIdx).xyz;
 
-            Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, skyUv, skyRes);
+            Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, skyRes);
 
             // Blend the sky color with mist
             Float3 mistColor = Float3(0.2f);

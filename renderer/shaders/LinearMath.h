@@ -257,6 +257,8 @@ namespace jazzfusion
 
         INL_HOST_DEVICE Int2 operator+(int a) const { return Int2(x + a, y + a); }
         INL_HOST_DEVICE Int2 operator-(int a) const { return Int2(x - a, y - a); }
+        INL_HOST_DEVICE Int2 operator*(int a) const { return Int2(x * a, y * a); }
+        INL_HOST_DEVICE Int2 operator/(int a) const { return Int2(x / a, y / a); }
 
         INL_HOST_DEVICE Int2 operator+=(int a)
         {
@@ -268,6 +270,18 @@ namespace jazzfusion
         {
             x -= a;
             y -= a;
+            return *this;
+        }
+        INL_HOST_DEVICE Int2 operator*=(int a)
+        {
+            x *= a;
+            y *= a;
+            return *this;
+        }
+        INL_HOST_DEVICE Int2 operator/=(int a)
+        {
+            x /= a;
+            y /= a;
             return *this;
         }
 
@@ -751,6 +765,7 @@ namespace jazzfusion
         INL_HOST_DEVICE explicit UInt4(unsigned int a) : x{a}, y{a}, z{a}, w{a} {}
         INL_HOST_DEVICE UInt4(unsigned int x, unsigned int y, unsigned int z, unsigned int w) : x{x}, y{y}, z{z}, w{w} {}
         INL_HOST_DEVICE UInt4(const uint4 &v) : x{v.x}, y{v.y}, z{v.z}, w{v.w} {}
+        INL_HOST_DEVICE UInt4(const UInt2 &v1, const UInt2 &v2) : x{v1.x}, y{v1.y}, z{v2.x}, w{v2.y} {}
 
         INL_HOST_DEVICE UInt4 operator+(unsigned int a) const { return UInt4(x + a, y + a, z + a, w + a); }
         INL_HOST_DEVICE UInt4 operator-(unsigned int a) const { return UInt4(x - a, y - a, z - a, w - a); }
@@ -827,6 +842,9 @@ namespace jazzfusion
         INL_HOST_DEVICE explicit Float4(const Float3 &v) : x(v.x), y(v.y), z(v.z), w(0) {}
         INL_HOST_DEVICE explicit Float4(const Float3 &v, float a) : x(v.x), y(v.y), z(v.z), w(a) {}
         INL_HOST_DEVICE explicit Float4(const float4 &v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
+
+        INL_HOST_DEVICE Float2 xz() { return Float2(x, z); }
+        INL_HOST_DEVICE Float2 yw() { return Float2(y, w); }
 
         INL_HOST_DEVICE Float4 operator+(const Float4 &v) const { return Float4(x + v.x, y + v.y, z + v.z, z + v.z); }
         INL_HOST_DEVICE Float4 operator-(const Float4 &v) const { return Float4(x - v.x, y - v.y, z - v.z, z - v.z); }
@@ -919,6 +937,7 @@ namespace jazzfusion
     INL_HOST_DEVICE Float4 operator/(float a, const Float4 &v) { return Float4(a / v.x, a / v.y, a / v.z, a / v.w); }
 
     INL_HOST_DEVICE float abs(float v) { return fabsf(v); }
+    INL_HOST_DEVICE int abs(int v) { return abs(v); }
     INL_HOST_DEVICE Float3 abs(const Float3 &v) { return Float3(fabsf(v.x), fabsf(v.y), fabsf(v.z)); }
     INL_HOST_DEVICE Float2 normalize(const Float2 &v)
     {
@@ -969,6 +988,7 @@ namespace jazzfusion
     INL_HOST_DEVICE Int2 clamp2i(Int2 a, Int2 lo, Int2 hi) { return Int2(clampi(a.x, lo.x, hi.x), clampi(a.y, lo.y, hi.y)); }
     INL_HOST_DEVICE float clampf(float a, float lo = 0.0f, float hi = 1.0f) { return a < lo ? lo : a > hi ? hi
                                                                                                           : a; }
+    INL_HOST_DEVICE Float2 clamp2f(Float2 a, Float2 lo = Float2(0.0f), Float2 hi = Float2(1.0f)) { return Float2(clampf(a.x, lo.x, hi.x), clampf(a.y, lo.y, hi.y)); }
     INL_HOST_DEVICE Float3 clamp3f(Float3 a, Float3 lo = Float3(0.0f), Float3 hi = Float3(1.0f)) { return Float3(clampf(a.x, lo.x, hi.x), clampf(a.y, lo.y, hi.y), clampf(a.z, lo.z, hi.z)); }
     INL_HOST_DEVICE Float4 clamp4f(Float4 a, Float4 lo = Float4(0.0f), Float4 hi = Float4(1.0f)) { return Float4(clampf(a.x, lo.x, hi.x), clampf(a.y, lo.y, hi.y), clampf(a.z, lo.z, hi.z), clampf(a.w, lo.w, hi.w)); }
     INL_HOST_DEVICE float dot(const Float2 &v1, const Float2 &v2) { return v1.x * v2.x + v1.y * v2.y; }
@@ -977,8 +997,11 @@ namespace jazzfusion
     INL_HOST_DEVICE float distancesq(const Float3 &v1, const Float3 &v2) { return (v1.x - v2.x) * (v1.x - v2.x) + (v1.y - v2.y) * (v1.y - v2.y) + (v1.z - v2.z) * (v1.z - v2.z); }
     INL_HOST_DEVICE float distance(const Float3 &v1, const Float3 &v2) { return sqrtf((v1.x - v2.x) * (v1.x - v2.x) + (v1.y - v2.y) * (v1.y - v2.y) + (v1.z - v2.z) * (v1.z - v2.z)); }
     INL_HOST_DEVICE Float3 lerp3f(Float3 a, Float3 b, float w) { return a + w * (b - a); }
+    INL_HOST_DEVICE Float4 lerp4f(Float4 a, Float4 b, float w) { return a + w * (b - a); }
     INL_HOST_DEVICE float lerpf(float a, float b, float w) { return a + w * (b - a); }
     INL_HOST_DEVICE float lerp(float a, float b, float w) { return a + w * (b - a); }
+    INL_HOST_DEVICE Float3 lerp(Float3 a, Float3 b, float w) { return a + w * (b - a); }
+    INL_HOST_DEVICE Float4 lerp(Float4 a, Float4 b, float w) { return a + w * (b - a); }
     INL_HOST_DEVICE Float3 reflect3f(Float3 i, Float3 n) { return i - 2.0f * n * dot(n, i); }
     INL_HOST_DEVICE float pow2(float a) { return a * a; }
     INL_HOST_DEVICE float pow3(float a) { return a * a * a; }
@@ -1032,6 +1055,26 @@ namespace jazzfusion
             swap(m21, m12);
         }
     };
+
+    INL_HOST_DEVICE Mat3 operator*(const Mat3 &A, const Mat3 &B)
+    {
+        return Mat3(
+            // First row of C
+            A.m00 * B.m00 + A.m01 * B.m10 + A.m02 * B.m20, // C.m00
+            A.m00 * B.m01 + A.m01 * B.m11 + A.m02 * B.m21, // C.m01
+            A.m00 * B.m02 + A.m01 * B.m12 + A.m02 * B.m22, // C.m02
+
+            // Second row of C
+            A.m10 * B.m00 + A.m11 * B.m10 + A.m12 * B.m20, // C.m10
+            A.m10 * B.m01 + A.m11 * B.m11 + A.m12 * B.m21, // C.m11
+            A.m10 * B.m02 + A.m11 * B.m12 + A.m12 * B.m22, // C.m12
+
+            // Third row of C
+            A.m20 * B.m00 + A.m21 * B.m10 + A.m22 * B.m20, // C.m20
+            A.m20 * B.m01 + A.m21 * B.m11 + A.m22 * B.m21, // C.m21
+            A.m20 * B.m02 + A.m21 * B.m12 + A.m22 * B.m22  // C.m22
+        );
+    }
 
     // column major multiply
     INL_HOST_DEVICE Float3 operator*(const Mat3 &m, const Float3 &v)
@@ -1386,7 +1429,7 @@ namespace jazzfusion
 
     INL_HOST_DEVICE float luminance(const Float3 &rgb)
     {
-        const Float3 ntsc_luminance = {0.30f, 0.59f, 0.11f};
+        const Float3 ntsc_luminance = {0.2126f, 0.7152f, 0.0722f}; // {0.30f, 0.59f, 0.11f};
         return dot(rgb, ntsc_luminance);
     }
 
@@ -1500,18 +1543,18 @@ namespace jazzfusion
         return Float2(atan2f(dir.x, dir.z), asinf(dir.y));
     }
 
-    INL_DEVICE Float3 RgbToYcocg(const Float3 &rgb)
-    {
-        float tmp1 = rgb.x + rgb.z;
-        float tmp2 = rgb.y * 2.0f;
-        return Float3(tmp1 + tmp2, (rgb.x - rgb.z) * 2.0f, tmp2 - tmp1);
-    }
+    // INL_DEVICE Float3 RgbToYcocg(const Float3 &rgb)
+    // {
+    //     float tmp1 = rgb.x + rgb.z;
+    //     float tmp2 = rgb.y * 2.0f;
+    //     return Float3(tmp1 + tmp2, (rgb.x - rgb.z) * 2.0f, tmp2 - tmp1);
+    // }
 
-    INL_DEVICE Float3 YcocgToRgb(const Float3 &ycocg)
-    {
-        float tmp = ycocg.x - ycocg.z;
-        return Float3(tmp + ycocg.y, ycocg.x + ycocg.z, tmp - ycocg.y) * 0.25f;
-    }
+    // INL_DEVICE Float3 YcocgToRgb(const Float3 &ycocg)
+    // {
+    //     float tmp = ycocg.x - ycocg.z;
+    //     return Float3(tmp + ycocg.y, ycocg.x + ycocg.z, tmp - ycocg.y) * 0.25f;
+    // }
 
     template <typename T>
     INL_DEVICE void WarpReduceSum(T &v)
@@ -1790,6 +1833,11 @@ namespace jazzfusion
         float t = c1 / c2;
         closestPoint = A + v * t;
         return length(P - closestPoint);
+    }
+
+    INL_HOST_DEVICE float radians(float degrees)
+    {
+        return degrees * (M_PI / 180.0f);
     }
 
 }

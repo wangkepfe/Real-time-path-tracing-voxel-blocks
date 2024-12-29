@@ -18,7 +18,7 @@ namespace jazzfusion
         if (idx.x >= outSize.x || idx.y >= outSize.y)
             return;
 
-        Float2 uv = (ToFloat2(idx) + 0.5f) / ToFloat2(outSize) * ToFloat2(texSize);
+        Float2 uv = (ToFloat2(idx) + 0.5f) / ToFloat2(outSize);
         Float3 sampledColor = SampleBicubicCatmullRom<Load2DFuncFloat4<Float3>>(colorBuffer, uv, texSize);
 
         // if (CUDA_CENTER_PIXEL())

@@ -10,17 +10,17 @@
 
 #include "voxelengine.h"
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
-    auto& backend = jazzfusion::Backend::Get();
-    auto& renderer = jazzfusion::OptixRenderer::Get();
+    auto &backend = jazzfusion::Backend::Get();
+    auto &renderer = jazzfusion::OptixRenderer::Get();
 
     try
     {
-        auto& ui = jazzfusion::UI::Get();
-        auto& bufferManager = jazzfusion::BufferManager::Get();
-        auto& textureManager = jazzfusion::TextureManager::Get();
-        auto& voxelengine = vox::VoxelEngine::Get();
+        auto &ui = jazzfusion::UI::Get();
+        auto &bufferManager = jazzfusion::BufferManager::Get();
+        auto &textureManager = jazzfusion::TextureManager::Get();
+        auto &voxelengine = vox::VoxelEngine::Get();
 
         voxelengine.init();
         backend.init();
@@ -29,11 +29,9 @@ int main(int argc, char* argv[])
         renderer.init();
         ui.init();
 
-        backend.mainloop(vox::UpdateFunc);
-
-
+        backend.mainloop();
     }
-    catch (const std::exception& e)
+    catch (const std::exception &e)
     {
         std::cerr << e.what() << std::endl;
     }

@@ -67,7 +67,6 @@ namespace jazzfusion
     struct SystemParameter
     {
         Camera camera;
-        HistoryCamera historyCamera;
 
         OptixTraversableHandle topObject;
 
@@ -77,6 +76,7 @@ namespace jazzfusion
         SurfObj outAlbedo;
         SurfObj outMaterial;
         SurfObj outMotionVector;
+        SurfObj outUiBuffer;
 
         LightDefinition *lightDefinitions;
 

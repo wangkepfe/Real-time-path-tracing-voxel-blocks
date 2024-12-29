@@ -8,6 +8,8 @@
 #include "sky/Sky.h"
 #include "core/RenderCamera.h"
 
+#include "util/BufferUtils.h"
+
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
 #include <cfgmgr32.h>
@@ -122,20 +124,16 @@ namespace jazzfusion
 
     void OptixRenderer::render()
     {
-        auto &backend = jazzfusion::Backend::Get();
+        auto &backend = Backend::Get();
 
-        static int iterationIndex = 0;
+        int &iterationIndex = GlobalSettings::Get().iterationIndex;
         m_systemParameter.iterationIndex = iterationIndex++;
 
         CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
         auto &camera = RenderCamera::Get().camera;
-
+        RenderCamera::Get().historyCamera = camera;
         camera.update();
-        if (backend.getFrameNum() == 0)
-        {
-            m_systemParameter.historyCamera.Setup(camera);
-        }
 
         constexpr int samplePerIteration = 1;
 
@@ -147,6 +145,9 @@ namespace jazzfusion
         const auto &skyModel = SkyModel::Get();
         m_systemParameter.sunDir = skyModel.getSunDir();
 
+        auto &bufferManager = BufferManager::Get();
+        BufferSetFloat4(bufferManager.GetBufferDim(UiBuffer), bufferManager.GetBuffer2D(UiBuffer), Float4(0.0f));
+
         for (int sampleIndex = 0; sampleIndex < samplePerIteration; ++sampleIndex)
         {
             m_systemParameter.sampleIndex = sampleIndex;
@@ -156,7 +157,8 @@ namespace jazzfusion
 
         CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-        m_systemParameter.historyCamera.Setup(camera);
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaPeekAtLastError());
     }
 
 #ifdef _WIN32
@@ -366,6 +368,7 @@ namespace jazzfusion
             m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
             m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
             m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
+            m_systemParameter.outUiBuffer = bufferManager.GetBuffer2D(UiBuffer);
 
             m_systemParameter.randGen = d_randGen;
 

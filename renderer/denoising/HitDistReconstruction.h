@@ -35,6 +35,11 @@ namespace jazzfusion
         Float4 normalRoughness = Load2DFloat4(normalRoughnessBuffer, globalPos);
         float viewZ = abs(Load2DFloat1(depthBuffer, globalPos));
 
+        // if (CUDA_CENTER_PIXEL())
+        // {
+        //     DEBUG_PRINT(viewZ);
+        // }
+
         const float denoisingRange = 500000.0f;
         Float2 hitDist = Float2(denoisingRange);
 
@@ -83,6 +88,11 @@ namespace jazzfusion
         }
         __syncthreads();
 
+        if (pixelPos.x >= screenResolution.x || pixelPos.y >= screenResolution.y)
+        {
+            return;
+        }
+
         Int2 smemPos = threadPos + border;
         Float3 centerHitdistViewZ = Float3(sharedHitdistViewZ[smemPos.y * bufferSize + smemPos.x]);
         float centerViewZ = centerHitdistViewZ.z;
@@ -128,10 +138,16 @@ namespace jazzfusion
                 w *= GetBilateralWeight(sampleViewZ, centerViewZ);
 
                 float sampleDiffuseHitDist = sampleHitdistViewZ.y;
+                // if (CUDA_CENTER_PIXEL())
+                // {
+                //     DEBUG_PRINT(sampleDiffuseHitDist);
+                // }
                 float diffuseWeight = w;
 
                 constexpr float expWeightScale = 3.0f;
                 diffuseWeight *= ComputeExponentialWeight(angle, diffuseNormalWeightParam, 0.0f, expWeightScale);
+
+                sampleDiffuseHitDist = Denanify(diffuseWeight, sampleDiffuseHitDist);
                 diffuseWeight *= float(sampleDiffuseHitDist != 0.0f);
 
                 sumDiffuseHitDist += sampleDiffuseHitDist * diffuseWeight;

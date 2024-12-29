@@ -387,6 +387,9 @@ namespace jazzfusion
 
             // Scan for CDF
             Scan(sunPdf, sunCdf, sunCdfScanTmp, sunSize, sunScanBlockSize, 1);
+
+            CUDA_CHECK(cudaDeviceSynchronize());
+            CUDA_CHECK(cudaPeekAtLastError());
         }
     }
 

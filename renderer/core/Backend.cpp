@@ -7,6 +7,7 @@
 #include "core/InputHandler.h"
 #include "sky/Sky.h"
 #include "core/RenderCamera.h"
+#include "voxelengine/VoxelEngine.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -86,13 +87,14 @@ namespace jazzfusion
         SkyModel::Get().init();
     }
 
-    void Backend::mainloop(std::function<void()> voxelEngineUpdateFunc)
+    void Backend::mainloop()
     {
         auto &ui = UI::Get();
         auto &renderer = OptixRenderer::Get();
         auto &postProcessor = PostProcessor::Get();
         auto &denoiser = Denoiser::Get();
         auto &inputHandler = InputHandler::Get();
+        auto &voxelengine = vox::VoxelEngine::Get();
 
         m_timer.init();
 
@@ -111,7 +113,7 @@ namespace jazzfusion
 
             renderer.update();
 
-            voxelEngineUpdateFunc();
+            voxelengine.update();
 
             renderer.render();
 

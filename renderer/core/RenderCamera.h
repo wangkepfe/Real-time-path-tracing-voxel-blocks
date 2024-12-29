@@ -5,21 +5,22 @@
 namespace jazzfusion
 {
 
-class RenderCamera
-{
-public:
-    static RenderCamera& Get()
+    class RenderCamera
     {
-        static RenderCamera instance;
-        return instance;
-    }
-    RenderCamera(RenderCamera const&) = delete;
-    void operator=(RenderCamera const&) = delete;
+    public:
+        static RenderCamera &Get()
+        {
+            static RenderCamera instance;
+            return instance;
+        }
+        RenderCamera(RenderCamera const &) = delete;
+        void operator=(RenderCamera const &) = delete;
 
-    Camera camera{};
+        Camera camera{};
+        Camera historyCamera{};
 
-private:
-    RenderCamera() {}
-};
+    private:
+        RenderCamera() {}
+    };
 
 }
