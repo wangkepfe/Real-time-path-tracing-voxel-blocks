@@ -451,9 +451,9 @@ namespace jazzfusion
             parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
             parameters.albedo = Float3(1.0f);
             parameters.uvScale = 1.0f;
-            parameters.textureAlbedo = textureManager.GetTexture("data/TexturesCom_VinylChecker_1K_albedo.png");
-            parameters.textureNormal = textureManager.GetTexture("data/TexturesCom_VinylChecker_1K_normal.png");
-            parameters.textureRoughness = textureManager.GetTexture("data/TexturesCom_VinylChecker_1K_roughness.png");
+            parameters.textureAlbedo = textureManager.GetTexture("data/coast_sand_rocks_02_albedo.png");
+            parameters.textureNormal = textureManager.GetTexture("data/coast_sand_rocks_02_normal.png");
+            parameters.textureRoughness = textureManager.GetTexture("data/coast_sand_rocks_02_rough.png");
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.5f;
             parameters.flags = 0;                       // FLAG_THINWALLED;

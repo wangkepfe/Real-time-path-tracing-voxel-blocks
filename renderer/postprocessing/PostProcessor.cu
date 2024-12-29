@@ -60,8 +60,7 @@ namespace jazzfusion
 
         ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferManager.GetBuffer2D(IlluminationOutputBuffer),
-            Int2(inputWidth, inputHeight),
-            postProcessParams);
+            Int2(inputWidth, inputHeight));
 
         // if (renderPassSettings.enableSharpening)
         // {
@@ -72,7 +71,7 @@ namespace jazzfusion
         // {
         //     EdgeAdaptiveSpatialUpsampling KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(OutputColorBuffer), bufferManager.GetBuffer2D(RenderColorBuffer),
         //                                                                                                                                      inputWidth, inputHeight, inputWidth, inputHeight, outputWidth, outputHeight);
-        // }
+        // } 
         // else
         // {
         // BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
