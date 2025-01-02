@@ -6,8 +6,6 @@
 
 namespace jazzfusion
 {
-
-    static constexpr int BounceLimit = 6;
     static constexpr float DenominatorEpsilon = 1.0e-6f;
 
     static constexpr int FLAG_SHADOW = 0x00000001;
@@ -26,12 +24,14 @@ namespace jazzfusion
     static constexpr int FLAG_CLEAR_MASK = FLAG_DIFFUSED | FLAG_SHADOW;
 
     // Currently only containing some vertex attributes in world coordinates.
-    struct State
+    struct MaterialState
     {
         // Float3 normalGeo;
         Float3 normal;
         Float3 texcoord;
+        Float3 geometricNormal;
         float roughness;
+        Float3 wo;
     };
 
     // Note that the fields are ordered by CUDA alignment restrictions.

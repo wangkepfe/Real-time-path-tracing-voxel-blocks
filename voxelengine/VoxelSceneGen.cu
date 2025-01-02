@@ -185,13 +185,14 @@ __global__ void CompactMesh(
                 d_attrOut[vOffset + i].vertex = verts[i];
             }
 
-            // Two triangles: (0,1,2) and (0,2,3)
-            d_idxOut[iOffset + 0] = vOffset + 0;
+            // Two triangles
+            d_idxOut[iOffset + 0] = vOffset + 2;
             d_idxOut[iOffset + 1] = vOffset + 1;
-            d_idxOut[iOffset + 2] = vOffset + 2;
-            d_idxOut[iOffset + 3] = vOffset + 0;
+            d_idxOut[iOffset + 2] = vOffset + 0;
+
+            d_idxOut[iOffset + 3] = vOffset + 3;
             d_idxOut[iOffset + 4] = vOffset + 2;
-            d_idxOut[iOffset + 5] = vOffset + 3;
+            d_idxOut[iOffset + 5] = vOffset + 0;
         }
     }
 }
@@ -457,12 +458,13 @@ namespace vox
                 }
 
                 // Write indices
-                indices[iOffset + 0] = vOffset + 0;
+                indices[iOffset + 0] = vOffset + 2;
                 indices[iOffset + 1] = vOffset + 1;
-                indices[iOffset + 2] = vOffset + 2;
-                indices[iOffset + 3] = vOffset + 0;
+                indices[iOffset + 2] = vOffset + 0;
+
+                indices[iOffset + 3] = vOffset + 3;
                 indices[iOffset + 4] = vOffset + 2;
-                indices[iOffset + 5] = vOffset + 3;
+                indices[iOffset + 5] = vOffset + 0;
 
                 // Update mapping
                 faceLocation[faceId] = newFaceIndex;

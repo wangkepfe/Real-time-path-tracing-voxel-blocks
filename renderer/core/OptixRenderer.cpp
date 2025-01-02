@@ -448,7 +448,8 @@ namespace jazzfusion
 
             // The order in this array matches the instance ID in the root IAS!
             // Lambert material for the floor.
-            parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
+            // parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
+            parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
             parameters.albedo = Float3(1.0f);
             parameters.uvScale = 1.0f;
             parameters.textureAlbedo = textureManager.GetTexture("data/coast_sand_rocks_02_albedo.png");
@@ -656,13 +657,17 @@ namespace jazzfusion
 
             pgd.callables.moduleDC = moduleBsdf;
 
-            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
+            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection"; // 0
             programGroupDescCallables.push_back(pgd);
-            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
+            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission"; // 1
             programGroupDescCallables.push_back(pgd);
-            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection";
+            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection"; // 2
             programGroupDescCallables.push_back(pgd);
-            pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection";
+            pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection"; // 3
+            programGroupDescCallables.push_back(pgd);
+            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection"; // 4
+            programGroupDescCallables.push_back(pgd);
+            pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection"; // 5
             programGroupDescCallables.push_back(pgd);
 
             programGroupCallables.resize(programGroupDescCallables.size());

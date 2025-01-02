@@ -150,46 +150,44 @@ namespace jazzfusion
         const Float3 ng = cross(va1.vertex - va0.vertex, va2.vertex - va0.vertex);
         // const Float3 ns = va0.normal * alpha + va1.normal * theBarycentrics.x + va2.normal * theBarycentrics.y;
 
-        State state;
+        MaterialState state;
         // state.texcoord = va0.texcoord * alpha + va1.texcoord * theBarycentrics.x + va2.texcoord * theBarycentrics.y;
 
         Float4 worldToObject[3];
         getTransformWorldToObject(worldToObject);
         // state.normalGeo = normalize(transformNormal(worldToObject, ng));
         // state.normal = normalize(transformNormal(worldToObject, ns));
-        state.normal = normalize(transformNormal(worldToObject, ng));
+        state.geometricNormal = normalize(transformNormal(worldToObject, ng));
+
+        state.wo = rayData->wo;
 
         // rayData->totalDistance += rayData->distance;
 
-        if (abs(state.normal.x) > 0.9f)
+        if (abs(state.geometricNormal.x) > 0.9f)
         {
             state.texcoord.x = fract(rayData->pos.y);
             state.texcoord.y = fract(rayData->pos.z);
         }
-        else if (abs(state.normal.y) > 0.9f)
+        else if (abs(state.geometricNormal.y) > 0.9f)
         {
             state.texcoord.x = fract(rayData->pos.x);
             state.texcoord.y = fract(rayData->pos.z);
         }
-        else if (abs(state.normal.z) > 0.9f)
+        else if (abs(state.geometricNormal.z) > 0.9f)
         {
             state.texcoord.x = fract(rayData->pos.y);
             state.texcoord.y = fract(rayData->pos.x);
         }
 
+        // Ray cone spread
         rayData->rayConeWidth += rayData->rayConeSpread * rayData->distance;
         // rayState.rayConeSpread += surfaceRayConeSpread; // @TODO Based on the local surface curvature
 
-        // Explicitly include edge-on cases as frontface condition! Keeps the material stack from overflowing at silhouettes.
-        // Prevents that silhouettes of thin-walled materials use the backface material. Using the true geometry normal attribute as originally defined on the frontface!
-        // rayData->flags |= (0.0f <= dot(rayData->wo, state.normalGeo)) ? FLAG_FRONTFACE : 0;
-        rayData->flags |= (0.0f <= dot(rayData->wo, state.normal)) ? FLAG_FRONTFACE : 0;
-
-        if ((rayData->flags & FLAG_FRONTFACE) == 0) // Looking at the backface?
+        // Face forward
+        rayData->flags |= (dot(rayData->wo, state.geometricNormal) >= 0.0f) ? FLAG_FRONTFACE : 0;
+        if ((rayData->flags & FLAG_FRONTFACE) == 0)
         {
-            // Means geometric normal and shading normal are always defined on the side currently looked at. This gives the backfaces of opaque BSDFs a defined result.
-            // state.normalGeo = -state.normalGeo;
-            state.normal = -state.normal;
+            state.geometricNormal = -state.geometricNormal;
         }
 
         rayData->radiance = Float3(0.0f);
@@ -199,7 +197,7 @@ namespace jazzfusion
         Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
         float texMip0Size = parameters.texSize.length();
-        float lod = log2f(rayData->rayConeWidth / max(dot(state.normal, rayData->wo), 0.01f) * parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
+        float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.01f) * parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
         // lod = 0.0f;
 
         // state.texcoord *= 2.0f;
@@ -218,10 +216,9 @@ namespace jazzfusion
 
         if (parameters.textureNormal != 0)
         {
-            Float3 texNormal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
-            // alignVector(state.normal, texNormal);
-            // state.normal = texNormal;
-            state.normal = LocalizeAlignZUp(state.normal, texNormal);
+            state.normal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
+            alignVector(state.geometricNormal, state.normal);
+            state.normal = normalize(state.normal);
         }
 
         rayData->normal = state.normal;
@@ -237,7 +234,7 @@ namespace jazzfusion
         Float3 surfBsdfOverPdf;
         float surfSampleSurfPdf;
 
-        optixDirectCall<void, MaterialParameter const &, State const &, PerRayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
+        optixDirectCall<void, MaterialParameter const &, MaterialState const &, PerRayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
 
         if (rayData->depth == 0)
         {
@@ -388,7 +385,7 @@ namespace jazzfusion
             if (0.0f < lightSampleLightDistPdf) // Valid light sample, verify light distribution
             {
                 const int indexBsdfEval = indexBsdfSample + 1;
-                const Float4 lightSampleSurfDistBsdfPdf = optixDirectCall<Float4, MaterialParameter const &, State const &, PerRayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, lightSample.direction);
+                const Float4 lightSampleSurfDistBsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, PerRayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, lightSample.direction);
                 Float3 lightSampleSurfDistBsdf = lightSampleSurfDistBsdfPdf.xyz;
                 float lightSampleSurfDistPdf = lightSampleSurfDistBsdfPdf.w;
 
@@ -482,5 +479,4 @@ namespace jazzfusion
         rayData->f_over_pdf = surfBsdfOverPdf;
         rayData->pdf = surfSampleSurfPdf;
     }
-
 }

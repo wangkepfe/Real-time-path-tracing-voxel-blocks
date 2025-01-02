@@ -17,6 +17,67 @@
 namespace jazzfusion
 {
 
+    __global__ void fillFirstMipmapKernel(
+        unsigned char *dMipmap,
+        const unsigned char *dSource,
+        int nInputBufferChannels,
+        int nChannels,
+        int currentSize)
+    {
+        int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= currentSize * currentSize)
+            return;
+
+        // Copy the existing channels
+        for (int ch = 0; ch < nInputBufferChannels; ++ch)
+        {
+            dMipmap[i * nChannels + ch] = dSource[i * nInputBufferChannels + ch];
+        }
+
+        // Fill in leftover channels with 255
+        for (int ch = nInputBufferChannels; ch < nChannels; ++ch)
+        {
+            dMipmap[i * nChannels + ch] = 255;
+        }
+    }
+
+    __global__ void fillMipmapKernel(
+        unsigned char *dDst,       // Current LOD
+        const unsigned char *dSrc, // Previous (larger) LOD
+        int nChannels,
+        int dstSize) // = currentSize
+    {
+        int x = blockIdx.x * blockDim.x + threadIdx.x;
+        int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+        if (x >= dstSize || y >= dstSize)
+            return;
+
+        // We assume that srcSize = 2 * dstSize
+        // Index for the downsampled LOD
+        int dstIdx = y * dstSize + x;
+
+        int srcSize = dstSize * 2;
+        int i00 = (y * 2) * srcSize + (x * 2);
+        int i01 = (y * 2) * srcSize + (x * 2 + 1);
+        int i10 = (y * 2 + 1) * srcSize + (x * 2);
+        int i11 = (y * 2 + 1) * srcSize + (x * 2 + 1);
+
+        for (int ch = 0; ch < nChannels; ++ch)
+        {
+            float val =
+                static_cast<float>(dSrc[i00 * nChannels + ch]) +
+                static_cast<float>(dSrc[i01 * nChannels + ch]) +
+                static_cast<float>(dSrc[i10 * nChannels + ch]) +
+                static_cast<float>(dSrc[i11 * nChannels + ch]);
+            val *= 0.25f; // Average
+            if (val > 255.0f)
+                val = 255.0f;
+
+            dDst[dstIdx * nChannels + ch] = static_cast<unsigned char>(val);
+        }
+    }
+
     inline int log2i(int a)
     {
         assert(a != 0);
@@ -36,15 +97,6 @@ namespace jazzfusion
         std::filesystem::path cwd = std::filesystem::current_path();
 
         std::vector<std::string> filePaths = {
-            // "data/TexturesCom_OutdoorFloor4_1K_albedo.png",
-            // "data/TexturesCom_OutdoorFloor4_1K_normal.png",
-            // "data/TexturesCom_OutdoorFloor4_1K_roughness.png",
-            // "data/TexturesCom_VinylChecker_1K_albedo.png",
-            // "data/TexturesCom_VinylChecker_1K_normal.png",
-            // "data/TexturesCom_VinylChecker_1K_roughness.png",
-            // "data/TexturesCom_Ground_RockMossy_2.5x2.5_1K_albedo.png",
-            // "data/TexturesCom_Ground_RockMossy_2.5x2.5_1K_normal.png",
-            // "data/TexturesCom_Ground_RockMossy_2.5x2.5_1K_roughness.png",
             "data/coast_sand_rocks_02_albedo.png",
             "data/coast_sand_rocks_02_normal.png",
             "data/coast_sand_rocks_02_rough.png",
@@ -171,24 +223,101 @@ namespace jazzfusion
                 {
                     mipmapBuffers[lod].resize(currentSize * currentSize * nChannels);
 
+                    unsigned char *dSource = nullptr;
+                    unsigned char *dMipmap = nullptr;
+
                     if (lod == 0)
+                    // Example: create first LOD on GPU
                     {
-                        for (int i = 0; i < currentSize * currentSize; ++i)
-                        {
-                            int ch = 0;
-                            for (; ch < nInputBufferChannels; ++ch)
-                            {
-                                // float val = static_cast<float>(buffer[i * nInputBufferChannels + ch]);
-                                // val = powf(val / 255.0f, 2.2f) * 255.0f;
-                                // val = std::min(val, 255.0f);
-                                // mipmapBuffers[lod][i * nChannels + ch] = static_cast<uint8_t>(val);
-                                mipmapBuffers[lod][i * nChannels + ch] = buffer[i * nInputBufferChannels + ch];
-                            }
-                            for (; ch < nChannels; ++ch)
-                            {
-                                mipmapBuffers[lod][i * nChannels + ch] = 255;
-                            }
-                        }
+                        size_t numPixels = currentSize * currentSize;
+                        size_t sizeBytes = numPixels * nChannels * sizeof(unsigned char);
+
+                        // Allocate device buffer for the source buffer (optional if you do it once)
+                        CUDA_CHECK(cudaMalloc(&dSource, numPixels * nInputBufferChannels * sizeof(unsigned char)));
+                        // Copy from host
+                        CUDA_CHECK(cudaMemcpy(dSource, buffer, numPixels * nInputBufferChannels * sizeof(unsigned char),
+                                              cudaMemcpyHostToDevice));
+
+                        // Allocate device buffer for the first LOD
+                        CUDA_CHECK(cudaMalloc(&dMipmap, sizeBytes));
+
+                        // Launch fillFirstMipmapKernel
+                        int blockSize = 256;
+                        int gridSize = (numPixels + blockSize - 1) / blockSize;
+                        fillFirstMipmapKernel<<<gridSize, blockSize>>>(
+                            dMipmap,
+                            dSource,
+                            nInputBufferChannels,
+                            nChannels,
+                            currentSize);
+                        CUDA_CHECK(cudaDeviceSynchronize());
+
+                        // Copy back to host (mipmapBuffers[0]) for CPU-based compression
+                        CUDA_CHECK(cudaMemcpy(mipmapBuffers[lod].data(), dMipmap, sizeBytes, cudaMemcpyDeviceToHost));
+
+                        // Now you can compress on the CPU side, store to compressed buffer, etc...
+
+                        CUDA_CHECK(cudaFree(dSource));
+                        CUDA_CHECK(cudaFree(dMipmap));
+                    }
+                    else if (lod < 3)
+                    // Next LODs
+                    {
+                        // Suppose we want to generate mipmapBuffers[lod] from mipmapBuffers[lod - 1]
+                        // We can do a similar approach but with fillMipmapKernel.
+                        // For each LOD, the "srcSize" = previous LOD dimension, which is 2 * currentSize.
+                        // The "dstSize" = currentSize (the new LOD dimension).
+
+                        // 1) Upload mipmapBuffers[lod - 1] to device (dSource).
+                        // 2) Allocate dDst for mipmapBuffers[lod].
+                        // 3) Launch fillMipmapKernel<<<dimGrid, dimBlock>>>(...).
+                        // 4) Copy dDst back to host.
+
+                        int dstSize = currentSize;     // for the new LOD
+                        int srcSize = currentSize * 2; // for the old LOD
+
+                        // Example device buffers
+                        unsigned char *dSrc = nullptr;
+                        unsigned char *dDst = nullptr;
+
+                        size_t srcNumPixels = srcSize * srcSize;
+                        size_t dstNumPixels = dstSize * dstSize;
+
+                        CUDA_CHECK(cudaMalloc(&dSrc, srcNumPixels * nChannels * sizeof(unsigned char)));
+                        CUDA_CHECK(cudaMalloc(&dDst, dstNumPixels * nChannels * sizeof(unsigned char)));
+
+                        // Copy previous LOD’s data to dSrc
+                        CUDA_CHECK(cudaMemcpy(
+                            dSrc,
+                            mipmapBuffers[lod - 1].data(),
+                            srcNumPixels * nChannels * sizeof(unsigned char),
+                            cudaMemcpyHostToDevice));
+
+                        // Launch kernel
+                        dim3 block(16, 16);
+                        dim3 grid(
+                            (dstSize + block.x - 1) / block.x,
+                            (dstSize + block.y - 1) / block.y);
+
+                        fillMipmapKernel<<<grid, block>>>(
+                            dDst,
+                            dSrc,
+                            nChannels,
+                            dstSize);
+                        CUDA_CHECK(cudaDeviceSynchronize());
+
+                        // Copy dDst back to host
+                        CUDA_CHECK(cudaMemcpy(
+                            mipmapBuffers[lod].data(),
+                            dDst,
+                            dstNumPixels * nChannels * sizeof(unsigned char),
+                            cudaMemcpyDeviceToHost));
+
+                        // Free device buffers
+                        CUDA_CHECK(cudaFree(dSrc));
+                        CUDA_CHECK(cudaFree(dDst));
+
+                        // Continue with compression, etc...
                     }
                     else
                     {

@@ -53,6 +53,9 @@
 #ifndef M_SQRT1_2f
 #define M_SQRT1_2f 0.707106781186547524401f
 #endif
+#ifndef SAFE_COSINE_EPSI
+#define SAFE_COSINE_EPSI 1e-5f
+#endif
 
 namespace jazzfusion
 {
@@ -1839,5 +1842,4 @@ namespace jazzfusion
     {
         return degrees * (M_PI / 180.0f);
     }
-
 }

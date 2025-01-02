@@ -87,7 +87,7 @@ set( SOURCES
     renderer/core/BufferManager.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
-    renderer/util/TextureUtils.cpp
+    renderer/util/TextureUtils.cu
     renderer/util/RandGenHost.cpp
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
