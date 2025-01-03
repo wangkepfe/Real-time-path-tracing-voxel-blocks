@@ -94,10 +94,8 @@ namespace jazzfusion
         rayData->distance = optixGetRayTmax();
         rayData->pos = rayData->pos + rayData->wi * rayData->distance;
 
-        // if rayData->pos is near the line segment highlightPoint[0] to highlightPoint[1], 1 to 2, 2 to 3 and 3 to 0, then set rayData->radiance to 0 and return
-
         GeometryInstanceData *instanceData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
-        const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex]; // Use a const reference, not all BSDFs need all values.
+        const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
         int materialId = parameters.indexBSDF;
 
         if (rayData->flags & FLAG_SHADOW)
@@ -122,7 +120,6 @@ namespace jazzfusion
             highlightPoint[2] = sysParam.edgeToHighlight[2];
             highlightPoint[3] = sysParam.edgeToHighlight[3];
 
-            // Check each line segment: (0->1), (1->2), (2->3), (3->0)
             const float tolerance = 0.005f;
             Float3 dummy;
             float d0 = PointToSegmentDistance(rayData->pos, highlightPoint[0], highlightPoint[1], dummy);
@@ -155,8 +152,6 @@ namespace jazzfusion
 
         Float4 worldToObject[3];
         getTransformWorldToObject(worldToObject);
-        // state.normalGeo = normalize(transformNormal(worldToObject, ng));
-        // state.normal = normalize(transformNormal(worldToObject, ns));
         state.geometricNormal = normalize(transformNormal(worldToObject, ng));
 
         state.wo = rayData->wo;
@@ -208,7 +203,7 @@ namespace jazzfusion
             albedo *= texColor;
         }
 
-        state.roughness = 0.0f;
+        state.roughness = 0.001f;
         if (parameters.textureRoughness != 0)
         {
             state.roughness = tex2DLod<float1>(parameters.textureRoughness, state.texcoord.x, state.texcoord.y, lod).x;
@@ -216,9 +211,15 @@ namespace jazzfusion
 
         if (parameters.textureNormal != 0)
         {
-            state.normal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
+            Float3 texNormal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
+            state.normal = normalize(texNormal - 0.5f);
+            state.normal.x = -state.normal.x;
+            state.normal.y = -state.normal.y;
             alignVector(state.geometricNormal, state.normal);
-            state.normal = normalize(state.normal);
+        }
+        else
+        {
+            state.normal = state.geometricNormal;
         }
 
         rayData->normal = state.normal;
@@ -235,6 +236,12 @@ namespace jazzfusion
         float surfSampleSurfPdf;
 
         optixDirectCall<void, MaterialParameter const &, MaterialState const &, PerRayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
+
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(surfBsdfOverPdf);
+        //     OPTIX_DEBUG_PRINT(surfSampleSurfPdf);
+        // }
 
         if (rayData->depth == 0)
         {
@@ -258,9 +265,6 @@ namespace jazzfusion
             // Env light sample
             LightSample lightSample;
             {
-                // PERFORMANCE OPTIMIZATION: avoiding integer division
-                // const Int2& skyRes = sysParam.skyRes;
-                // const Int2& sunRes = sysParam.sunRes;
                 const Int2 skyRes(512, 256);
                 const Int2 sunRes(32, 32);
 
@@ -310,9 +314,6 @@ namespace jazzfusion
                     lightSample.direction = rayDir;
                     lightSample.pdf = sampledSkyPdf;
                     lightSample.emission = skyEmission;
-
-                    // Set light index for shadow ray rejection
-                    // lightIdx = ENV_LIGHT_ID;
                 }
                 else // Choose to sample sun
                 {
@@ -338,47 +339,10 @@ namespace jazzfusion
 
                     // Set light sample direction and PDF
                     lightSample.direction = rayDir;
-                    lightSample.pdf = sampledSunPdf; // * (1.0f - chooseSampleSkyVsSun);
+                    lightSample.pdf = sampledSunPdf;
                     lightSample.emission = sunEmission;
-
-                    // Set light index for shadow ray rejection
-                    // lightIdx = ENV_LIGHT_ID;
-
-                    // Debug
-                    // DEBUG_PRINT(maxSkyCdf);
-                    // DEBUG_PRINT(maxSunCdf);
-                    // DEBUG_PRINT(sampleSkyVsSunPdf);
-                    // DEBUG_PRINT(sampledSunIdx);
-                    // DEBUG_PRINT(sampledSunPdf);
-                    // DEBUG_PRINT(u);
-                    // DEBUG_PRINT(v);
-                    // DEBUG_PRINT(rayDir);
                 }
             }
-
-            // const int numLights = sysParam.numLights;
-            // const Float2 randNum = rayData->rand2(sysParam);
-            // const int indexLight = 0; //(1 < numLights) ? clampi(static_cast<int>(floorf(rayData->rand(sysParam) * numLights)), 0, numLights - 1) : 0;
-            // LightDefinition const& light = sysParam.lightDefinitions[indexLight];
-            // const int indexCallable = light.type;
-            // LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const Float3, const Float2>(indexCallable, light, rayData->pos, randNum);
-            // LightSample lightSample = LightEnvSphereSample(light, rayData->pos, randNum);
-
-            /// Directional light test
-            // if (0)
-            // {
-            //     lightSample.pdf = 1.0f;
-            //     lightSample.direction = normalize(Float3(1, 1, 0));
-            //     lightSample.emission = Float3(1.0f);
-            // }
-
-            // Float4 surfSampleEmissionPdf = LightEnvSphereEval(light, rayData->pos, surfWi);
-            // Float3 surfSampleEmission = surfSampleEmissionPdf.xyz;
-            // float surfSampleLightDistPdf = surfSampleEmissionPdf.w;
-
-            // float misWeightSurfSample = powerHeuristic(surfSampleSurfPdf, surfSampleLightDistPdf);
-            // shadowRayOnly = shadowRayOnly || (misWeightSurfSample < 0.1f);
-            // rayData->lightEmission = surfSampleEmission * misWeightSurfSample;
 
             float lightSampleLightDistPdf = lightSample.pdf;
 
@@ -391,9 +355,6 @@ namespace jazzfusion
 
                 if (0.0f < lightSampleSurfDistPdf) // Valid light sample, verify surface distribution
                 {
-                    // float chooseLightSampleWeight = misWeightLightSample / (misWeightLightSample + misWeightSurfSample);
-                    // if ((rayData->rand(sysParam) < chooseLightSampleWeight) || shadowRayOnly)
-
                     rayData->flags |= FLAG_SHADOW;
 
                     Float3 originalPos = rayData->pos;
@@ -409,11 +370,6 @@ namespace jazzfusion
                     for (int shadowRayIter = 0; shadowRayIter < 5; ++shadowRayIter)
                     {
                         UInt2 payload = splitPointer(rayData);
-
-                        // if (OPTIX_CENTER_PIXEL())
-                        // {
-                        //     OPTIX_DEBUG_PRINT(Float4(glassThroughput, shadowRayIter));
-                        // }
 
                         rayData->flags &= ~FLAG_SHADOW_HIT;
                         rayData->flags &= ~FLAG_SHADOW_GLASS_HIT;
@@ -432,11 +388,6 @@ namespace jazzfusion
                             Float3 shadowRayBsdfOverPdf = lightSampleSurfDistBsdf * cosTheta / lightSampleLightDistPdf;
                             Float3 shadowRayRadiance = lightSample.emission * misWeightLightSample * shadowRayBsdfOverPdf * glassThroughput * albedo;
                             rayData->radiance += shadowRayRadiance;
-
-                            // if (OPTIX_CENTER_PIXEL() && shadowRayIter == 2)
-                            // {
-                            //     OPTIX_DEBUG_PRINT(Float4(shadowRayRadiance, 0));
-                            // }
 
                             break;
                         }

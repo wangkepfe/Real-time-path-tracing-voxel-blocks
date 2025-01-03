@@ -32,21 +32,20 @@ namespace jazzfusion
             rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
         }
 
-        // if (pdf <= 0.0f || dot(wi, state.normalGeo) <= 0.0f)
-        if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f)
+        if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
         {
             rayData->flags |= FLAG_TERMINATE;
             return;
         }
 
-        f_over_pdf = Float3(1.0f);
+        f_over_pdf = Float3(1.0f); // f=albedo/pi; pdf=cos_wi/pi; this term = f/pdf*cos_wi = albedo
     }
 
     // The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction rayData.wi (indirect lighting).
     extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
     {
-        const Float3 f = Float3(1.0f) * M_1_PIf;
-        const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);
+        const Float3 f = Float3(1.0f) * M_1_PIf;                         // albedo/pi
+        const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf); // cos_wi/pi
 
         return Float4(f, pdf);
     }
@@ -71,11 +70,14 @@ namespace jazzfusion
     {
         Float2 r = rayData->rand2(sysParam);
 
+        if (!(rayData->flags & FLAG_DIFFUSED))
+        {
+            rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
+        }
+
         // Roughness to alpha
         float roughness = state.roughness;
-        roughness = max(roughness, 1e-3f);
-        float x = logf(roughness);
-        float alpha = 1.62142f + 0.819955f * x + 0.1734f * x * x + 0.0171201f * x * x * x + 0.000640711f * x * x * x * x;
+        float alpha = max1f(sqrtf(roughness), 0.001f);
 
         // pre-calculate alpha2
         float alpha2 = alpha * alpha;
@@ -95,6 +97,10 @@ namespace jazzfusion
 
         // if (OPTIX_CENTER_PIXEL())
         // {
+        //     OPTIX_DEBUG_PRINT(roughness);
+        //     OPTIX_DEBUG_PRINT(alpha);
+        //     OPTIX_DEBUG_PRINT(alpha2);
+
         //     OPTIX_DEBUG_PRINT(state.geometricNormal);
         //     OPTIX_DEBUG_PRINT(state.normal);
         //     OPTIX_DEBUG_PRINT(sampledNormal);
@@ -104,6 +110,7 @@ namespace jazzfusion
 
         if (dot(wi, state.geometricNormal) < 0)
         {
+            // wi = normalize(reflect3f(wi, state.geometricNormal));
             Float2 r2 = rayData->rand2(sysParam);
 
             // Try again
@@ -117,15 +124,23 @@ namespace jazzfusion
             if (dot(wi, state.geometricNormal) < 0)
             {
                 // Failed twice
-                // wi = normalize(reflect3f(-state.wo, state.geometricNormal));
-                brdfOverPdf = Float3(0.0f);
-                pdf = 0.0f;
-                return;
+                wi = normalize(reflect3f(-state.wo, state.geometricNormal));
+                // rayData->flags |= FLAG_TERMINATE;
+                // brdfOverPdf = Float3(0.0f);
+                // pdf = 0.0f;
             }
         }
 
+        // if (dot(wi, state.geometricNormal) < 0)
+        // {
+        //     rayData->flags |= FLAG_TERMINATE;
+        //     brdfOverPdf = Float3(0.0f);
+        //     pdf = 0.0f;
+        //     return;
+        // }
+
         Float3 wh = sampledNormal;
-        Float3 wn = state.geometricNormal;
+        Float3 wn = state.normal;
         Float3 wo = state.wo;
 
         // Fresnel (dieletric or metal)
@@ -133,42 +148,58 @@ namespace jazzfusion
         constexpr float eta2 = 1.0f;
         constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
         float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-        float F = FresnelShlick(F0, cosThetaWoWh); // Can be Float3
-
-        // Smith's Mask-shadowing function G
-        float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-        float cosThetaWi = max(SAFE_COSINE_EPSI, dot(wi, wn));
-        float tanThetaWo = sqrt(1.0f - cosThetaWo * cosThetaWo) / cosThetaWo;
-        float G = 1.0f / (1.0f + (sqrtf(1.0f + alpha2 * tanThetaWo * tanThetaWo) - 1.0f) / 2.0f);
-
-        // Trowbridge Reitz Distribution D
-        float cosThetaWh = max(SAFE_COSINE_EPSI, dot(wh, wn));
-        float cosTheta2Wh = cosThetaWh * cosThetaWh;
-        float tanTheta2Wh = (1.0f - cosTheta2Wh) / cosTheta2Wh;
-        float e = tanTheta2Wh / alpha2 + 1.0f;
-        float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
-
-        // brdf
-        Float3 brdf = Float3(F) * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
-
-        // pdf
-        pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh);
-
-        // beta
-        brdfOverPdf = Float3(F) * (G * cosThetaWoWh) / (cosThetaWh * cosThetaWo); // brdf / pdf * cosThetaWi
+        float R = FresnelShlick(F0, cosThetaWoWh); // Can be Float3
+        float T = 1.0f - R;
 
         // if (OPTIX_CENTER_PIXEL())
         // {
-        //     OPTIX_DEBUG_PRINT(brdf);
-        //     OPTIX_DEBUG_PRINT(pdf);
-        //     OPTIX_DEBUG_PRINT(brdfOverPdf);
+        //     OPTIX_DEBUG_PRINT(R);
         // }
+
+        if (rayData->rand(sysParam) < R)
+        {
+            // Smith's Mask-shadowing function G
+            float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
+            float cosThetaWi = max(SAFE_COSINE_EPSI, dot(wi, wn));
+            float tanThetaWo = sqrt(1.0f - cosThetaWo * cosThetaWo) / cosThetaWo;
+            float G = 1.0f / (1.0f + (sqrtf(1.0f + alpha2 * tanThetaWo * tanThetaWo) - 1.0f) / 2.0f);
+
+            // Trowbridge Reitz Distribution D
+            float cosThetaWh = max(SAFE_COSINE_EPSI, dot(wh, wn));
+            float cosTheta2Wh = cosThetaWh * cosThetaWh;
+            float tanTheta2Wh = (1.0f - cosTheta2Wh) / cosTheta2Wh;
+            float e = tanTheta2Wh / alpha2 + 1.0f;
+            float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
+
+            // brdf
+            Float3 brdf = Float3(R) * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
+
+            // pdf
+            pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh) * R;
+
+            // beta
+            brdfOverPdf = Float3(R) * (G * cosThetaWoWh) / (cosThetaWh * cosThetaWo) * (1.0f / R); // brdf / pdf * cosThetaWi
+        }
+        else
+        {
+            unitSquareToCosineHemisphere(rayData->rand2(sysParam), state.normal, wi, pdf);
+
+            if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
+            {
+                rayData->flags |= FLAG_TERMINATE;
+                return;
+            }
+
+            pdf *= T;
+
+            brdfOverPdf = Float3(1.0f) * (1.0f / T);
+        }
     }
 
     extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
     {
         Float3 wo = state.wo;
-        Float3 wn = state.geometricNormal;
+        Float3 wn = state.normal;
         Float3 wi = wiL;
 
         Float3 brdf = Float3(0.0f);
@@ -181,9 +212,7 @@ namespace jazzfusion
 
         // Roughness to alpha
         float roughness = state.roughness;
-        roughness = max(roughness, 1e-3f);
-        float x = logf(roughness);
-        float alpha = 1.62142f + 0.819955f * x + 0.1734f * x * x + 0.0171201f * x * x * x + 0.000640711f * x * x * x * x;
+        float alpha = max1f(sqrtf(roughness), 0.001f);
         float alpha2 = alpha * alpha;
 
         Float3 wh = normalize(wi + wo);
@@ -193,7 +222,8 @@ namespace jazzfusion
         constexpr float eta2 = 1.0f;
         constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
         float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-        float F = FresnelShlick(F0, cosThetaWoWh); // Can be Float3
+        float R = FresnelShlick(F0, cosThetaWoWh); // Can be Float3
+        float T = 1.0f - R;
 
         // Smith's Mask-shadowing function G
         float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
@@ -208,10 +238,16 @@ namespace jazzfusion
         float e = tanTheta2Wh / alpha2 + 1.0f;
         float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
 
-        brdf = Float3(F) * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
+        brdf = Float3(R) * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
         pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh);
 
-        return Float4(brdf, pdf);
+        const Float3 diffuse_f = Float3(1.0f) * M_1_PIf;
+        const float diffuse_pdf = cosThetaWi * M_1_PIf;
+
+        Float4 result = Float4(brdf, pdf);
+        Float4 diffuseResult = Float4(diffuse_f, diffuse_pdf);
+
+        return lerp4f(result, diffuseResult, T);
     }
 
     extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)

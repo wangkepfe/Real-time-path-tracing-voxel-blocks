@@ -8,6 +8,8 @@
 
 namespace vox
 {
+    void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data);
+
     void generateMesh(jazzfusion::VertexAttributes **attr,
                       unsigned int **indices,
                       std::vector<unsigned int> &faceLocation,
@@ -15,7 +17,11 @@ namespace vox
                       unsigned int &indicesSize,
                       unsigned int &currentFaceCount,
                       unsigned int &maxFaceCount,
-                      VoxelChunk &voxelChunk);
+                      VoxelChunk &voxelChunk,
+                      Voxel *d_data,
+                      int id);
+
+    void freeDeviceVoxelData(Voxel *d_data);
 
     void updateSingleVoxel(
         unsigned int x,

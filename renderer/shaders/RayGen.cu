@@ -157,7 +157,7 @@ namespace jazzfusion
         float outDepth = RayMax;
         bool hitFirstDefuseSurface = false;
 
-        static constexpr int BounceLimit = 6;
+        static constexpr int BounceLimit = 2;
 
         while (!pathTerminated)
         {

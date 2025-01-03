@@ -18,8 +18,7 @@ namespace vox
         {
             struct
             {
-                VoxelDataType id : 1;
-                VoxelDataType unused : 7;
+                VoxelDataType id : 8;
             };
 
             VoxelDataType allBits;

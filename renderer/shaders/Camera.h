@@ -26,7 +26,7 @@ namespace jazzfusion
 
         void init(int width, int height)
         {
-            pos = Float3(16.0f, 18.0f, 16.0f);
+            pos = Float3(16.0f, 17.0f, 16.0f);
             dir = normalize(Float3(-1.0f, -1.0f, -1.0f)); // Example default direction
 
             resolution = Float2((float)width, (float)height);

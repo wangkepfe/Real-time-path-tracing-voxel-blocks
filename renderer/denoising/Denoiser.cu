@@ -43,7 +43,7 @@ namespace jazzfusion
         int frameNum = backend.getFrameNum();
         int accuCounter = backend.getAccumulationCounter();
 
-        if (1)
+        if (0)
         {
             HitDistReconstruction<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
                 bufferDim,
@@ -60,7 +60,7 @@ namespace jazzfusion
             bufferManager.GetBuffer2D(DepthBuffer),
             bufferManager.GetBuffer2D(IlluminationOutputBuffer));
 
-        if (1)
+        if (0)
         {
             PrePass KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
                 bufferDim,
@@ -192,10 +192,7 @@ namespace jazzfusion
                 bufferManager.GetBuffer2D(IlluminationPingBuffer),
 
                 camera);
-        }
 
-        if (1)
-        {
             int atrousIndex = 1;
             int atrousStep = 1 << atrousIndex;
             while (atrousIndex < 7)

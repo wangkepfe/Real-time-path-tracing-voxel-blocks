@@ -100,6 +100,10 @@ namespace jazzfusion
             "data/coast_sand_rocks_02_albedo.png",
             "data/coast_sand_rocks_02_normal.png",
             "data/coast_sand_rocks_02_rough.png",
+
+            "data/seaworn_stone_tiles_albedo.png",
+            "data/seaworn_stone_tiles_normal.png",
+            "data/seaworn_stone_tiles_rough.png",
         };
 
         m_textures.resize(filePaths.size());

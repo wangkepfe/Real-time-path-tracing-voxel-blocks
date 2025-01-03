@@ -34,30 +34,49 @@ namespace vox
         auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-        sceneGeometryAttributes.resize(1);
-        sceneGeometryIndices.resize(1);
-        sceneGeometryAttributeSize.resize(1);
-        sceneGeometryIndicesSize.resize(1);
+        constexpr int totalNumGeometries = 2;
 
-        sceneGeometryAttributes[0] = nullptr;
-        sceneGeometryIndices[0] = nullptr;
-        sceneGeometryAttributeSize[0] = 0;
-        sceneGeometryIndicesSize[0] = 0;
+        sceneGeometryAttributes.resize(totalNumGeometries);
+        sceneGeometryIndices.resize(totalNumGeometries);
+        sceneGeometryAttributeSize.resize(totalNumGeometries);
+        sceneGeometryIndicesSize.resize(totalNumGeometries);
 
-        generateMesh(
-            &(sceneGeometryAttributes[0]),
-            &(sceneGeometryIndices[0]),
-            faceLocation,
-            sceneGeometryAttributeSize[0],
-            sceneGeometryIndicesSize[0],
-            currentFaceCount,
-            maxFaceCount,
-            voxelChunk);
+        faceLocation.resize(totalNumGeometries);
+        currentFaceCount.resize(totalNumGeometries);
+        maxFaceCount.resize(totalNumGeometries);
+        freeFaces.resize(totalNumGeometries);
+
+        Voxel *d_data;
+        initVoxels(voxelChunk, &d_data);
+
+        for (int i = 0; i < totalNumGeometries; ++i)
+        {
+            sceneGeometryAttributes[i] = nullptr;
+            sceneGeometryIndices[i] = nullptr;
+            sceneGeometryAttributeSize[i] = 0;
+            sceneGeometryIndicesSize[i] = 0;
+
+            currentFaceCount[i] = 0;
+            maxFaceCount[i] = 0;
+
+            generateMesh(
+                &(sceneGeometryAttributes[i]),
+                &(sceneGeometryIndices[i]),
+                faceLocation[i],
+                sceneGeometryAttributeSize[i],
+                sceneGeometryIndicesSize[i],
+                currentFaceCount[i],
+                maxFaceCount[i],
+                voxelChunk,
+                d_data,
+                i + 1);
+        }
+
+        freeDeviceVoxelData(d_data);
     }
 
     void VoxelEngine::update()
     {
-
         using namespace jazzfusion;
 
         auto &camera = RenderCamera::Get().camera;
@@ -244,12 +263,12 @@ namespace vox
                     voxelChunk,
                     sceneGeometryAttributes[0],
                     sceneGeometryIndices[0],
-                    faceLocation,
+                    faceLocation[0],
                     sceneGeometryAttributeSize[0],
                     sceneGeometryIndicesSize[0],
-                    currentFaceCount,
-                    maxFaceCount,
-                    freeFaces);
+                    currentFaceCount[0],
+                    maxFaceCount[0],
+                    freeFaces[0]);
 
                 jazzfusion::Scene::Get().needSceneUpdate = true;
                 jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(0);

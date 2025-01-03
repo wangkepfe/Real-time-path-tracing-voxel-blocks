@@ -447,8 +447,7 @@ namespace jazzfusion
             TextureManager &textureManager = TextureManager::Get();
 
             // The order in this array matches the instance ID in the root IAS!
-            // Lambert material for the floor.
-            // parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
+
             parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
             parameters.albedo = Float3(1.0f);
             parameters.uvScale = 1.0f;
@@ -456,9 +455,20 @@ namespace jazzfusion
             parameters.textureNormal = textureManager.GetTexture("data/coast_sand_rocks_02_normal.png");
             parameters.textureRoughness = textureManager.GetTexture("data/coast_sand_rocks_02_rough.png");
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-            parameters.ior = 1.5f;
-            parameters.flags = 0;                       // FLAG_THINWALLED;
-            m_materialParameters.push_back(parameters); // 0
+            parameters.ior = 1.4f;
+            parameters.flags = 0;
+            m_materialParameters.push_back(parameters);
+
+            parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
+            parameters.albedo = Float3(1.0f);
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = textureManager.GetTexture("data/seaworn_stone_tiles_albedo.png");
+            parameters.textureNormal = textureManager.GetTexture("data/seaworn_stone_tiles_normal.png");
+            parameters.textureRoughness = textureManager.GetTexture("data/seaworn_stone_tiles_rough.png");
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.ior = 1.4f;
+            parameters.flags = 0;
+            m_materialParameters.push_back(parameters);
 
             // Glass material
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
