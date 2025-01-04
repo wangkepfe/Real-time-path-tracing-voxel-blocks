@@ -5,6 +5,7 @@
 #include "shaders/LinearMath.h"
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
+#include "voxelengine/VoxelEngine.h"
 
 #include <iostream>
 #include <fstream>
@@ -43,11 +44,11 @@ namespace jazzfusion
                 // camera save & load
                 if (key == GLFW_KEY_C && action == GLFW_PRESS)
                 {
-                    InputHandler::SaveCameraToFile(GlobalSettings::GetCameraSaveFileName());
+                    InputHandler::SaveSceneToFile();
                 }
                 if (key == GLFW_KEY_V && action == GLFW_PRESS)
                 {
-                    InputHandler::LoadCameraFromFile(GlobalSettings::GetCameraSaveFileName());
+                    InputHandler::LoadSceneFromFile();
                 }
             }
             else
@@ -102,6 +103,15 @@ namespace jazzfusion
                         inputHandler.moveSpeed = 0.001f;
                     else if (action == GLFW_RELEASE)
                         inputHandler.moveSpeed = 0.01f;
+                }
+
+                for (int i = 0; i < 10; ++i)
+                {
+                    if (key == GLFW_KEY_0 + i)
+                    {
+                        if (action == GLFW_PRESS)
+                            inputHandler.currentSelectedBlockId = i;
+                    }
                 }
             }
         }
@@ -184,44 +194,89 @@ namespace jazzfusion
         }
     }
 
-    void InputHandler::SaveCameraToFile(const std::string &camFileName)
+    void InputHandler::SaveSceneToFile()
     {
-        auto &camera = RenderCamera::Get().camera;
         using namespace std;
-        ofstream myfile(camFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
-        if (myfile.is_open())
+        std::string saveId = std::to_string(Get().currentSelectedBlockId);
+        std::string fileName = "save" + saveId;
         {
-            myfile.write(reinterpret_cast<char *>(&camera), sizeof(Camera));
-            myfile.close();
-            cout << "Successfully saved camera to file \"" << camFileName.c_str() << "\".\n";
+            std::string camFileName = fileName + "cam.bin";
+            auto &camera = RenderCamera::Get().camera;
+            ofstream myfile(camFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+            if (myfile.is_open())
+            {
+                myfile.write(reinterpret_cast<char *>(&camera), sizeof(Camera));
+                myfile.close();
+                cout << "Successfully saved camera to file \"" << camFileName << "\".\n";
+            }
+            else
+            {
+                cout << "Error: Failed to save camera to file \"" << camFileName << "\".\n";
+            }
         }
-        else
+
         {
-            cout << "Error: Failed to save camera to file \"" << camFileName.c_str() << "\".\n";
+            std::string sceneFileName = fileName + "vox.bin";
+            ofstream myfile(sceneFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+            if (myfile.is_open())
+            {
+                myfile.write(reinterpret_cast<char *>(vox::VoxelEngine::Get().voxelChunk.data), vox::VoxelEngine::Get().voxelChunk.size());
+                myfile.close();
+                cout << "Successfully saved scene to file \"" << sceneFileName << "\".\n";
+            }
+            else
+            {
+                cout << "Error: Failed to save scene to file \"" << sceneFileName << "\".\n";
+            }
         }
     }
 
-    void InputHandler::LoadCameraFromFile(const std::string &camFileName)
+    void InputHandler::LoadSceneFromFile()
     {
-        auto &camera = RenderCamera::Get().camera;
         using namespace std;
-        if (camFileName.empty())
+        std::string saveId = std::to_string(Get().currentSelectedBlockId);
+        std::string fileName = "save" + saveId;
         {
-            cout << "Error: Camera file name is not valid.\n";
-            return;
+            std::string camFileName = fileName + "cam.bin";
+            auto &camera = RenderCamera::Get().camera;
+            if (camFileName.empty())
+            {
+                cout << "Error: Camera file name " << camFileName << " is not valid.\n";
+                return;
+            }
+            ifstream infile(camFileName, std::ifstream::in | std::ifstream::binary);
+            if (infile.good())
+            {
+                char *buffer = new char[sizeof(Camera)];
+                infile.read(buffer, sizeof(Camera));
+                camera = *reinterpret_cast<Camera *>(buffer);
+                delete[] buffer;
+                infile.close();
+            }
+            else
+            {
+                cout << "Error: Failed to read camera file \"" << camFileName.c_str() << "\".\n";
+            }
         }
-        ifstream infile(camFileName, std::ifstream::in | std::ifstream::binary);
-        if (infile.good())
         {
-            char *buffer = new char[sizeof(Camera)];
-            infile.read(buffer, sizeof(Camera));
-            camera = *reinterpret_cast<Camera *>(buffer);
-            delete[] buffer;
-            infile.close();
-        }
-        else
-        {
-            cout << "Error: Failed to read camera file \"" << camFileName.c_str() << "\".\n";
+            std::string sceneFileName = fileName + "vox.bin";
+            if (sceneFileName.empty())
+            {
+                cout << "Error: Scene file name " << sceneFileName << " is not valid.\n";
+                return;
+            }
+            ifstream infile(sceneFileName, std::ifstream::in | std::ifstream::binary);
+            if (infile.good())
+            {
+                infile.read(reinterpret_cast<char *>(vox::VoxelEngine::Get().voxelChunk.data), vox::VoxelEngine::Get().voxelChunk.size());
+                infile.close();
+
+                vox::VoxelEngine::Get().reload();
+            }
+            else
+            {
+                cout << "Error: Failed to read scene file \"" << sceneFileName.c_str() << "\".\n";
+            }
         }
     }
 

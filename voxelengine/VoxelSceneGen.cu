@@ -244,12 +244,12 @@ namespace
         return true;
     }
 
-    bool isNeighborEmpty(unsigned int nx, unsigned int ny, unsigned int nz, unsigned int width, const Voxel *voxels, int id)
+    bool isNeighborEmpty(unsigned int nx, unsigned int ny, unsigned int nz, unsigned int width, const Voxel *voxels, int id, int oldId)
     {
         if (nx >= width || ny >= width || nz >= width)
             return true; // Out of bounds => treat as empty
         Voxel n = voxels[GetLinearId(nx, ny, nz, width)];
-        return id == 0 ? n.id == 0 : (n.id != id);
+        return id == 0 ? (n.id != oldId) : (n.id != id);
     }
 }
 
@@ -337,7 +337,8 @@ namespace vox
 
         // 4. Find how many faces are valid total
         cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
-        maxFaceCount = currentFaceCount * 2;
+        // maxFaceCount = currentFaceCount * 2;
+        maxFaceCount = totalFaces / 4;
 
         attrSize = currentFaceCount * 4;
         indicesSize = currentFaceCount * 6;
@@ -363,7 +364,7 @@ namespace vox
         faceLocation.resize(totalFaces);
         cudaMemcpy(faceLocation.data(), d_faceLocation, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
 
-        if (1)
+        if (0)
         {
             dumpMeshToOBJ(*attr, *indices, attrSize, indicesSize, "debug" + std::to_string(id) + ".obj");
         }
@@ -372,6 +373,148 @@ namespace vox
         cudaFree(d_faceValid);
         cudaFree(d_faceLocation);
         cudaFree(d_faceValidPrefixSum);
+    }
+
+    void updateSingleFace(
+        int faceId,
+        std::vector<unsigned int> &faceLocation,
+        bool shouldExist,
+        int f,
+        jazzfusion::VertexAttributes *attr,
+        unsigned int *indices,
+        std::vector<unsigned int> &freeFaces,
+        unsigned int &currentFaceCount,
+        unsigned int &maxFaceCount,
+        Float3 centerPos)
+    {
+        unsigned int existingFaceIndex = faceLocation[faceId];
+        bool currentlyExists = (existingFaceIndex != UINT_MAX);
+
+        if (currentlyExists && !shouldExist)
+        {
+            // Remove the face
+            // Zero out vertices and indices so it doesn't render
+            unsigned int vOffset = existingFaceIndex * 4;
+            unsigned int iOffset = existingFaceIndex * 6;
+
+            for (int i = 0; i < 4; i++)
+            {
+                attr[vOffset + i].vertex = Float3(0.0f, 0.0f, 0.0f);
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                indices[iOffset + i] = 0; // or invalid index, if the renderer checks this
+            }
+
+            // Mark this face slot as free for reuse
+            freeFaces.push_back((unsigned int)existingFaceIndex);
+            faceLocation[faceId] = UINT_MAX; // face no longer exists
+        }
+        else if (!currentlyExists && shouldExist)
+        {
+            // Add a new face
+            unsigned int newFaceIndex;
+            if (!freeFaces.empty())
+            {
+                // Reuse a freed slot
+                newFaceIndex = freeFaces.back();
+                freeFaces.pop_back();
+            }
+            else
+            {
+                // Append at the end if we have capacity
+                if (currentFaceCount >= maxFaceCount)
+                {
+                    // Out of space - you may choose to reallocate or do a full rebuild
+                    // For now, just return or handle error
+                    return;
+                }
+                newFaceIndex = currentFaceCount;
+                currentFaceCount++;
+            }
+
+            Float3 verts[4];
+            ComputeFaceVertices(centerPos, f, verts);
+
+            unsigned int vOffset = newFaceIndex * 4;
+            unsigned int iOffset = newFaceIndex * 6;
+
+            // Write vertices
+            for (int i = 0; i < 4; i++)
+            {
+                attr[vOffset + i].vertex = verts[i];
+            }
+
+            // Write indices
+            indices[iOffset + 0] = vOffset + 2;
+            indices[iOffset + 1] = vOffset + 1;
+            indices[iOffset + 2] = vOffset + 0;
+
+            indices[iOffset + 3] = vOffset + 3;
+            indices[iOffset + 4] = vOffset + 2;
+            indices[iOffset + 5] = vOffset + 0;
+
+            // Update mapping
+            faceLocation[faceId] = newFaceIndex;
+        }
+    }
+
+    bool getColocatedFace(int &colocatedVid, int &colocatedFaceF, Float3 &colocatedCenterPos, unsigned int x, unsigned int y, unsigned int z, int f, VoxelChunk &voxelChunk)
+    {
+        // Remember:
+        // f = 0 => Up    => neighbor in +Y direction => opposite face is 1 (Down)
+        // f = 1 => Down  => neighbor in -Y direction => opposite face is 0 (Up)
+        // f = 2 => Left  => neighbor in -X direction => opposite face is 3 (Right)
+        // f = 3 => Right => neighbor in +X direction => opposite face is 2 (Left)
+        // f = 4 => Back  => neighbor in +Z direction => opposite face is 5 (Front)
+        // f = 5 => Front => neighbor in -Z direction => opposite face is 4 (Back)
+
+        // Check each face direction, ensure we stay within [0, width-1] bounds
+        if (f == 0 && y < voxelChunk.width - 1) // Up => neighbor is (x, y+1, z)
+        {
+            colocatedVid = GetLinearId(x, y + 1, z, voxelChunk.width);
+            colocatedFaceF = 1; // Down
+            colocatedCenterPos = Float3((float)x, (float)(y + 1), (float)z);
+            return true;
+        }
+        else if (f == 1 && y > 0) // Down => neighbor is (x, y-1, z)
+        {
+            colocatedVid = GetLinearId(x, y - 1, z, voxelChunk.width);
+            colocatedFaceF = 0; // Up
+            colocatedCenterPos = Float3((float)x, (float)(y - 1), (float)z);
+            return true;
+        }
+        else if (f == 2 && x > 0) // Left => neighbor is (x-1, y, z)
+        {
+            colocatedVid = GetLinearId(x - 1, y, z, voxelChunk.width);
+            colocatedFaceF = 3; // Right
+            colocatedCenterPos = Float3((float)(x - 1), (float)y, (float)z);
+            return true;
+        }
+        else if (f == 3 && x < voxelChunk.width - 1) // Right => neighbor is (x+1, y, z)
+        {
+            colocatedVid = GetLinearId(x + 1, y, z, voxelChunk.width);
+            colocatedFaceF = 2; // Left
+            colocatedCenterPos = Float3((float)(x + 1), (float)y, (float)z);
+            return true;
+        }
+        else if (f == 4 && z < voxelChunk.width - 1) // Back => neighbor is (x, y, z+1)
+        {
+            colocatedVid = GetLinearId(x, y, z + 1, voxelChunk.width);
+            colocatedFaceF = 5; // Front
+            colocatedCenterPos = Float3((float)x, (float)y, (float)(z + 1));
+            return true;
+        }
+        else if (f == 5 && z > 0) // Front => neighbor is (x, y, z-1)
+        {
+            colocatedVid = GetLinearId(x, y, z - 1, voxelChunk.width);
+            colocatedFaceF = 4; // Back
+            colocatedCenterPos = Float3((float)x, (float)y, (float)(z - 1));
+            return true;
+        }
+
+        // If no valid opposite/neighbor within bounds was found, return false
+        return false;
     }
 
     // CPU function to update the mesh for a single changed voxel (add or remove).
@@ -421,7 +564,7 @@ namespace vox
             unsigned int nx = x + dir.x;
             unsigned int ny = y + dir.y;
             unsigned int nz = z + dir.z;
-            bool neighEmpty = isNeighborEmpty(nx, ny, nz, voxelChunk.width, voxelChunk.data, newVal);
+            bool neighEmpty = isNeighborEmpty(nx, ny, nz, voxelChunk.width, voxelChunk.data, newVal, oldVoxel.id);
             facesShouldExist[f] = ((newVal != 0) && neighEmpty) || ((newVal == 0) && !neighEmpty);
         }
 
@@ -430,78 +573,42 @@ namespace vox
         for (int f = 0; f < 6; f++)
         {
             int faceId = (int)(vid * 6 + f);
-            unsigned int existingFaceIndex = faceLocation[faceId];
-            bool currentlyExists = (existingFaceIndex != UINT_MAX);
-            bool shouldExist = facesShouldExist[f];
+            bool shouldExist = (newVal != 0) ? facesShouldExist[f] : false;
 
-            if (currentlyExists && !shouldExist)
+            updateSingleFace(
+                faceId,
+                faceLocation,
+                shouldExist,
+                f,
+                attr,
+                indices,
+                freeFaces,
+                currentFaceCount,
+                maxFaceCount,
+                centerPos);
+
+            int colocatedFaceF;
+            int colocatedVid;
+            Float3 colocatedCenterPos;
+            bool hasColocatedFace = getColocatedFace(colocatedVid, colocatedFaceF, colocatedCenterPos, x, y, z, f, voxelChunk);
+            if (hasColocatedFace)
             {
-                // Remove the face
-                // Zero out vertices and indices so it doesn't render
-                unsigned int vOffset = existingFaceIndex * 4;
-                unsigned int iOffset = existingFaceIndex * 6;
+                int colocatedFaceId = colocatedVid * 6 + colocatedFaceF;
 
-                for (int i = 0; i < 4; i++)
-                {
-                    attr[vOffset + i].vertex = Float3(0.0f, 0.0f, 0.0f);
-                }
-                for (int i = 0; i < 6; i++)
-                {
-                    indices[iOffset + i] = 0; // or invalid index, if the renderer checks this
-                }
+                shouldExist = (newVal != 0) ? false : facesShouldExist[f];
 
-                // Mark this face slot as free for reuse
-                freeFaces.push_back((unsigned int)existingFaceIndex);
-                faceLocation[faceId] = UINT_MAX; // face no longer exists
+                updateSingleFace(
+                    colocatedFaceId,
+                    faceLocation,
+                    shouldExist,
+                    colocatedFaceF,
+                    attr,
+                    indices,
+                    freeFaces,
+                    currentFaceCount,
+                    maxFaceCount,
+                    colocatedCenterPos);
             }
-            else if (!currentlyExists && shouldExist)
-            {
-                // Add a new face
-                unsigned int newFaceIndex;
-                if (!freeFaces.empty())
-                {
-                    // Reuse a freed slot
-                    newFaceIndex = freeFaces.back();
-                    freeFaces.pop_back();
-                }
-                else
-                {
-                    // Append at the end if we have capacity
-                    if (currentFaceCount >= maxFaceCount)
-                    {
-                        // Out of space - you may choose to reallocate or do a full rebuild
-                        // For now, just return or handle error
-                        return;
-                    }
-                    newFaceIndex = currentFaceCount;
-                    currentFaceCount++;
-                }
-
-                Float3 verts[4];
-                ComputeFaceVertices(centerPos, f, verts);
-
-                unsigned int vOffset = newFaceIndex * 4;
-                unsigned int iOffset = newFaceIndex * 6;
-
-                // Write vertices
-                for (int i = 0; i < 4; i++)
-                {
-                    attr[vOffset + i].vertex = verts[i];
-                }
-
-                // Write indices
-                indices[iOffset + 0] = vOffset + 2;
-                indices[iOffset + 1] = vOffset + 1;
-                indices[iOffset + 2] = vOffset + 0;
-
-                indices[iOffset + 3] = vOffset + 3;
-                indices[iOffset + 4] = vOffset + 2;
-                indices[iOffset + 5] = vOffset + 0;
-
-                // Update mapping
-                faceLocation[faceId] = newFaceIndex;
-            }
-            // If currentlyExists == shouldExist, no action needed
         }
 
         attrSize = currentFaceCount * 4;

@@ -169,11 +169,6 @@ namespace jazzfusion
         }
         static SkyParams &GetSkyParams() { return Get().skyParams; }
 
-        static const std::string &GetCameraSaveFileName()
-        {
-            return Get().cameraSaveFileName;
-        }
-
         RenderPassSettings renderPassSettings{};
         DenoisingParams denoisingParams{};
         PostProcessParams postProcessParams{};

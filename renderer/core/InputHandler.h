@@ -8,60 +8,62 @@ struct GLFWwindow;
 namespace jazzfusion
 {
 
-enum class AppMode
-{
-    Gameplay,
-    Menu,
-};
-
-class InputHandler
-{
-public:
-    static InputHandler& Get()
+    enum class AppMode
     {
-        static InputHandler instance;
-        return instance;
-    }
-    InputHandler(InputHandler const&) = delete;
-    void operator=(InputHandler const&) = delete;
+        Gameplay,
+        Menu,
+    };
 
-    static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-    static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos);
-    static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-
-    static void SaveCameraToFile(const std::string& camFileName);
-    static void LoadCameraFromFile(const std::string& camFileName);
-
-    void update();
-    void setMouseButtonCallbackFunc(std::function<void(int, int, int)> mouseButtonCallbackFuncIn)
+    class InputHandler
     {
-        mouseButtonCallbackFunc = mouseButtonCallbackFuncIn;
-    }
+    public:
+        static InputHandler &Get()
+        {
+            static InputHandler instance;
+            return instance;
+        }
+        InputHandler(InputHandler const &) = delete;
+        void operator=(InputHandler const &) = delete;
 
-private:
-    InputHandler() {}
+        static void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods);
+        static void CursorPosCallback(GLFWwindow *window, double xpos, double ypos);
+        static void MouseButtonCallback(GLFWwindow *window, int button, int action, int mods);
 
-    float moveSpeed = 0.01f;
-    float cursorMoveSpeed = 0.001f;
+        static void SaveSceneToFile();
+        static void LoadSceneFromFile();
 
-    double xpos = 0;
-    double ypos = 0;
+        void update();
+        void setMouseButtonCallbackFunc(std::function<void(int, int, int)> mouseButtonCallbackFuncIn)
+        {
+            mouseButtonCallbackFunc = mouseButtonCallbackFuncIn;
+        }
 
-    bool moveW = 0;
-    bool moveS = 0;
-    bool moveA = 0;
-    bool moveD = 0;
-    bool moveC = 0;
-    bool moveX = 0;
+        int currentSelectedBlockId = 1;
 
-    float deltax = 0;
-    float deltay = 0;
+    private:
+        InputHandler() {}
 
-    int cursorReset = 1;
+        float moveSpeed = 0.01f;
+        float cursorMoveSpeed = 0.001f;
 
-    std::function<void(int, int, int)> mouseButtonCallbackFunc;
+        double xpos = 0;
+        double ypos = 0;
 
-    AppMode appmode = AppMode::Gameplay;
-};
+        bool moveW = 0;
+        bool moveS = 0;
+        bool moveA = 0;
+        bool moveD = 0;
+        bool moveC = 0;
+        bool moveX = 0;
+
+        float deltax = 0;
+        float deltay = 0;
+
+        int cursorReset = 1;
+
+        std::function<void(int, int, int)> mouseButtonCallbackFunc;
+
+        AppMode appmode = AppMode::Gameplay;
+    };
 
 }

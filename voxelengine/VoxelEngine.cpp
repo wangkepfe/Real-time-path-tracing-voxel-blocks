@@ -51,8 +51,6 @@ namespace vox
 
         for (int i = 0; i < totalNumGeometries; ++i)
         {
-            sceneGeometryAttributes[i] = nullptr;
-            sceneGeometryIndices[i] = nullptr;
             sceneGeometryAttributeSize[i] = 0;
             sceneGeometryIndicesSize[i] = 0;
 
@@ -75,6 +73,48 @@ namespace vox
         freeDeviceVoxelData(d_data);
     }
 
+    void VoxelEngine::reload()
+    {
+        constexpr int totalNumGeometries = 2;
+
+        Voxel *d_data;
+        size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
+        cudaMalloc(&d_data, totalVoxels * sizeof(Voxel));
+        cudaMemcpy(d_data, voxelChunk.data, totalVoxels * sizeof(Voxel), cudaMemcpyHostToDevice);
+
+        auto &scene = jazzfusion::Scene::Get();
+        auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
+        auto &sceneGeometryIndices = scene.m_geometryIndices;
+        auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
+        auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+
+        for (int i = 0; i < totalNumGeometries; ++i)
+        {
+            sceneGeometryAttributeSize[i] = 0;
+            sceneGeometryIndicesSize[i] = 0;
+
+            currentFaceCount[i] = 0;
+            maxFaceCount[i] = 0;
+
+            generateMesh(
+                &(sceneGeometryAttributes[i]),
+                &(sceneGeometryIndices[i]),
+                faceLocation[i],
+                sceneGeometryAttributeSize[i],
+                sceneGeometryIndicesSize[i],
+                currentFaceCount[i],
+                maxFaceCount[i],
+                voxelChunk,
+                d_data,
+                i + 1);
+
+            jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(i);
+        }
+        jazzfusion::Scene::Get().needSceneUpdate = true;
+
+        freeDeviceVoxelData(d_data);
+    }
+
     void VoxelEngine::update()
     {
         using namespace jazzfusion;
@@ -85,6 +125,8 @@ namespace vox
         bool hasSpaceToCreate = false;
         bool hitSurface = false;
         Int3 createPos(-1, -1, -1);
+        Int3 deletePos(-1, -1, -1);
+        int deleteBlockId = -1;
 
         cudaDeviceSynchronize();
 
@@ -161,6 +203,8 @@ namespace vox
                 hitX = x;
                 hitY = y;
                 hitZ = z;
+                deletePos = Int3(x, y, z);
+                deleteBlockId = voxel.id;
                 // We stop here
                 break;
             }
@@ -246,32 +290,69 @@ namespace vox
         {
             leftMouseButtonClicked = false;
 
-            if (hasSpaceToCreate && hitSurface)
+            int blockId = InputHandler::Get().currentSelectedBlockId;
+
+            if (blockId == 0) // delete a block
             {
-                auto &scene = jazzfusion::Scene::Get();
+                if (hitSurface)
+                {
+                    auto &scene = jazzfusion::Scene::Get();
 
-                auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-                auto &sceneGeometryIndices = scene.m_geometryIndices;
-                auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
-                auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+                    auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
+                    auto &sceneGeometryIndices = scene.m_geometryIndices;
+                    auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
+                    auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-                unsigned int newVal = 1;
+                    unsigned int newVal = 0;
+                    int idx = deleteBlockId - 1;
 
-                updateSingleVoxel(
-                    createPos.x, createPos.y, createPos.z,
-                    newVal,
-                    voxelChunk,
-                    sceneGeometryAttributes[0],
-                    sceneGeometryIndices[0],
-                    faceLocation[0],
-                    sceneGeometryAttributeSize[0],
-                    sceneGeometryIndicesSize[0],
-                    currentFaceCount[0],
-                    maxFaceCount[0],
-                    freeFaces[0]);
+                    updateSingleVoxel(
+                        deletePos.x, deletePos.y, deletePos.z,
+                        newVal,
+                        voxelChunk,
+                        sceneGeometryAttributes[idx],
+                        sceneGeometryIndices[idx],
+                        faceLocation[idx],
+                        sceneGeometryAttributeSize[idx],
+                        sceneGeometryIndicesSize[idx],
+                        currentFaceCount[idx],
+                        maxFaceCount[idx],
+                        freeFaces[idx]);
 
-                jazzfusion::Scene::Get().needSceneUpdate = true;
-                jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(0);
+                    jazzfusion::Scene::Get().needSceneUpdate = true;
+                    jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                }
+            }
+            else // create a block
+            {
+                if (hasSpaceToCreate && hitSurface)
+                {
+                    auto &scene = jazzfusion::Scene::Get();
+
+                    auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
+                    auto &sceneGeometryIndices = scene.m_geometryIndices;
+                    auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
+                    auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+
+                    unsigned int newVal = blockId;
+                    int idx = blockId - 1;
+
+                    updateSingleVoxel(
+                        createPos.x, createPos.y, createPos.z,
+                        newVal,
+                        voxelChunk,
+                        sceneGeometryAttributes[idx],
+                        sceneGeometryIndices[idx],
+                        faceLocation[idx],
+                        sceneGeometryAttributeSize[idx],
+                        sceneGeometryIndicesSize[idx],
+                        currentFaceCount[idx],
+                        maxFaceCount[idx],
+                        freeFaces[idx]);
+
+                    jazzfusion::Scene::Get().needSceneUpdate = true;
+                    jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                }
             }
         }
     }

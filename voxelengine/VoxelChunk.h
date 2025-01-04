@@ -31,6 +31,11 @@ namespace vox
             memset(data, 0, width * width * width * sizeof(Voxel));
         }
 
+        unsigned int size()
+        {
+            return width * width * width * sizeof(Voxel);
+        }
+
         Voxel get(unsigned int x, unsigned int y, unsigned int z)
         {
             return data[GetLinearId(x, y, z, width)];

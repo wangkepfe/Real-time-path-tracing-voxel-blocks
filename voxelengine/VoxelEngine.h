@@ -26,6 +26,7 @@ namespace vox
         void init();
         void update();
         void generateVoxels();
+        void reload();
 
         VoxelChunk voxelChunk;
         bool leftMouseButtonClicked = false;
