@@ -15,8 +15,8 @@ namespace jazzfusion
 
         Float3 color = Load2DFloat4(colorBuffer, idx).xyz;
 
-        float gain = 20.0f;
-        float maxWhite = 20.0f;
+        float gain = 6.0f;
+        float maxWhite = 6.0f;
         float gamma = 2.2f;
 
         color *= gain;

@@ -28,6 +28,9 @@ namespace vox
         void generateVoxels();
         void reload();
 
+        int totalNumBlockTypes;
+        int totalNumGeometries;
+
         VoxelChunk voxelChunk;
         bool leftMouseButtonClicked = false;
 

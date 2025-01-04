@@ -107,14 +107,44 @@ namespace jazzfusion
         if (centerViewZ > denoisingRange)
             return;
 
-        Float3 illum = Load2DFloat4(inBuffer, pixelPos).xyz;
-        // Float3 albedo = Float3(1.0f);
-        Float3 albedo = Load2DFloat4(albedoBuffer, pixelPos).xyz;
-        Float3 uiOverlay = Load2DFloat4(uiBuffer, pixelPos).xyz;
-        Float3 uiColor = Float3(0.0f);
+        if (1)
+        {
+            Float3 illum = Load2DFloat4(inBuffer, pixelPos).xyz;
+            Float3 albedo = Load2DFloat4(albedoBuffer, pixelPos).xyz;
+            Float3 uiOverlay = Load2DFloat4(uiBuffer, pixelPos).xyz;
+            Float3 uiColor = Float3(0.0f);
 
-        Float3 out = uiOverlay.x > 0.0f ? uiColor : (illum * albedo);
+            Float3 out = uiOverlay.x > 0.0f ? uiColor : (illum * albedo);
 
-        Store2DFloat4(Float4(out, 0.0f), outBuffer, pixelPos);
+            Store2DFloat4(Float4(out, 0.0f), outBuffer, pixelPos);
+        }
+
+        // Visualize depth
+        if (0)
+        {
+            float debugVisualization = Load2DFloat1(inBuffer, pixelPos);
+            if (CUDA_CENTER_PIXEL())
+            {
+                DEBUG_PRINT(debugVisualization);
+            }
+            float depth = debugVisualization;
+            float depthMin = 0.0f;
+            float depthMax = 20.0f;
+            float normalizedDepth = (depth > depthMin) ? logf(depth - depthMin + 1.0f) / logf(depthMax - depthMin + 1.0f) : 0.0f;
+            normalizedDepth = fminf(fmaxf(normalizedDepth, 0.0f), 1.0f);
+            Store2DFloat4(Float4(normalizedDepth), outBuffer, pixelPos);
+        }
+
+        // Visualize normal
+        if (0)
+        {
+            Float3 debugVisualization = Load2DFloat4(inBuffer, pixelPos).xyz;
+            if (CUDA_CENTER_PIXEL())
+            {
+                DEBUG_PRINT(debugVisualization);
+            }
+            debugVisualization = (debugVisualization + 1.0f) / 2.0f;
+            Store2DFloat4(Float4(debugVisualization, 0.0f), outBuffer, pixelPos);
+        }
     }
 }

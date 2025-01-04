@@ -434,6 +434,8 @@ namespace jazzfusion
         INL_HOST_DEVICE explicit Float3(const float3 &v) : x(v.x), y(v.y), z(v.z) {}
         INL_HOST_DEVICE explicit Float3(const float4 &v) : x(v.x), y(v.y), z(v.z) {}
 
+        INL_HOST_DEVICE float3 to_float3() const { return make_float3(x, y, z); }
+
         INL_HOST_DEVICE Float2 xz() const { return Float2(x, z); }
 
         INL_HOST_DEVICE Float3 operator+(const Float3 &v) const { return Float3(x + v.x, y + v.y, z + v.z); }

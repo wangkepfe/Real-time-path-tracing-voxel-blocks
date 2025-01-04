@@ -37,4 +37,10 @@ namespace vox
         unsigned int &currentFaceCount,
         unsigned int &maxFaceCount,
         std::vector<unsigned int> &freeFaces);
+
+    void generateSea(jazzfusion::VertexAttributes **attr,
+                     unsigned int **indices,
+                     unsigned int &attrSize,
+                     unsigned int &indicesSize,
+                     int width);
 }

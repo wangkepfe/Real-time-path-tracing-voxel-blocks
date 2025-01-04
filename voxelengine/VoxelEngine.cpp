@@ -34,22 +34,23 @@ namespace vox
         auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-        constexpr int totalNumGeometries = 2;
+        totalNumBlockTypes = 6;
+        totalNumGeometries = totalNumBlockTypes;
 
         sceneGeometryAttributes.resize(totalNumGeometries);
         sceneGeometryIndices.resize(totalNumGeometries);
         sceneGeometryAttributeSize.resize(totalNumGeometries);
         sceneGeometryIndicesSize.resize(totalNumGeometries);
 
-        faceLocation.resize(totalNumGeometries);
-        currentFaceCount.resize(totalNumGeometries);
-        maxFaceCount.resize(totalNumGeometries);
-        freeFaces.resize(totalNumGeometries);
+        faceLocation.resize(totalNumBlockTypes);
+        currentFaceCount.resize(totalNumBlockTypes);
+        maxFaceCount.resize(totalNumBlockTypes);
+        freeFaces.resize(totalNumBlockTypes);
 
         Voxel *d_data;
         initVoxels(voxelChunk, &d_data);
 
-        for (int i = 0; i < totalNumGeometries; ++i)
+        for (int i = 0; i < totalNumBlockTypes; ++i)
         {
             sceneGeometryAttributeSize[i] = 0;
             sceneGeometryIndicesSize[i] = 0;
@@ -71,12 +72,19 @@ namespace vox
         }
 
         freeDeviceVoxelData(d_data);
+
+        // Generate geometry for sea
+        // int seaIndex = totalNumGeometries - 1;
+        // generateSea(
+        //     &(sceneGeometryAttributes[seaIndex]),
+        //     &(sceneGeometryIndices[seaIndex]),
+        //     sceneGeometryAttributeSize[seaIndex],
+        //     sceneGeometryIndicesSize[seaIndex],
+        //     voxelChunk.width);
     }
 
     void VoxelEngine::reload()
     {
-        constexpr int totalNumGeometries = 2;
-
         Voxel *d_data;
         size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
         cudaMalloc(&d_data, totalVoxels * sizeof(Voxel));
@@ -88,7 +96,7 @@ namespace vox
         auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-        for (int i = 0; i < totalNumGeometries; ++i)
+        for (int i = 0; i < totalNumBlockTypes; ++i)
         {
             sceneGeometryAttributeSize[i] = 0;
             sceneGeometryIndicesSize[i] = 0;

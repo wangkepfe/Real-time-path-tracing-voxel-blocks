@@ -27,10 +27,10 @@ namespace jazzfusion
     {
         unitSquareToCosineHemisphere(rayData->rand2(sysParam), state.normal, wi, pdf);
 
-        if (!(rayData->flags & FLAG_DIFFUSED))
-        {
-            rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
-        }
+        // if (!(rayData->flags & FLAG_DIFFUSED))
+        // {
+        //     rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
+        // }
 
         if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
         {
@@ -70,10 +70,10 @@ namespace jazzfusion
     {
         Float2 r = rayData->rand2(sysParam);
 
-        if (!(rayData->flags & FLAG_DIFFUSED))
-        {
-            rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
-        }
+        // if (!(rayData->flags & FLAG_DIFFUSED))
+        // {
+        //     rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
+        // }
 
         // Roughness to alpha
         float roughness = state.roughness;
@@ -262,10 +262,10 @@ namespace jazzfusion
             return;
         }
 
-        if (!(rayData->flags & FLAG_DIFFUSED))
-        {
-            rayData->material |= RAY_MAT_FLAG_REFL_OR_REFR << (2 * rayData->depth);
-        }
+        // if (!(rayData->flags & FLAG_DIFFUSED))
+        // {
+        //     rayData->material |= RAY_MAT_FLAG_REFL_OR_REFR << (2 * rayData->depth);
+        // }
 
         f_over_pdf = Float3(1.0f);
         pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
@@ -331,10 +331,10 @@ namespace jazzfusion
 
         if (rayData->flags & FLAG_VOLUME) // If we are inside a volumn
         {
-            if (!(rayData->flags & FLAG_DIFFUSED))
-            {
-                rayData->material |= RAY_MAT_FLAG_REFL_OR_REFR << (2 * rayData->depth);
-            }
+            // if (!(rayData->flags & FLAG_DIFFUSED))
+            // {
+            //     rayData->material |= RAY_MAT_FLAG_REFL_OR_REFR << (2 * rayData->depth);
+            // }
 
             if (reflective == 1.0f) // Either total reflection
             {
@@ -348,10 +348,10 @@ namespace jazzfusion
         }
         else
         {
-            if (!(rayData->flags & FLAG_DIFFUSED))
-            {
-                rayData->material |= RAY_MAT_FLAG_REFR_AND_REFL << (2 * rayData->depth);
-            }
+            // if (!(rayData->flags & FLAG_DIFFUSED))
+            // {
+            //     rayData->material |= RAY_MAT_FLAG_REFR_AND_REFL << (2 * rayData->depth);
+            // }
 
             if (rayData->sampleIdx & 0x1)
             {

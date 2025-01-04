@@ -27,24 +27,6 @@ namespace jazzfusion
 
         Float3 color = Load2DFloat4(outColorBuffer, idx).xyz;
         out[linearId] = Float4(color, 0);
-
-        // float debugVisualization = Load2DFloat4(outColorBuffer, idx).w;
-
-        // float debugVisualization = Load2DFloat1(outColorBuffer, idx);
-        // if (CUDA_CENTER_PIXEL())
-        // {
-        //     DEBUG_PRINT(debugVisualization);
-        // }
-        // float depth = debugVisualization;
-        // float depthMin = 0.0f;
-        // float depthMax = 20.0f;
-        // // Apply a logarithmic curve to enhance visualization
-        // float normalizedDepth = (depth > depthMin) ? logf(depth - depthMin + 1.0f) / logf(depthMax - depthMin + 1.0f) : 0.0f;
-
-        // // Clamp to [0.0, 1.0] to avoid artifacts
-        // normalizedDepth = fminf(fmaxf(normalizedDepth, 0.0f), 1.0f);
-
-        // out[linearId] = Float4(Float3(normalizedDepth), 0);
     }
 
     void PostProcessor::run(Float4 *interopBuffer, int inputWidthIn, int inputHeightIn, int outputWidthIn, int outputHeightIn)
@@ -71,7 +53,7 @@ namespace jazzfusion
         // {
         //     EdgeAdaptiveSpatialUpsampling KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(OutputColorBuffer), bufferManager.GetBuffer2D(RenderColorBuffer),
         //                                                                                                                                      inputWidth, inputHeight, inputWidth, inputHeight, outputWidth, outputHeight);
-        // } 
+        // }
         // else
         // {
         // BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(

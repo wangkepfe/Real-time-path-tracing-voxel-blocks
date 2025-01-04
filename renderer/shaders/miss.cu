@@ -102,14 +102,14 @@ namespace jazzfusion
         }
 
         rayData->radiance = emission * misWeight;
-
         // rayData->totalDistance = RayMax;
         rayData->distance = RayMax;
         rayData->flags |= FLAG_TERMINATE;
-        if (!(rayData->flags & FLAG_DIFFUSED))
-        {
-            rayData->material |= RAY_MAT_FLAG_SKY << (2 * rayData->depth);
-        }
+
+        // if (!(rayData->flags & FLAG_DIFFUSED))
+        // {
+        //     rayData->material |= RAY_MAT_FLAG_SKY << (2 * rayData->depth);
+        // }
     }
 
 }

@@ -113,6 +113,7 @@ set( SHADERS_HEADERS
     renderer/shaders/HalfPrecision.h
     renderer/shaders/Sampler.h
     renderer/shaders/RandGen.h
+    renderer/shaders/SelfHit.h
 )
 
 message("PTX_DIR = " "${PTX_DIR}")

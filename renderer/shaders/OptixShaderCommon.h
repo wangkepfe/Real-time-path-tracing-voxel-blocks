@@ -49,7 +49,7 @@ namespace jazzfusion
         unsigned int depth;
 
         Float3 radiance; // Radiance along the current path segment.
-        unsigned int material;
+        float material;
 
         Float3 f_over_pdf; // BSDF sample throughput, pre-multiplied f_over_pdf = bsdf.f * fabsf(dot(wi, ns) / bsdf.pdf;
         float pdf;         // The last BSDF sample's pdf, tracked for multiple importance sampling.
@@ -67,6 +67,8 @@ namespace jazzfusion
         float roughness;
 
         // float totalDistance;
+        bool hitFirstDefuseSurface;
+
         // Float3 lightEmission;
         // float lightPdf;
         // Float3 centerRayDir;

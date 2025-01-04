@@ -13,9 +13,23 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
+#include "TextureUtils.h"
 
 namespace jazzfusion
 {
+
+    const std::vector<std::string> &TextureManager::GetTextureFiles()
+    {
+        static const std::vector<std::string> textureFiles = {
+            "rocky_trail",
+            "gray_rocks",
+            "seaworn_stone_tiles",
+            "beige_wall_001",
+            "wood_planks",
+            "bark_willow_02",
+        };
+        return textureFiles;
+    }
 
     __global__ void fillFirstMipmapKernel(
         unsigned char *dMipmap,
@@ -96,15 +110,13 @@ namespace jazzfusion
     {
         std::filesystem::path cwd = std::filesystem::current_path();
 
-        std::vector<std::string> filePaths = {
-            "data/coast_sand_rocks_02_albedo.png",
-            "data/coast_sand_rocks_02_normal.png",
-            "data/coast_sand_rocks_02_rough.png",
-
-            "data/seaworn_stone_tiles_albedo.png",
-            "data/seaworn_stone_tiles_normal.png",
-            "data/seaworn_stone_tiles_rough.png",
-        };
+        std::vector<std::string> filePaths;
+        for (const auto &textureFile : GetTextureFiles())
+        {
+            filePaths.emplace_back("data/" + textureFile + "_albedo.png");
+            filePaths.emplace_back("data/" + textureFile + "_normal.png");
+            filePaths.emplace_back("data/" + textureFile + "_rough.png");
+        }
 
         m_textures.resize(filePaths.size());
 

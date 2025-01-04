@@ -2,6 +2,7 @@
 #include "OptixShaderCommon.h"
 #include "ShaderDebugUtils.h"
 #include "Sampler.h"
+#include "SelfHit.h"
 
 namespace jazzfusion
 {
@@ -87,16 +88,113 @@ namespace jazzfusion
         return r;
     }
 
+    // ========================================================================================
+    // Example: Overload a small helper to get the safe world-space position (and normal) from a triangle.
+    // This example uses the SIA library calls you shared earlier.
+    // ========================================================================================
+    __forceinline__ __device__ void getSafeTriangleSpawnOffsetInWorldSpace(
+        const float3 &v0,
+        const float3 &v1,
+        const float3 &v2,
+        float3 &spawnPos,    // [out] final safe position in world space
+        float3 &spawnNormal, // [out] final safe normal in world space
+        float &spawnOffset   // [out] final safe offset along normal in world space
+    )
+    {
+        // 3) Get barycentrics for the hit.
+        float2 bary = optixGetTriangleBarycentrics();
+
+        // 4) Compute the safe offset *in object space*.
+        //    If your GAS is truly in object space, you can do:
+        //    SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(objPos, objNorm, objOffset, v0, v1, v2, bary).
+        //    However, if your triangle data[] is already in world space, you can skip transformSafeSpawnOffset below.
+        //    For demonstration, let's assume data[] is object-space, so we do:
+        float3 objPos, objNorm;
+        float objOffset;
+        SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(
+            /*out*/ objPos,
+            /*out*/ objNorm,
+            /*out*/ objOffset,
+            v0, v1, v2, // v0, v1, v2
+            bary);
+
+        // 5) Now convert that safe offset into world space.
+        //    - If your code uses a single instance transform, the default
+        //      transformSafeSpawnOffset(...) will read the local transform list
+        //      from optixGetTransformListHandle(0..N).
+        //    - If you have multiple levels, you can pass in an array of traversable handles.
+        //    - For a single transform, the following call is enough:
+        float3 wPos, wNorm;
+        float wOffset;
+        SelfIntersectionAvoidance::transformSafeSpawnOffset(
+            /*out*/ wPos,
+            /*out*/ wNorm,
+            /*out*/ wOffset,
+            objPos, // from step 4
+            objNorm,
+            objOffset);
+
+        // 6) Provide the final results back to our caller.
+        spawnPos = wPos;
+        spawnNormal = wNorm;
+        spawnOffset = wOffset;
+    }
+
     extern "C" __global__ void __closesthit__radiance()
     {
         PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
         rayData->distance = optixGetRayTmax();
-        rayData->pos = rayData->pos + rayData->wi * rayData->distance;
+        // rayData->pos = rayData->pos + rayData->wi * rayData->distance;
 
         GeometryInstanceData *instanceData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
+
+        const unsigned int thePrimtiveIndex = optixGetPrimitiveIndex();
+
+        const Int3 tri = instanceData->indices[thePrimtiveIndex];
+
+        const VertexAttributes &va0 = instanceData->attributes[tri.x];
+        const VertexAttributes &va1 = instanceData->attributes[tri.y];
+        const VertexAttributes &va2 = instanceData->attributes[tri.z];
+
+        const Float3 v0 = va0.vertex;
+        const Float3 v1 = va1.vertex;
+        const Float3 v2 = va2.vertex;
+
+        float2 bary = optixGetTriangleBarycentrics();
+
+        float3 objPos, objNorm;
+        float objOffset;
+        SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(
+            /*out*/ objPos,
+            /*out*/ objNorm,
+            /*out*/ objOffset,
+            v0.to_float3(), v1.to_float3(), v2.to_float3(), // v0, v1, v2
+            bary);
+
+        float3 safePos, safeNorm;
+        float safeOffset;
+        SelfIntersectionAvoidance::transformSafeSpawnOffset(
+            /*out*/ safePos,
+            /*out*/ safeNorm,
+            /*out*/ safeOffset,
+            objPos, // from step 4
+            objNorm,
+            objOffset);
+
+        float3 frontPos, backPos;
+        SelfIntersectionAvoidance::offsetSpawnPoint(
+            /*out*/ frontPos,
+            /*out*/ backPos,
+            /*position =*/safePos,
+            /*direction=*/safeNorm,
+            /*offset   =*/safeOffset);
+
+        rayData->pos = Float3(frontPos);
+
         const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
         int materialId = parameters.indexBSDF;
+        rayData->material = (float)materialId;
 
         if (rayData->flags & FLAG_SHADOW)
         {
@@ -133,26 +231,20 @@ namespace jazzfusion
             }
         }
 
-        const unsigned int thePrimtiveIndex = optixGetPrimitiveIndex();
-
-        const Int3 tri = instanceData->indices[thePrimtiveIndex];
-
-        const VertexAttributes &va0 = instanceData->attributes[tri.x];
-        const VertexAttributes &va1 = instanceData->attributes[tri.y];
-        const VertexAttributes &va2 = instanceData->attributes[tri.z];
-
-        const Float2 theBarycentrics = Float2(optixGetTriangleBarycentrics()); // beta and gamma
+        const Float2 theBarycentrics = Float2(bary); // beta and gamma
         const float alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
 
-        const Float3 ng = cross(va1.vertex - va0.vertex, va2.vertex - va0.vertex);
+        // const Float3 ng = cross(va1.vertex - va0.vertex, va2.vertex - va0.vertex);
+        const Float3 ng = Float3(safeNorm);
         // const Float3 ns = va0.normal * alpha + va1.normal * theBarycentrics.x + va2.normal * theBarycentrics.y;
 
         MaterialState state;
         // state.texcoord = va0.texcoord * alpha + va1.texcoord * theBarycentrics.x + va2.texcoord * theBarycentrics.y;
 
-        Float4 worldToObject[3];
-        getTransformWorldToObject(worldToObject);
-        state.geometricNormal = normalize(transformNormal(worldToObject, ng));
+        // Float4 worldToObject[3];
+        // getTransformWorldToObject(worldToObject);
+        // state.geometricNormal = normalize(transformNormal(worldToObject, ng));
+        state.geometricNormal = ng;
 
         state.wo = rayData->wo;
 
@@ -178,16 +270,29 @@ namespace jazzfusion
         rayData->rayConeWidth += rayData->rayConeSpread * rayData->distance;
         // rayState.rayConeSpread += surfaceRayConeSpread; // @TODO Based on the local surface curvature
 
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(Float4(rayData->pos, rayData->depth));
+        //     OPTIX_DEBUG_PRINT(Float4(Float3(backPos), rayData->depth));
+        //     OPTIX_DEBUG_PRINT(Float4(rayData->wo, rayData->depth));
+        //     OPTIX_DEBUG_PRINT(Float4(state.geometricNormal, rayData->depth));
+        // }
+
         // Face forward
         rayData->flags |= (dot(rayData->wo, state.geometricNormal) >= 0.0f) ? FLAG_FRONTFACE : 0;
+
         if ((rayData->flags & FLAG_FRONTFACE) == 0)
         {
-            state.geometricNormal = -state.geometricNormal;
+            // state.geometricNormal = -state.geometricNormal;
+            rayData->wi = rayData->wi;
+            rayData->f_over_pdf = Float3(1.0f);
+            rayData->pdf = 1.0f;
+            // if (OPTIX_CENTER_PIXEL())
+            // {
+            //     OPTIX_DEBUG_PRINT(float(rayData->flags & FLAG_FRONTFACE));
+            // }
+            return;
         }
-
-        rayData->radiance = Float3(0.0f);
-        rayData->f_over_pdf = Float3(0.0f);
-        rayData->pdf = 0.0f;
 
         Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
@@ -239,12 +344,14 @@ namespace jazzfusion
 
         // if (OPTIX_CENTER_PIXEL())
         // {
+        //     OPTIX_DEBUG_PRINT(surfWi);
         //     OPTIX_DEBUG_PRINT(surfBsdfOverPdf);
         //     OPTIX_DEBUG_PRINT(surfSampleSurfPdf);
         // }
 
-        if (rayData->depth == 0)
+        if (!rayData->hitFirstDefuseSurface && isDiffuse)
         {
+            rayData->hitFirstDefuseSurface = true;
             rayData->albedo = albedo;
             albedo = Float3(1.0f);
         }
@@ -255,6 +362,7 @@ namespace jazzfusion
 
         if (isDiffuse)
         {
+            // Diffuse after diffuse, shadow ray only
             bool shadowRayOnly = false;
             if (rayData->flags & FLAG_DIFFUSED)
             {

@@ -382,7 +382,7 @@ namespace jazzfusion
             m_systemParameter.edgeToHighlight = Scene::Get().edgeToHighlight;
 
             m_systemParameter.iterationIndex = 0;
-            m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
+            m_systemParameter.sceneEpsilon = 0; // 500.0f * 1.0e-7f;
             m_systemParameter.numLights = 0;
 
             m_d_ias = 0;
@@ -447,28 +447,19 @@ namespace jazzfusion
             TextureManager &textureManager = TextureManager::Get();
 
             // The order in this array matches the instance ID in the root IAS!
-
-            parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
-            parameters.albedo = Float3(1.0f);
-            parameters.uvScale = 1.0f;
-            parameters.textureAlbedo = textureManager.GetTexture("data/coast_sand_rocks_02_albedo.png");
-            parameters.textureNormal = textureManager.GetTexture("data/coast_sand_rocks_02_normal.png");
-            parameters.textureRoughness = textureManager.GetTexture("data/coast_sand_rocks_02_rough.png");
-            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-            parameters.ior = 1.4f;
-            parameters.flags = 0;
-            m_materialParameters.push_back(parameters);
-
-            parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
-            parameters.albedo = Float3(1.0f);
-            parameters.uvScale = 1.0f;
-            parameters.textureAlbedo = textureManager.GetTexture("data/seaworn_stone_tiles_albedo.png");
-            parameters.textureNormal = textureManager.GetTexture("data/seaworn_stone_tiles_normal.png");
-            parameters.textureRoughness = textureManager.GetTexture("data/seaworn_stone_tiles_rough.png");
-            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-            parameters.ior = 1.4f;
-            parameters.flags = 0;
-            m_materialParameters.push_back(parameters);
+            for (const auto &textureFile : TextureManager::GetTextureFiles())
+            {
+                parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
+                parameters.albedo = Float3(1.0f);
+                parameters.uvScale = 1.0f;
+                parameters.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
+                parameters.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
+                parameters.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
+                parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+                parameters.ior = 1.4f;
+                parameters.flags = 0;
+                m_materialParameters.push_back(parameters);
+            }
 
             // Glass material
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
@@ -477,9 +468,9 @@ namespace jazzfusion
             parameters.textureNormal = 0;
             parameters.textureRoughness = 0;
             parameters.flags = 0;
-            parameters.absorption = Float3(-logf(0.5f), -logf(0.75f), -logf(0.5f)) * 1.0f; // Green
-            parameters.ior = 1.52f;                                                        // Flint glass. Higher IOR than the surrounding box.
-            m_materialParameters.push_back(parameters);                                    // 1
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.ior = 1.33f;
+            m_materialParameters.push_back(parameters);
 
             // Lambert material
             parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
@@ -806,7 +797,6 @@ namespace jazzfusion
             CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
             CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
-            m_systemParameter.sceneEpsilon = 500.0f * 1.0e-7f;
             m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
             m_systemParameter.iterationIndex = 0;
 

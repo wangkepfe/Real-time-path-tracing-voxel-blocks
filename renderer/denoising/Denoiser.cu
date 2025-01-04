@@ -259,6 +259,11 @@ namespace jazzfusion
         BufferCopyNonSky KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
             bufferManager.GetBuffer2D(IlluminationPongBuffer),
+
+            // bufferManager.GetBuffer2D(IlluminationBuffer),
+            // bufferManager.GetBuffer2D(DepthBuffer),
+            // bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+
             bufferManager.GetBuffer2D(DepthBuffer),
             bufferManager.GetBuffer2D(AlbedoBuffer),
             bufferManager.GetBuffer2D(UiBuffer),

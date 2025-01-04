@@ -20,6 +20,9 @@ namespace jazzfusion
         Float3 &throughput,
         int &stackIdx)
     {
+        rayData->f_over_pdf = Float3(0.0f);
+        rayData->pdf = 0.0f;
+        rayData->radiance = Float3(0.0f);
         rayData->wo = -rayData->wi;        // Direction to observer.
         rayData->ior = Float2(1.0f);       // Reset the volume IORs.
         rayData->distance = RayMax;        // Shoot the next ray with maximum length.
@@ -128,7 +131,6 @@ namespace jazzfusion
         rayData->pos = sysParam.camera.pos;
         rayData->wi = rayDir;
 
-        // This renderer supports nested volumes. The absorption coefficient and IOR of the volume the ray is currently inside.
         Float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
 
         Float3 radiance = Float3(0.0f);
@@ -144,149 +146,109 @@ namespace jazzfusion
         rayData->roughness = 0.0f;
         rayData->rayConeWidth = 0.0f;
         rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
-        rayData->material = 0u;
+        rayData->material = 100.0f;
         rayData->sampleIdx = 0;
         rayData->depth = 0;
 
         bool pathTerminated = false;
 
-        Float2 outMotionVector = Float2(0.5f);
+        // Float2 outMotionVector = Float2(0.5f);
         Float3 outNormal = Float3(0.0f, 0.0f, 0.0f);
-        Float3 outAlbedo = Float3(1.0f);
         float outRoughness = 0.0f;
         float outDepth = RayMax;
-        bool hitFirstDefuseSurface = false;
+        float outMaterial = 100.0f;
 
-        static constexpr int BounceLimit = 2;
+        rayData->hitFirstDefuseSurface = false;
+
+        static constexpr int BounceLimit = 6;
 
         while (!pathTerminated)
         {
             // Trace next path
             pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx);
 
-            if (depth == BounceLimit - 1)
+            if (rayData->depth == BounceLimit - 1)
             {
                 pathTerminated = true;
             }
 
-            // First hit
-            if (depth == 0)
+            if (rayData->depth == 0 && sysParam.sampleIndex == 0)
             {
-                if (sysParam.sampleIndex == 0)
-                {
-                    outNormal = rayData->normal;
-                    outDepth = rayData->distance;
-                    outAlbedo = rayData->albedo;
-
-                    // Float2 lastFrameSampleUv;
-                    // if (rayData->material == RAY_MAT_FLAG_SKY)
-                    // {
-                    //     lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->wi, sysParam.camera.tanHalfFov);
-                    // }
-                    // else
-                    // {
-                    //     lastFrameSampleUv = sysParam.historyCamera.WorldToScreenSpace(rayData->pos - sysParam.historyCamera.pos, sysParam.camera.tanHalfFov);
-                    // }
-                    // outMotionVector += lastFrameSampleUv - sampleUv;
-                }
+                outNormal = rayData->normal;
+                outDepth = rayData->distance;
+                outRoughness = rayData->roughness;
+                outMaterial = rayData->material;
             }
 
-            if (!hitFirstDefuseSurface)
-            {
-                ++rayData->depth;
-            }
-
-            // First diffuse hit
-            if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
-            {
-                hitFirstDefuseSurface = true;
-
-                // outAlbedo = rayData->albedo;
-                // rayData->albedo = Float3(1.0f);
-            }
-
-            ++depth; // Next path segment.
+            ++rayData->depth;
         }
 
-        // if (OPTIX_CENTER_PIXEL() && outMaterial == 3)
+        // Float3 tempRadiance = Float3(0);
+        // bool hasGlass = false;
+        // for (unsigned int traverseDepth = 0; traverseDepth < 16; ++traverseDepth)
         // {
-        //     OPTIX_DEBUG_PRINT(Float4(depth, pathTerminated, needWriteOutput, 0));
+        //     unsigned int currentMat = (rayData->material >> (traverseDepth * 2)) & 0x3;
+        //     if (currentMat == RAY_MAT_FLAG_REFR_AND_REFL)
+        //     {
+        //         hasGlass = true;
+        //         break;
+        //     }
+        //     else if (currentMat == RAY_MAT_FLAG_DIFFUSE || currentMat == RAY_MAT_FLAG_SKY)
+        //     {
+        //         break;
+        //     }
         // }
-        radiance *= rayData->albedo;
-
-        Float3 tempRadiance = Float3(0);
-
-        // if (OPTIX_CENTER_PIXEL())
+        // if (hasGlass)
         // {
-        //     radiance = Float3(100.0f, 0.0f, 0.0f);
+        //     samplePixelJitterOffset = rayData->rand2(sysParam);
+
+        //     sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
+        //     centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
+
+        //     rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
+        //     centerRayDir = sysParam.camera.uvToWorldDirection(centerUv);
+
+        //     rayData->pos = sysParam.camera.pos;
+        //     rayData->wi = rayDir;
+
+        //     throughput = Float3(1.0f);
+        //     stackIdx = MaterialStackEmpty;
+        //     depth = 0;
+        //     rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
+        //     rayData->flags = 0;
+        //     rayData->albedo = Float3(1.0f);
+        //     rayData->normal = Float3(0.0f, -1.0f, 0.0f);
+        //     rayData->rayConeWidth = 0.0f;
+        //     rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
+        //     rayData->sampleIdx = 1;
+        //     hitFirstDefuseSurface = false;
+        //     pathTerminated = false;
+        //     while (!pathTerminated)
+        //     {
+        //         pathTerminated = !TraceNextPath(rayData, absorptionStack, tempRadiance, throughput, stackIdx);
+        //         if (depth == BounceLimit - 1)
+        //         {
+        //             pathTerminated = true;
+        //         }
+        //         if (!hitFirstDefuseSurface)
+        //         {
+        //             ++rayData->depth;
+        //         }
+        //         if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
+        //         {
+        //             hitFirstDefuseSurface = true;
+        //             outAlbedo = lerp3f(outAlbedo, rayData->albedo, 0.5f);
+        //             rayData->albedo = Float3(1.0f);
+        //         }
+        //         ++depth;
+        //     }
+        //     tempRadiance *= rayData->albedo;
+        //     if (isnan(tempRadiance.x) || isnan(tempRadiance.y) || isnan(tempRadiance.z))
+        //     {
+        //         tempRadiance = Float3(0.5f);
+        //     }
+        //     radiance = lerp3f(radiance, tempRadiance, 0.5f);
         // }
-
-        bool hasGlass = false;
-        for (unsigned int traverseDepth = 0; traverseDepth < 16; ++traverseDepth)
-        {
-            unsigned int currentMat = (rayData->material >> (traverseDepth * 2)) & 0x3;
-            if (currentMat == RAY_MAT_FLAG_REFR_AND_REFL)
-            {
-                hasGlass = true;
-                break;
-            }
-            else if (currentMat == RAY_MAT_FLAG_DIFFUSE || currentMat == RAY_MAT_FLAG_SKY)
-            {
-                break;
-            }
-        }
-
-        if (hasGlass)
-        {
-            samplePixelJitterOffset = rayData->rand2(sysParam);
-
-            sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
-            centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
-
-            rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
-            centerRayDir = sysParam.camera.uvToWorldDirection(centerUv);
-
-            rayData->pos = sysParam.camera.pos;
-            rayData->wi = rayDir;
-
-            throughput = Float3(1.0f);
-            stackIdx = MaterialStackEmpty;
-            depth = 0;
-            rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
-            rayData->flags = 0;
-            rayData->albedo = Float3(1.0f);
-            rayData->normal = Float3(0.0f, -1.0f, 0.0f);
-            rayData->rayConeWidth = 0.0f;
-            rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
-            rayData->sampleIdx = 1;
-            hitFirstDefuseSurface = false;
-            pathTerminated = false;
-            while (!pathTerminated)
-            {
-                pathTerminated = !TraceNextPath(rayData, absorptionStack, tempRadiance, throughput, stackIdx);
-                if (depth == BounceLimit - 1)
-                {
-                    pathTerminated = true;
-                }
-                if (!hitFirstDefuseSurface)
-                {
-                    ++rayData->depth;
-                }
-                if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
-                {
-                    hitFirstDefuseSurface = true;
-                    outAlbedo = lerp3f(outAlbedo, rayData->albedo, 0.5f);
-                    rayData->albedo = Float3(1.0f);
-                }
-                ++depth;
-            }
-            tempRadiance *= rayData->albedo;
-            if (isnan(tempRadiance.x) || isnan(tempRadiance.y) || isnan(tempRadiance.z))
-            {
-                tempRadiance = Float3(0.5f);
-            }
-            radiance = lerp3f(radiance, tempRadiance, 0.5f);
-        }
 
         /// Debug visualization
         // radiance = outNormal * 0.5f + 0.5f;
@@ -302,14 +264,9 @@ namespace jazzfusion
 
         if (sysParam.sampleIndex == 0)
         {
-            // if (OPTIX_CENTER_PIXEL())
-            // {
-            //     DEBUG_PRINT(outDepth);
-            // }
-            Store2DFloat1(rayData->material, sysParam.outMaterial, idx);
-            Store2DFloat4(Float4(outNormal, 0.0f), sysParam.outNormal, idx);
+            Store2DFloat1(outMaterial, sysParam.outMaterial, idx);
+            Store2DFloat4(Float4(outNormal, outRoughness), sysParam.outNormal, idx);
             Store2DFloat1(outDepth, sysParam.outDepth, idx);
-            Store2DFloat2(outMotionVector, sysParam.outMotionVector, idx);
         }
 
         if (sysParam.sampleIndex > 0)
@@ -317,16 +274,11 @@ namespace jazzfusion
             Float3 accumulatedAlbedo = Load2DFloat4(sysParam.outAlbedo, idx).xyz;
             Float3 accumulatedRadiance = Load2DFloat4(sysParam.outputBuffer, idx).xyz;
 
-            outAlbedo = lerp3f(accumulatedAlbedo, outAlbedo, 1.0f / (float)(sysParam.sampleIndex + 1));
+            rayData->albedo = lerp3f(accumulatedAlbedo, rayData->albedo, 1.0f / (float)(sysParam.sampleIndex + 1));
             radiance = lerp3f(accumulatedRadiance, radiance, 1.0f / (float)(sysParam.sampleIndex + 1));
         }
 
-        // if (OPTIX_CENTER_PIXEL())
-        // {
-        //     DEBUG_PRINT(radiance);
-        // }
-
-        Store2DFloat4(Float4(outAlbedo, 1.0f), sysParam.outAlbedo, idx);
+        Store2DFloat4(Float4(rayData->albedo, 1.0f), sysParam.outAlbedo, idx);
         Store2DFloat4(Float4(radiance, outDepth), sysParam.outputBuffer, idx);
     }
 

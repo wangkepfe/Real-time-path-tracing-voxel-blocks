@@ -14,15 +14,15 @@ __device__ __host__ void ComputeFaceVertices(Float3 basePos, int faceId, Float3 
     {
     case 0: // Up (top face at y+1)
         outVerts[0] = basePos + Float3(0.0f, 1.0f, 0.0f);
-        outVerts[1] = basePos + Float3(1.0f, 1.0f, 0.0f);
+        outVerts[1] = basePos + Float3(0.0f, 1.0f, 1.0f);
         outVerts[2] = basePos + Float3(1.0f, 1.0f, 1.0f);
-        outVerts[3] = basePos + Float3(0.0f, 1.0f, 1.0f);
+        outVerts[3] = basePos + Float3(1.0f, 1.0f, 0.0f);
         break;
 
     case 1: // Down (bottom face at y)
-        outVerts[0] = basePos + Float3(0.0f, 0.0f, 1.0f);
+        outVerts[0] = basePos + Float3(1.0f, 0.0f, 0.0f);
         outVerts[1] = basePos + Float3(1.0f, 0.0f, 1.0f);
-        outVerts[2] = basePos + Float3(1.0f, 0.0f, 0.0f);
+        outVerts[2] = basePos + Float3(0.0f, 0.0f, 1.0f);
         outVerts[3] = basePos + Float3(0.0f, 0.0f, 0.0f);
         break;
 
@@ -68,14 +68,21 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, unsigned int width)
 
     Voxel val;
     val.id = 0;
-    if (idx.y < width / 2)
+    if (idx.y < width / 2 - 2)
     {
         val.id = 1;
     }
-    if (idx.y == 0 && idx.x == 0 && idx.z == 0)
+
+    // This makes sure all material block has at least one block
+    constexpr int numMaterials = 6;
+    for (int i = 0; i < numMaterials; ++i)
     {
-        val.id = 2;
+        if (idx.x == 0 && idx.y == 0 && idx.z == i)
+        {
+            val.id = i + 1;
+        }
     }
+
     unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width);
     voxels[linearId] = val;
 }
@@ -191,13 +198,13 @@ __global__ void CompactMesh(
             }
 
             // Two triangles
-            d_idxOut[iOffset + 0] = vOffset + 2;
+            d_idxOut[iOffset + 0] = vOffset + 0;
             d_idxOut[iOffset + 1] = vOffset + 1;
-            d_idxOut[iOffset + 2] = vOffset + 0;
+            d_idxOut[iOffset + 2] = vOffset + 2;
 
-            d_idxOut[iOffset + 3] = vOffset + 3;
+            d_idxOut[iOffset + 3] = vOffset + 0;
             d_idxOut[iOffset + 4] = vOffset + 2;
-            d_idxOut[iOffset + 5] = vOffset + 0;
+            d_idxOut[iOffset + 5] = vOffset + 3;
         }
     }
 }
@@ -446,13 +453,13 @@ namespace vox
             }
 
             // Write indices
-            indices[iOffset + 0] = vOffset + 2;
+            indices[iOffset + 0] = vOffset + 0;
             indices[iOffset + 1] = vOffset + 1;
-            indices[iOffset + 2] = vOffset + 0;
+            indices[iOffset + 2] = vOffset + 2;
 
-            indices[iOffset + 3] = vOffset + 3;
+            indices[iOffset + 3] = vOffset + 0;
             indices[iOffset + 4] = vOffset + 2;
-            indices[iOffset + 5] = vOffset + 0;
+            indices[iOffset + 5] = vOffset + 3;
 
             // Update mapping
             faceLocation[faceId] = newFaceIndex;
@@ -617,6 +624,90 @@ namespace vox
         if (0)
         {
             dumpMeshToOBJ(attr, indices, attrSize, indicesSize, "debug" + std::to_string(x) + "_" + std::to_string(y) + "_" + std::to_string(z) + ".obj");
+        }
+    }
+
+    void generateSea(jazzfusion::VertexAttributes **attr,
+                     unsigned int **indices,
+                     unsigned int &attrSize,
+                     unsigned int &indicesSize,
+                     int width)
+    {
+        float xMax = (float)width - 0.1f;
+        float xMin = 0.1f;
+        float yMax = (float)(width / 2) - 0.1f;
+        float yMin = 0.1f;
+        float zMax = (float)width - 0.1f;
+        float zMin = 0.1f;
+
+        float scaleX = xMax - xMin;
+        float scaleY = yMax - yMin;
+        float scaleZ = zMax - zMin;
+
+        if (*attr != nullptr)
+        {
+            cudaFree(*attr);
+        }
+        if (*indices != nullptr)
+        {
+            cudaFree(*indices);
+        }
+
+        int faceCount = 6;
+
+        cudaMalloc(attr, faceCount * 4 * sizeof(jazzfusion::VertexAttributes));
+        cudaMalloc(indices, faceCount * 6 * sizeof(unsigned int));
+
+        attrSize = faceCount * 4;
+        indicesSize = faceCount * 6;
+
+        jazzfusion::VertexAttributes *d_attrOut = *attr;
+        unsigned int *d_idxOut = *indices;
+
+        std::vector<jazzfusion::VertexAttributes> attrOut(faceCount * 4);
+        std::vector<unsigned int> idxOut(faceCount * 6);
+
+        jazzfusion::VertexAttributes *h_attrOut = attrOut.data();
+        unsigned int *h_idxOut = idxOut.data();
+
+        for (int f = 0; f < faceCount; f++)
+        {
+            unsigned int newFaceIndex = f; // We can treat f as the face index
+
+            unsigned int vOffset = newFaceIndex * 4; // each face has 4 vertices
+            unsigned int iOffset = newFaceIndex * 6; // each face has 6 indices
+
+            Float3 verts[4];
+            ComputeFaceVertices(Float3(0.0f, 0.0f, 0.0f), f, verts);
+
+            for (int i = 0; i < 4; i++)
+            {
+                Float3 &v = verts[i];
+                float scaledX = xMin + v.x * scaleX;
+                float scaledY = yMin + v.y * scaleY;
+                float scaledZ = zMin + v.z * scaleZ;
+
+                h_attrOut[vOffset + i].vertex.x = scaledX;
+                h_attrOut[vOffset + i].vertex.y = scaledY;
+                h_attrOut[vOffset + i].vertex.z = scaledZ;
+            }
+
+            // Set up the two triangles for this face
+            h_idxOut[iOffset + 0] = vOffset + 2;
+            h_idxOut[iOffset + 1] = vOffset + 1;
+            h_idxOut[iOffset + 2] = vOffset + 0;
+
+            h_idxOut[iOffset + 3] = vOffset + 3;
+            h_idxOut[iOffset + 4] = vOffset + 2;
+            h_idxOut[iOffset + 5] = vOffset + 0;
+        }
+
+        cudaMemcpy(d_attrOut, h_attrOut, faceCount * 4 * sizeof(jazzfusion::VertexAttributes), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_idxOut, h_idxOut, faceCount * 6 * sizeof(unsigned int), cudaMemcpyHostToDevice);
+
+        if (1)
+        {
+            dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
         }
     }
 }
