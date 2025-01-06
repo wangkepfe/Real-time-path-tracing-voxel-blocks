@@ -461,8 +461,19 @@ namespace jazzfusion
                 m_materialParameters.push_back(parameters);
             }
 
-            // Glass material
+            // Water material
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
+            parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
+            parameters.textureAlbedo = 0;
+            parameters.textureNormal = 0;
+            parameters.textureRoughness = 0;
+            parameters.flags = 0;
+            parameters.absorption = Float3(-logf(0.9f), -logf(0.95f), -logf(1.0f)) * 0.5f;
+            parameters.ior = 1.33f;
+            m_materialParameters.push_back(parameters);
+
+            // Mirror material.
+            parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
             parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
             parameters.textureAlbedo = 0;
             parameters.textureNormal = 0;
@@ -470,7 +481,7 @@ namespace jazzfusion
             parameters.flags = 0;
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.33f;
-            m_materialParameters.push_back(parameters);
+            m_materialParameters.push_back(parameters); // 3
 
             // Lambert material
             parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
@@ -482,17 +493,6 @@ namespace jazzfusion
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.5f;
             m_materialParameters.push_back(parameters); // 2
-
-            // Tinted mirror material.
-            parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-            parameters.albedo = Float3(0.2f, 0.2f, 1.0f); // blue
-            parameters.textureAlbedo = 0;
-            parameters.textureNormal = 0;
-            parameters.textureRoughness = 0;
-            parameters.flags = 0;
-            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-            parameters.ior = 1.33f;
-            m_materialParameters.push_back(parameters); // 3
 
             // Black BSDF for the light. This last material will not be shown inside the GUI!
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;

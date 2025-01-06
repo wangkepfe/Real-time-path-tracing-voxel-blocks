@@ -35,7 +35,8 @@ namespace vox
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
         totalNumBlockTypes = 6;
-        totalNumGeometries = totalNumBlockTypes;
+        // totalNumGeometries = totalNumBlockTypes;
+        totalNumGeometries = totalNumBlockTypes + 1;
 
         sceneGeometryAttributes.resize(totalNumGeometries);
         sceneGeometryIndices.resize(totalNumGeometries);
@@ -74,13 +75,13 @@ namespace vox
         freeDeviceVoxelData(d_data);
 
         // Generate geometry for sea
-        // int seaIndex = totalNumGeometries - 1;
-        // generateSea(
-        //     &(sceneGeometryAttributes[seaIndex]),
-        //     &(sceneGeometryIndices[seaIndex]),
-        //     sceneGeometryAttributeSize[seaIndex],
-        //     sceneGeometryIndicesSize[seaIndex],
-        //     voxelChunk.width);
+        int seaIndex = totalNumGeometries - 1;
+        generateSea(
+            &(sceneGeometryAttributes[seaIndex]),
+            &(sceneGeometryIndices[seaIndex]),
+            sceneGeometryAttributeSize[seaIndex],
+            sceneGeometryIndicesSize[seaIndex],
+            voxelChunk.width);
     }
 
     void VoxelEngine::reload()

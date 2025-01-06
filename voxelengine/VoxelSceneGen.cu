@@ -68,10 +68,17 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, unsigned int width)
 
     Voxel val;
     val.id = 0;
-    if (idx.y < width / 2 - 2)
+    if (idx.y + idx.x < width - 1)
     {
         val.id = 1;
     }
+    // if (idx.x == 0 || idx.x == width - 1 || idx.z == 0 || idx.z == width - 1)
+    // {
+    //     if (idx.y < width / 2)
+    //     {
+    //         val.id = 1;
+    //     }
+    // }
 
     // This makes sure all material block has at least one block
     constexpr int numMaterials = 6;
@@ -693,13 +700,13 @@ namespace vox
             }
 
             // Set up the two triangles for this face
-            h_idxOut[iOffset + 0] = vOffset + 2;
+            h_idxOut[iOffset + 0] = vOffset + 0;
             h_idxOut[iOffset + 1] = vOffset + 1;
-            h_idxOut[iOffset + 2] = vOffset + 0;
+            h_idxOut[iOffset + 2] = vOffset + 2;
 
-            h_idxOut[iOffset + 3] = vOffset + 3;
+            h_idxOut[iOffset + 3] = vOffset + 0;
             h_idxOut[iOffset + 4] = vOffset + 2;
-            h_idxOut[iOffset + 5] = vOffset + 0;
+            h_idxOut[iOffset + 5] = vOffset + 3;
         }
 
         cudaMemcpy(d_attrOut, h_attrOut, faceCount * 4 * sizeof(jazzfusion::VertexAttributes), cudaMemcpyHostToDevice);

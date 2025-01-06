@@ -13,7 +13,7 @@ namespace jazzfusion
         // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
         PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
-        if (rayData->flags & FLAG_SHADOW)
+        if (rayData->isShadowRay)
         {
             return;
         }
@@ -56,7 +56,7 @@ namespace jazzfusion
 
             // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
             // then calculate light emission with multiple importance sampling for this implicit light hit as well.
-            if (rayData->flags & FLAG_DIFFUSED)
+            if (rayData->isLastBounceDiffuse)
             {
                 const float maxSkyCdf = skyCdf[skySize - 1];
                 float lightSamplePdf = dot(skyEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSkyCdf;
@@ -89,7 +89,7 @@ namespace jazzfusion
 
             // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
             // then calculate light emission with multiple importance sampling for this implicit light hit as well.
-            if (rayData->flags & FLAG_DIFFUSED)
+            if (rayData->isLastBounceDiffuse)
             {
                 const float maxSunCdf = sunCdf[sunSize - 1];
                 float lightSamplePdf = dot(sunEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSunCdf;
@@ -104,12 +104,7 @@ namespace jazzfusion
         rayData->radiance = emission * misWeight;
         // rayData->totalDistance = RayMax;
         rayData->distance = RayMax;
-        rayData->flags |= FLAG_TERMINATE;
-
-        // if (!(rayData->flags & FLAG_DIFFUSED))
-        // {
-        //     rayData->material |= RAY_MAT_FLAG_SKY << (2 * rayData->depth);
-        // }
+        rayData->shouldTerminate = true;
     }
 
 }

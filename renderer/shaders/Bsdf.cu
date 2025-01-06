@@ -27,14 +27,9 @@ namespace jazzfusion
     {
         unitSquareToCosineHemisphere(rayData->rand2(sysParam), state.normal, wi, pdf);
 
-        // if (!(rayData->flags & FLAG_DIFFUSED))
-        // {
-        //     rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
-        // }
-
         if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
         {
-            rayData->flags |= FLAG_TERMINATE;
+            rayData->shouldTerminate = true;
             return;
         }
 
@@ -69,11 +64,6 @@ namespace jazzfusion
     extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &brdfOverPdf, float &pdf)
     {
         Float2 r = rayData->rand2(sysParam);
-
-        // if (!(rayData->flags & FLAG_DIFFUSED))
-        // {
-        //     rayData->material |= RAY_MAT_FLAG_DIFFUSE << (2 * rayData->depth);
-        // }
 
         // Roughness to alpha
         float roughness = state.roughness;
@@ -123,21 +113,9 @@ namespace jazzfusion
 
             if (dot(wi, state.geometricNormal) < 0)
             {
-                // Failed twice
                 wi = normalize(reflect3f(-state.wo, state.geometricNormal));
-                // rayData->flags |= FLAG_TERMINATE;
-                // brdfOverPdf = Float3(0.0f);
-                // pdf = 0.0f;
             }
         }
-
-        // if (dot(wi, state.geometricNormal) < 0)
-        // {
-        //     rayData->flags |= FLAG_TERMINATE;
-        //     brdfOverPdf = Float3(0.0f);
-        //     pdf = 0.0f;
-        //     return;
-        // }
 
         Float3 wh = sampledNormal;
         Float3 wn = state.normal;
@@ -186,7 +164,7 @@ namespace jazzfusion
 
             if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
             {
-                rayData->flags |= FLAG_TERMINATE;
+                rayData->shouldTerminate = true;
                 return;
             }
 
@@ -258,14 +236,9 @@ namespace jazzfusion
         // if (pdf <= 0.0f || dot(wi, state.normalGeo) <= 0.0f)
         if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f)
         {
-            rayData->flags |= FLAG_TERMINATE;
+            rayData->shouldTerminate = true;
             return;
         }
-
-        // if (!(rayData->flags & FLAG_DIFFUSED))
-        // {
-        //     rayData->material |= RAY_MAT_FLAG_REFL_OR_REFR << (2 * rayData->depth);
-        // }
 
         f_over_pdf = Float3(1.0f);
         pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
@@ -304,80 +277,80 @@ namespace jazzfusion
 
     extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
     {
-        // Return the current material's absorption coefficient and ior to the integrator to be able to support nested materials.
         rayData->absorption_ior = Float4(parameters.absorption, parameters.ior);
 
-        // Need to figure out here which index of refraction to use if the ray is already inside some refractive medium.
-        // This needs to happen with the original FLAG_FRONTFACE condition to find out from which side of the geometry we're looking!
-        // ior.xy are the current volume's IOR and the surrounding volume's IOR.
-        // Thin-walled materials have no volume, always use the frontface eta for them!
-        const float eta = (rayData->flags & (FLAG_FRONTFACE | FLAG_THINWALLED))
-                              ? rayData->absorption_ior.w / rayData->ior.x
-                              : rayData->ior.y / rayData->absorption_ior.w;
+        const bool hitFrontFace = rayData->isHitFrontFace;
+        const float eta = hitFrontFace ? rayData->absorption_ior.w / 1.0f : 1.0f / rayData->absorption_ior.w;
 
-        const Float3 R = reflect3f(-rayData->wo, state.normal);
+        Float3 wReflection = reflect3f(-rayData->wo, state.normal);
+        Float3 wRefraction;
+        bool canRefract = refract(wRefraction, -rayData->wo, state.normal, eta);
 
         float reflective = 1.0f;
 
-        if (refract(wi, -rayData->wo, state.normal, eta))
+        if (canRefract)
         {
-            if (rayData->flags & FLAG_THINWALLED)
-            {
-                wi = -rayData->wo; // Straight through, no volume.
-            }
-            // Total internal reflection will leave this reflection probability at 1.0f.
             reflective = evaluateFresnelDielectric(eta, dot(rayData->wo, state.normal));
         }
 
-        if (rayData->flags & FLAG_VOLUME) // If we are inside a volumn
+        if (rayData->isInsideVolume)
         {
-            // if (!(rayData->flags & FLAG_DIFFUSED))
-            // {
-            //     rayData->material |= RAY_MAT_FLAG_REFL_OR_REFR << (2 * rayData->depth);
-            // }
-
-            if (reflective == 1.0f) // Either total reflection
+            if (reflective == 1.0f)
             {
-                wi = R;
+                wi = wReflection;
             }
-            else // Or total transmission
+            else
             {
-                rayData->flags |= FLAG_TRANSMISSION;
+                if (rayData->rand(sysParam) < reflective)
+                {
+                    wi = wReflection;
+                }
+                else
+                {
+                    wi = wRefraction;
+                    rayData->isHitTransmission = true;
+                }
             }
             f_over_pdf = Float3(1.0f);
         }
         else
         {
-            // if (!(rayData->flags & FLAG_DIFFUSED))
-            // {
-            //     rayData->material |= RAY_MAT_FLAG_REFR_AND_REFL << (2 * rayData->depth);
-            // }
-
-            if (rayData->sampleIdx & 0x1)
+            if (!rayData->hitFirstDiffuseSurface)
             {
-                wi = R; // Fresnel reflection or total internal reflection.
-                f_over_pdf = Float3(reflective);
-            }
-            else if (!(rayData->flags & FLAG_THINWALLED)) // Only non-thinwalled materials have a volume and transmission events.
-            {
-                rayData->flags |= FLAG_TRANSMISSION;
-                f_over_pdf = Float3(1.0f - reflective);
+                rayData->hasGlass = true;
             }
 
-            // const float pseudo = rayData->rand(sysParam);
-            // if (pseudo < reflective)
-            // {
-            //     wi = R; // Fresnel reflection or total internal reflection.
-            // }
-            // else if (!(rayData->flags & FLAG_THINWALLED)) // Only non-thinwalled materials have a volume and transmission events.
-            // {
-            //     rayData->flags |= FLAG_TRANSMISSION;
-            // }
+            if (1)
+            {
+
+                if (rayData->rand(sysParam) < reflective)
+                {
+                    wi = wReflection;
+                }
+                else
+                {
+                    wi = wRefraction;
+                    rayData->isHitTransmission = true;
+                }
+                f_over_pdf = Float3(1.0f);
+            }
+            else
+            {
+                if (rayData->sampleIdx & 0x1)
+                {
+                    wi = wReflection;
+                    f_over_pdf = Float3(reflective);
+                }
+                else
+                {
+                    wi = wRefraction;
+                    rayData->isHitTransmission = true;
+                    f_over_pdf = Float3(1.0f - reflective);
+                }
+            }
         }
 
-        // No Fresnel factor here. The probability to pick one or the other side took care of that.
-        // f_over_pdf = Float3(1.0f);
-        pdf = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
+        pdf = 1.0f;
     }
 
 }

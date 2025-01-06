@@ -8,104 +8,73 @@ namespace jazzfusion
 
     extern "C" __constant__ SystemParameter sysParam;
 
-    __device__ static constexpr int MaterialStackEmpty = -1;
-    __device__ static constexpr int MaterialStackFirst = 0;
-    __device__ static constexpr int MaterialStackLast = 0;
-    __device__ static constexpr int MaterialStackSize = 1;
-
     __device__ __inline__ bool TraceNextPath(
         PerRayData *rayData,
-        Float4 *absorptionStack,
+        Float4 &absorptionIor,
+        int &volumnIdx,
         Float3 &radiance,
-        Float3 &throughput,
-        int &stackIdx)
+        Float3 &throughput)
     {
         rayData->f_over_pdf = Float3(0.0f);
         rayData->pdf = 0.0f;
         rayData->radiance = Float3(0.0f);
-        rayData->wo = -rayData->wi;        // Direction to observer.
-        rayData->ior = Float2(1.0f);       // Reset the volume IORs.
-        rayData->distance = RayMax;        // Shoot the next ray with maximum length.
-        rayData->flags &= FLAG_CLEAR_MASK; // Clear all non-persistent flags. In this demo only the last diffuse surface interaction stays.
-        Float3 extinction;
+        rayData->wo = -rayData->wi;
 
-        // Handle volume absorption of nested materials.
-        if (MaterialStackFirst <= stackIdx) // Inside a volume?
+        rayData->distance = RayMax;
+
+        rayData->shouldTerminate = false;
+
+        rayData->isLastBounceDiffuse = rayData->isCurrentBounceDiffuse;
+        rayData->isCurrentBounceDiffuse = false;
+
+        rayData->isHitFrontFace = false;
+        rayData->isHitTransmission = false;
+        rayData->isInsideVolume = false;
+
+        Float3 extinction;
+        if (volumnIdx > 0)
         {
-            rayData->flags |= FLAG_VOLUME;                // Indicate that we're inside a volume. => At least absorption calculation needs to happen.
-            extinction = absorptionStack[stackIdx].xyz;   // There is only volume absorption in this demo, no volume scattering.
-            rayData->ior.x = absorptionStack[stackIdx].w; // The IOR of the volume we're inside. Needed for eta calculations in transparent materials.
-            if (MaterialStackFirst <= stackIdx - 1)
-            {
-                rayData->ior.y = absorptionStack[stackIdx - 1].w; // The IOR of the surrounding volume. Needed when potentially leaving a volume to calculate eta in transparent materials.
-            }
+            rayData->isInsideVolume = true;
+            extinction = absorptionIor.xyz;
         }
 
-        // Note that the primary rays (or volume scattering miss cases) wouldn't normally offset the ray t_min by sysSceneEpsilon. Keep it simple here.
-
-        // Put radiance payload pointer into two unsigned integers.
         UInt2 payload = splitPointer(rayData);
 
         optixTrace(sysParam.topObject,
-                   (float3)rayData->pos, (float3)rayData->wi,      // origin, direction
-                   sysParam.sceneEpsilon, rayData->distance, 0.0f, // tmin, tmax, time
+                   (float3)rayData->pos, (float3)rayData->wi, // origin, direction
+                   sysParam.sceneEpsilon, RayMax, 0.0f,       // tmin, tmax, time
                    OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
                    0, 1, 0,
                    payload.x, payload.y);
 
-        // This renderer supports nested volumes.
-        if (rayData->flags & FLAG_VOLUME)
+        if (rayData->isInsideVolume)
         {
-            // We're inside a volume. Calculate the extinction along the current path segment in any case.
-            // The transmittance along the current path segment inside a volume needs to attenuate the ray throughput with the extinction
-            // before it modulates the radiance of the hitpoint.
             throughput *= exp3f(-rayData->distance * extinction);
         }
 
         radiance += throughput * rayData->radiance;
 
-        // Path termination by miss shader or sample() routines.
-        // If terminate is true, f_over_pdf and pdf might be undefined.
-        if ((rayData->flags & FLAG_TERMINATE) || rayData->pdf <= 0.0f || isNull(rayData->f_over_pdf))
+        if (rayData->shouldTerminate || rayData->pdf <= 0.0f || isNull(rayData->f_over_pdf))
         {
             return false;
         }
 
-        // PERF f_over_pdf already contains the proper throughput adjustment for diffuse materials: f * (fabsf(optix::dot(rayData->wi, state.normal)) / rayData->pdf);
         throughput *= rayData->f_over_pdf;
 
-        // Adjust the material volume stack if the geometry is not thin-walled but a border between two volumes
-        // and the outgoing ray direction was a transmission.
-        if ((rayData->flags & (FLAG_THINWALLED | FLAG_TRANSMISSION)) == FLAG_TRANSMISSION)
+        if (rayData->isHitTransmission)
         {
-            // Transmission.
-            if (rayData->flags & FLAG_FRONTFACE) // Entered a new volume?
+            if (rayData->isHitFrontFace) // Enter
             {
-                // Push the entered material's volume properties onto the volume stack.
-                // rtAssert((stackIdx < MaterialStackLast), 1); // Overflow?
-                stackIdx = min(stackIdx + 1, MaterialStackLast);
-                absorptionStack[stackIdx] = rayData->absorption_ior;
+                volumnIdx = 1;
+                absorptionIor = rayData->absorption_ior;
             }
-            else // Exited the current volume?
+            else // Exit
             {
-                // Pop the top of stack material volume.
-                // This assert fires and is intended because I tuned the frontface checks so that there are more exits than enters at silhouettes.
-                // rtAssert((MaterialStackEmpty < stackIdx), 0); // Underflow?
-                stackIdx = max(stackIdx - 1, MaterialStackEmpty);
+                volumnIdx = 0;
             }
         }
 
         return true;
-    }
-
-    __forceinline__ __device__ unsigned int IntegerHash(unsigned int a)
-    {
-        a = (a ^ 61) ^ (a >> 16);
-        a = a + (a << 3);
-        a = a ^ (a >> 4);
-        a = a * 0x27d4eb2d;
-        a = a ^ (a >> 15);
-        return a;
     }
 
     extern "C" __global__ void __raygen__pathtracer()
@@ -122,25 +91,24 @@ namespace jazzfusion
         Float2 samplePixelJitterOffset = rayData->rand2(sysParam);
         samplePixelJitterOffset = Float2(0.5f);
 
-        Float2 sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
-        Float2 centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
+        const Float2 sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
+        const Float2 centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
 
-        Float3 rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
-        Float3 centerRayDir = sysParam.camera.uvToWorldDirection(centerUv);
+        const Float3 rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
+        const Float3 centerRayDir = sysParam.camera.uvToWorldDirection(centerUv); // unused
 
         rayData->pos = sysParam.camera.pos;
         rayData->wi = rayDir;
 
-        Float4 absorptionStack[MaterialStackSize]; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
+        Float4 absorptionIor; // .xyz == absorptionCoefficient (sigma_a), .w == index of refraction
+        int volumnIdx = 0;
 
         Float3 radiance = Float3(0.0f);
         Float3 throughput = Float3(1.0f);
 
-        int stackIdx = MaterialStackEmpty;
         unsigned int depth = 0;
 
-        rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f); // Assume primary ray starts in vacuum.
-        rayData->flags = 0;
+        rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
         rayData->albedo = Float3(1.0f);
         rayData->normal = Float3(0.0f, 1.0f, 0.0f);
         rayData->roughness = 0.0f;
@@ -149,23 +117,24 @@ namespace jazzfusion
         rayData->material = 100.0f;
         rayData->sampleIdx = 0;
         rayData->depth = 0;
+        rayData->isShadowRay = false;
+        rayData->isCurrentBounceDiffuse = false;
+        rayData->isLastBounceDiffuse = false;
 
         bool pathTerminated = false;
 
-        // Float2 outMotionVector = Float2(0.5f);
         Float3 outNormal = Float3(0.0f, 0.0f, 0.0f);
         float outRoughness = 0.0f;
         float outDepth = RayMax;
         float outMaterial = 100.0f;
 
-        rayData->hitFirstDefuseSurface = false;
+        rayData->hitFirstDiffuseSurface = false;
 
         static constexpr int BounceLimit = 6;
 
         while (!pathTerminated)
         {
-            // Trace next path
-            pathTerminated = !TraceNextPath(rayData, absorptionStack, radiance, throughput, stackIdx);
+            pathTerminated = !TraceNextPath(rayData, absorptionIor, volumnIdx, radiance, throughput);
 
             if (rayData->depth == BounceLimit - 1)
             {
@@ -183,72 +152,45 @@ namespace jazzfusion
             ++rayData->depth;
         }
 
-        // Float3 tempRadiance = Float3(0);
-        // bool hasGlass = false;
-        // for (unsigned int traverseDepth = 0; traverseDepth < 16; ++traverseDepth)
-        // {
-        //     unsigned int currentMat = (rayData->material >> (traverseDepth * 2)) & 0x3;
-        //     if (currentMat == RAY_MAT_FLAG_REFR_AND_REFL)
-        //     {
-        //         hasGlass = true;
-        //         break;
-        //     }
-        //     else if (currentMat == RAY_MAT_FLAG_DIFFUSE || currentMat == RAY_MAT_FLAG_SKY)
-        //     {
-        //         break;
-        //     }
-        // }
-        // if (hasGlass)
-        // {
-        //     samplePixelJitterOffset = rayData->rand2(sysParam);
+        if (0)
+        {
+            if (rayData->hasGlass)
+            {
+                Float3 radianceGlassSample = Float3(0.0f);
 
-        //     sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
-        //     centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;
+                rayData->pos = sysParam.camera.pos;
+                rayData->wi = rayDir;
+                rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
+                rayData->normal = Float3(0.0f, 1.0f, 0.0f);
+                rayData->roughness = 0.0f;
+                rayData->rayConeWidth = 0.0f;
+                rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
+                rayData->material = 100.0f;
+                rayData->sampleIdx = 1;
+                rayData->depth = 0;
+                rayData->isShadowRay = false;
+                rayData->isCurrentBounceDiffuse = false;
+                rayData->isLastBounceDiffuse = false;
 
-        //     rayDir = sysParam.camera.uvToWorldDirection(sampleUv);
-        //     centerRayDir = sysParam.camera.uvToWorldDirection(centerUv);
+                pathTerminated = false;
+                throughput = Float3(1.0f);
+                volumnIdx = 0;
 
-        //     rayData->pos = sysParam.camera.pos;
-        //     rayData->wi = rayDir;
+                while (!pathTerminated)
+                {
+                    pathTerminated = !TraceNextPath(rayData, absorptionIor, volumnIdx, radianceGlassSample, throughput);
 
-        //     throughput = Float3(1.0f);
-        //     stackIdx = MaterialStackEmpty;
-        //     depth = 0;
-        //     rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
-        //     rayData->flags = 0;
-        //     rayData->albedo = Float3(1.0f);
-        //     rayData->normal = Float3(0.0f, -1.0f, 0.0f);
-        //     rayData->rayConeWidth = 0.0f;
-        //     rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
-        //     rayData->sampleIdx = 1;
-        //     hitFirstDefuseSurface = false;
-        //     pathTerminated = false;
-        //     while (!pathTerminated)
-        //     {
-        //         pathTerminated = !TraceNextPath(rayData, absorptionStack, tempRadiance, throughput, stackIdx);
-        //         if (depth == BounceLimit - 1)
-        //         {
-        //             pathTerminated = true;
-        //         }
-        //         if (!hitFirstDefuseSurface)
-        //         {
-        //             ++rayData->depth;
-        //         }
-        //         if (!hitFirstDefuseSurface && ((rayData->flags & FLAG_DIFFUSED) || pathTerminated))
-        //         {
-        //             hitFirstDefuseSurface = true;
-        //             outAlbedo = lerp3f(outAlbedo, rayData->albedo, 0.5f);
-        //             rayData->albedo = Float3(1.0f);
-        //         }
-        //         ++depth;
-        //     }
-        //     tempRadiance *= rayData->albedo;
-        //     if (isnan(tempRadiance.x) || isnan(tempRadiance.y) || isnan(tempRadiance.z))
-        //     {
-        //         tempRadiance = Float3(0.5f);
-        //     }
-        //     radiance = lerp3f(radiance, tempRadiance, 0.5f);
-        // }
+                    if (rayData->depth == BounceLimit - 1)
+                    {
+                        pathTerminated = true;
+                    }
+
+                    ++rayData->depth;
+                }
+
+                radiance = lerp3f(radiance, radianceGlassSample, 0.5f);
+            }
+        }
 
         /// Debug visualization
         // radiance = outNormal * 0.5f + 0.5f;

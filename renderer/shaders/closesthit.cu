@@ -196,14 +196,23 @@ namespace jazzfusion
         int materialId = parameters.indexBSDF;
         rayData->material = (float)materialId;
 
-        if (rayData->flags & FLAG_SHADOW)
+        if (rayData->isShadowRay)
         {
-            rayData->flags |= FLAG_SHADOW_HIT;
+            rayData->hasShadowRayHitAnything = true;
 
             if (materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
             {
-                rayData->flags |= FLAG_SHADOW_GLASS_HIT;
+                rayData->hasShadowRayHitTransmissiveSurface = true;
                 rayData->absorption_ior.xyz = parameters.absorption;
+
+                if (rayData->isInsideVolume)
+                {
+                    rayData->pos = Float3(frontPos);
+                }
+                else
+                {
+                    rayData->pos = Float3(backPos);
+                }
             }
 
             return;
@@ -278,21 +287,7 @@ namespace jazzfusion
         //     OPTIX_DEBUG_PRINT(Float4(state.geometricNormal, rayData->depth));
         // }
 
-        // Face forward
-        rayData->flags |= (dot(rayData->wo, state.geometricNormal) >= 0.0f) ? FLAG_FRONTFACE : 0;
-
-        if ((rayData->flags & FLAG_FRONTFACE) == 0)
-        {
-            // state.geometricNormal = -state.geometricNormal;
-            rayData->wi = rayData->wi;
-            rayData->f_over_pdf = Float3(1.0f);
-            rayData->pdf = 1.0f;
-            // if (OPTIX_CENTER_PIXEL())
-            // {
-            //     OPTIX_DEBUG_PRINT(float(rayData->flags & FLAG_FRONTFACE));
-            // }
-            return;
-        }
+        rayData->isHitFrontFace = dot(rayData->wo, state.geometricNormal) >= 0.0f;
 
         Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
@@ -330,9 +325,9 @@ namespace jazzfusion
         rayData->normal = state.normal;
         rayData->roughness = state.roughness;
 
-        rayData->flags = rayData->flags | parameters.flags; // FLAG_THINWALLED can be set directly from the material parameters.
-
         const bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
+
+        rayData->isCurrentBounceDiffuse = isDiffuse;
 
         const int indexBsdfSample = NUM_LIGHT_TYPES + materialId;
 
@@ -349,10 +344,79 @@ namespace jazzfusion
         //     OPTIX_DEBUG_PRINT(surfSampleSurfPdf);
         // }
 
-        if (!rayData->hitFirstDefuseSurface && isDiffuse)
+        if (rayData->isHitFrontFace) // front face
         {
-            rayData->hitFirstDefuseSurface = true;
-            rayData->albedo = albedo;
+            if (rayData->isInsideVolume) // inside volume
+            {
+                if (rayData->isHitTransmission) // trasmission
+                {
+                    // wrong!
+                }
+                else // reflection
+                {
+                    rayData->pos = Float3(frontPos);
+                }
+            }
+            else // outside volumn
+            {
+                if (rayData->isHitTransmission) // trasmission
+                {
+                    rayData->pos = Float3(backPos);
+                }
+                else // reflection
+                {
+                    rayData->pos = Float3(frontPos);
+                }
+            }
+        }
+        else // backface
+        {
+            if (rayData->isInsideVolume) // inside volume
+            {
+                if (rayData->isHitTransmission) // trasmission
+                {
+                    rayData->pos = Float3(frontPos);
+                }
+                else // reflection
+                {
+                    rayData->pos = Float3(backPos);
+                }
+            }
+            else // outside volumn
+            {
+                // pretty wrong situation: pass through
+
+                if (rayData->isHitTransmission) // trasmission
+                {
+                    rayData->pos = Float3(backPos);
+                }
+                else // reflection
+                {
+                    rayData->pos = Float3(frontPos);
+                }
+
+                rayData->f_over_pdf = Float3(1.0f);
+                rayData->pdf = 1.0f;
+                return;
+            }
+        }
+
+        if (!rayData->hitFirstDiffuseSurface && materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
+        {
+            rayData->hasGlass = true;
+        }
+
+        if (!rayData->hitFirstDiffuseSurface && isDiffuse)
+        {
+            rayData->hitFirstDiffuseSurface = true;
+            if (rayData->sampleIdx == 0)
+            {
+                rayData->albedo = albedo;
+            }
+            else
+            {
+                rayData->albedo = lerp3f(rayData->albedo, albedo, 1.0f / (float)(rayData->sampleIdx + 1));
+            }
             albedo = Float3(1.0f);
         }
         else
@@ -364,11 +428,10 @@ namespace jazzfusion
         {
             // Diffuse after diffuse, shadow ray only
             bool shadowRayOnly = false;
-            if (rayData->flags & FLAG_DIFFUSED)
+            if (rayData->isLastBounceDiffuse)
             {
                 shadowRayOnly = true;
             }
-            rayData->flags |= FLAG_DIFFUSED;
 
             // Env light sample
             LightSample lightSample;
@@ -454,7 +517,7 @@ namespace jazzfusion
 
             float lightSampleLightDistPdf = lightSample.pdf;
 
-            if (0.0f < lightSampleLightDistPdf) // Valid light sample, verify light distribution
+            if (0.0f < lightSampleLightDistPdf && (dot(lightSample.direction, state.geometricNormal) > 0.0f)) // Valid light sample, verify light distribution
             {
                 const int indexBsdfEval = indexBsdfSample + 1;
                 const Float4 lightSampleSurfDistBsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, PerRayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, lightSample.direction);
@@ -463,14 +526,14 @@ namespace jazzfusion
 
                 if (0.0f < lightSampleSurfDistPdf) // Valid light sample, verify surface distribution
                 {
-                    rayData->flags |= FLAG_SHADOW;
+                    rayData->isShadowRay = true;
 
                     Float3 originalPos = rayData->pos;
                     float originalDistance = rayData->distance;
                     Float3 originalAbsorption = rayData->absorption_ior.xyz;
+                    bool originalIsInsideVolume = rayData->isInsideVolume;
 
                     rayData->wi = lightSample.direction;
-                    bool inVolume = rayData->flags & FLAG_VOLUME;
                     Float3 glassThroughput = Float3(1.0f);
 
                     // For glass, go *straight* through the surface and volumn to calculate the direct light contribution
@@ -479,8 +542,8 @@ namespace jazzfusion
                     {
                         UInt2 payload = splitPointer(rayData);
 
-                        rayData->flags &= ~FLAG_SHADOW_HIT;
-                        rayData->flags &= ~FLAG_SHADOW_GLASS_HIT;
+                        rayData->hasShadowRayHitAnything = false;
+                        rayData->hasShadowRayHitTransmissiveSurface = false;
 
                         optixTrace(sysParam.topObject,
                                    (float3)rayData->pos, (float3)rayData->wi,
@@ -489,28 +552,27 @@ namespace jazzfusion
                                    0, 1, 0,
                                    payload.x, payload.y);
 
-                        if (!(rayData->flags & FLAG_SHADOW_HIT))
+                        if (!rayData->hasShadowRayHitAnything)
                         {
                             float misWeightLightSample = powerHeuristic(lightSampleLightDistPdf, lightSampleSurfDistPdf);
                             const float cosTheta = fmaxf(0.0f, dot(lightSample.direction, state.normal));
                             Float3 shadowRayBsdfOverPdf = lightSampleSurfDistBsdf * cosTheta / lightSampleLightDistPdf;
                             Float3 shadowRayRadiance = lightSample.emission * misWeightLightSample * shadowRayBsdfOverPdf * glassThroughput * albedo;
                             rayData->radiance += shadowRayRadiance;
-
                             break;
                         }
                         else
                         {
-                            if (rayData->flags & FLAG_SHADOW_GLASS_HIT)
+                            if (rayData->hasShadowRayHitTransmissiveSurface)
                             {
-                                if (inVolume)
+                                if (rayData->isInsideVolume)
                                 {
-                                    inVolume = false;
+                                    rayData->isInsideVolume = false;
                                     glassThroughput *= exp3f(-rayData->distance * rayData->absorption_ior.xyz);
                                 }
                                 else
                                 {
-                                    inVolume = true;
+                                    rayData->isInsideVolume = true;
                                 }
                                 continue;
                             }
@@ -524,10 +586,13 @@ namespace jazzfusion
                     rayData->pos = originalPos;
                     rayData->distance = originalDistance;
                     rayData->absorption_ior.xyz = originalAbsorption;
+                    rayData->isInsideVolume = originalIsInsideVolume;
+
+                    rayData->isShadowRay = false;
 
                     if (shadowRayOnly)
                     {
-                        rayData->flags |= FLAG_TERMINATE;
+                        rayData->shouldTerminate = true;
                         return;
                     }
                 }

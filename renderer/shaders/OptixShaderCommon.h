@@ -8,21 +8,6 @@ namespace jazzfusion
 {
     static constexpr float DenominatorEpsilon = 1.0e-6f;
 
-    static constexpr int FLAG_SHADOW = 0x00000001;
-    static constexpr int FLAG_DIFFUSED = 0x00000002;
-
-    static constexpr int FLAG_FRONTFACE = 0x00000010;
-    static constexpr int FLAG_THINWALLED = 0x00000020;
-    static constexpr int FLAG_TRANSMISSION = 0x00000100;
-    static constexpr int FLAG_VOLUME = 0x00001000;
-
-    static constexpr int FLAG_SHADOW_HIT = 0x00002000;
-    static constexpr int FLAG_SHADOW_GLASS_HIT = 0x00004000;
-
-    static constexpr int FLAG_TERMINATE = 0x80000000;
-
-    static constexpr int FLAG_CLEAR_MASK = FLAG_DIFFUSED | FLAG_SHADOW;
-
     // Currently only containing some vertex attributes in world coordinates.
     struct MaterialState
     {
@@ -43,7 +28,6 @@ namespace jazzfusion
         float distance; // Distance from the ray origin to the current position, in world space. Needed for absorption of nested materials.
 
         Float3 wo; // Outgoing direction, to observer, in world space.
-        unsigned int flags;
 
         Float3 wi; // Incoming direction, to light, in world space.
         unsigned int depth;
@@ -54,7 +38,6 @@ namespace jazzfusion
         Float3 f_over_pdf; // BSDF sample throughput, pre-multiplied f_over_pdf = bsdf.f * fabsf(dot(wi, ns) / bsdf.pdf;
         float pdf;         // The last BSDF sample's pdf, tracked for multiple importance sampling.
 
-        Float2 ior; // .x = IOR the ray currently is inside, .y = the IOR of the surrounding volume. The IOR of the current material is in absorption_ior.w!
         float rayConeSpread;
         float rayConeWidth;
 
@@ -67,7 +50,17 @@ namespace jazzfusion
         float roughness;
 
         // float totalDistance;
-        bool hitFirstDefuseSurface;
+        bool hitFirstDiffuseSurface;
+        bool hasGlass;
+        bool shouldTerminate;
+        bool isShadowRay;
+        bool hasShadowRayHitAnything;
+        bool hasShadowRayHitTransmissiveSurface;
+        bool isCurrentBounceDiffuse;
+        bool isLastBounceDiffuse;
+        bool isHitFrontFace;
+        bool isHitTransmission;
+        bool isInsideVolume;
 
         // Float3 lightEmission;
         // float lightPdf;
