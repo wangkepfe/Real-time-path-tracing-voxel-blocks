@@ -141,6 +141,7 @@ namespace jazzfusion
         m_systemParameter.noiseBlend = GlobalSettings::GetDenoisingParams().noiseBlend;
         m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
         m_systemParameter.samplePerIteration = samplePerIteration;
+        m_systemParameter.timeInSecond = backend.getTimer().getTimeInSecond();
 
         const auto &skyModel = SkyModel::Get();
         m_systemParameter.sunDir = skyModel.getSunDir();
@@ -451,7 +452,7 @@ namespace jazzfusion
             {
                 parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
                 parameters.albedo = Float3(1.0f);
-                parameters.uvScale = 1.0f;
+                parameters.uvScale = 5.0f;
                 parameters.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
                 parameters.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
                 parameters.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
@@ -464,10 +465,11 @@ namespace jazzfusion
             // Water material
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
             parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
+            parameters.uvScale = 5.0f;
             parameters.textureAlbedo = 0;
-            parameters.textureNormal = 0;
+            parameters.textureNormal = textureManager.GetTexture("data/water1.jpg");
             parameters.textureRoughness = 0;
-            parameters.flags = 0;
+            parameters.flags = 1;
             parameters.absorption = Float3(-logf(0.9f), -logf(0.95f), -logf(1.0f)) * 0.5f;
             parameters.ior = 1.33f;
             m_materialParameters.push_back(parameters);

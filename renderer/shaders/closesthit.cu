@@ -261,18 +261,18 @@ namespace jazzfusion
 
         if (abs(state.geometricNormal.x) > 0.9f)
         {
-            state.texcoord.x = fract(rayData->pos.y);
-            state.texcoord.y = fract(rayData->pos.z);
+            state.texcoord.x = fmodf(rayData->pos.y, parameters.uvScale);
+            state.texcoord.y = fmodf(rayData->pos.z, parameters.uvScale);
         }
         else if (abs(state.geometricNormal.y) > 0.9f)
         {
-            state.texcoord.x = fract(rayData->pos.x);
-            state.texcoord.y = fract(rayData->pos.z);
+            state.texcoord.x = fmodf(rayData->pos.x, parameters.uvScale);
+            state.texcoord.y = fmodf(rayData->pos.z, parameters.uvScale);
         }
         else if (abs(state.geometricNormal.z) > 0.9f)
         {
-            state.texcoord.x = fract(rayData->pos.y);
-            state.texcoord.y = fract(rayData->pos.x);
+            state.texcoord.x = fmodf(rayData->pos.y, parameters.uvScale);
+            state.texcoord.y = fmodf(rayData->pos.x, parameters.uvScale);
         }
 
         // Ray cone spread
@@ -289,13 +289,15 @@ namespace jazzfusion
 
         rayData->isHitFrontFace = dot(rayData->wo, state.geometricNormal) >= 0.0f;
 
-        Float3 albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
+        Float3 albedo = parameters.albedo;
 
+        state.texcoord /= parameters.uvScale;
         float texMip0Size = parameters.texSize.length();
-        float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.01f) * parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
-        // lod = 0.0f;
+        float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.01f) / parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
 
-        // state.texcoord *= 2.0f;
+        if (parameters.flags == 1)
+        {
+        }
 
         if (parameters.textureAlbedo != 0)
         {
@@ -320,6 +322,26 @@ namespace jazzfusion
         else
         {
             state.normal = state.geometricNormal;
+        }
+
+        if (parameters.flags == 1) // water
+        {
+            if ((abs(state.geometricNormal.x) > 0.9f) || (abs(state.geometricNormal.z) > 0.9f))
+            {
+                state.normal = state.geometricNormal;
+            }
+            else
+            {
+                Float2 texcoord1 = state.texcoord;
+                Float2 texcoord2 = state.texcoord;
+                texcoord1.x += sysParam.timeInSecond * 0.04f;
+                texcoord2 *= 2.0f;
+                texcoord2.y += sysParam.timeInSecond * 0.02f;
+                Float3 normal1 = Float3(tex2DLod<float4>(parameters.textureNormal, texcoord1.x, texcoord1.y, lod)) - 0.5f;
+                Float3 normal2 = Float3(tex2DLod<float4>(parameters.textureNormal, texcoord2.x, texcoord2.y, lod)) - 0.5f;
+                state.normal = normalize(normal1 + normal2 * 2.0f);
+                alignVector(state.geometricNormal, state.normal);
+            }
         }
 
         rayData->normal = state.normal;
@@ -399,11 +421,6 @@ namespace jazzfusion
                 rayData->pdf = 1.0f;
                 return;
             }
-        }
-
-        if (!rayData->hitFirstDiffuseSurface && materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
-        {
-            rayData->hasGlass = true;
         }
 
         if (!rayData->hitFirstDiffuseSurface && isDiffuse)

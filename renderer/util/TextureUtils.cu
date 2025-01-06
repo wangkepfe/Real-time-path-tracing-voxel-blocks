@@ -117,6 +117,7 @@ namespace jazzfusion
             filePaths.emplace_back("data/" + textureFile + "_normal.png");
             filePaths.emplace_back("data/" + textureFile + "_rough.png");
         }
+        filePaths.emplace_back("data/water1.jpg");
 
         m_textures.resize(filePaths.size());
 

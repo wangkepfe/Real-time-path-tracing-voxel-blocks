@@ -13,7 +13,7 @@ namespace jazzfusion
     {
         // Float3 normalGeo;
         Float3 normal;
-        Float3 texcoord;
+        Float2 texcoord;
         Float3 geometricNormal;
         float roughness;
         Float3 wo;
@@ -51,7 +51,6 @@ namespace jazzfusion
 
         // float totalDistance;
         bool hitFirstDiffuseSurface;
-        bool hasGlass;
         bool shouldTerminate;
         bool isShadowRay;
         bool hasShadowRayHitAnything;

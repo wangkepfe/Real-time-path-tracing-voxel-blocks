@@ -315,42 +315,18 @@ namespace jazzfusion
         }
         else
         {
-            if (!rayData->hitFirstDiffuseSurface)
+            if (rayData->rand(sysParam) < reflective)
             {
-                rayData->hasGlass = true;
-            }
-
-            if (1)
-            {
-
-                if (rayData->rand(sysParam) < reflective)
-                {
-                    wi = wReflection;
-                }
-                else
-                {
-                    wi = wRefraction;
-                    rayData->isHitTransmission = true;
-                }
-                f_over_pdf = Float3(1.0f);
+                wi = wReflection;
             }
             else
             {
-                if (rayData->sampleIdx & 0x1)
-                {
-                    wi = wReflection;
-                    f_over_pdf = Float3(reflective);
-                }
-                else
-                {
-                    wi = wRefraction;
-                    rayData->isHitTransmission = true;
-                    f_over_pdf = Float3(1.0f - reflective);
-                }
+                wi = wRefraction;
+                rayData->isHitTransmission = true;
             }
+            f_over_pdf = Float3(1.0f);
+
+            pdf = 1.0f;
         }
-
-        pdf = 1.0f;
     }
-
 }

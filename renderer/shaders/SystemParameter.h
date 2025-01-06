@@ -101,6 +101,7 @@ namespace jazzfusion
         BlueNoiseRandGenerator randGen;
         float noiseBlend;
         int accumulationCounter;
+        float timeInSecond;
     };
 
     struct VertexAttributes

@@ -106,8 +106,6 @@ namespace jazzfusion
         Float3 radiance = Float3(0.0f);
         Float3 throughput = Float3(1.0f);
 
-        unsigned int depth = 0;
-
         rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
         rayData->albedo = Float3(1.0f);
         rayData->normal = Float3(0.0f, 1.0f, 0.0f);
@@ -151,53 +149,6 @@ namespace jazzfusion
 
             ++rayData->depth;
         }
-
-        if (0)
-        {
-            if (rayData->hasGlass)
-            {
-                Float3 radianceGlassSample = Float3(0.0f);
-
-                rayData->pos = sysParam.camera.pos;
-                rayData->wi = rayDir;
-                rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
-                rayData->normal = Float3(0.0f, 1.0f, 0.0f);
-                rayData->roughness = 0.0f;
-                rayData->rayConeWidth = 0.0f;
-                rayData->rayConeSpread = sysParam.camera.getRayConeWidth(idx);
-                rayData->material = 100.0f;
-                rayData->sampleIdx = 1;
-                rayData->depth = 0;
-                rayData->isShadowRay = false;
-                rayData->isCurrentBounceDiffuse = false;
-                rayData->isLastBounceDiffuse = false;
-
-                pathTerminated = false;
-                throughput = Float3(1.0f);
-                volumnIdx = 0;
-
-                while (!pathTerminated)
-                {
-                    pathTerminated = !TraceNextPath(rayData, absorptionIor, volumnIdx, radianceGlassSample, throughput);
-
-                    if (rayData->depth == BounceLimit - 1)
-                    {
-                        pathTerminated = true;
-                    }
-
-                    ++rayData->depth;
-                }
-
-                radiance = lerp3f(radiance, radianceGlassSample, 0.5f);
-            }
-        }
-
-        /// Debug visualization
-        // radiance = outNormal * 0.5f + 0.5f;
-        // radiance = ColorRampVisualization(clampf((float)((unsigned short)rayData->material) / 8192.0f));
-        // radiance = ColorRampVisualization(expf(-outDepth * 0.1f));
-        // radiance = Float3(((outMotionVector - 0.5f) * 10.0f) + 0.5f, 0.0f);
-        // outAlbedo = Float3(1.0f);
 
         if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
         {
