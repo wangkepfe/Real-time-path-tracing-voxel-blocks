@@ -279,7 +279,7 @@ namespace jazzfusion
     {
         rayData->absorption_ior = Float4(parameters.absorption, parameters.ior);
 
-        const bool hitFrontFace = rayData->isHitFrontFace;
+        const bool hitFrontFace = rayData->hitFrontFace;
         const float eta = hitFrontFace ? rayData->absorption_ior.w / 1.0f : 1.0f / rayData->absorption_ior.w;
 
         Float3 wReflection = reflect3f(-rayData->wo, state.normal);
@@ -328,5 +328,33 @@ namespace jazzfusion
 
             pdf = 1.0f;
         }
+    }
+
+    extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
+    {
+        unitSquareToCosineHemisphere(rayData->rand2(sysParam), state.normal, wi, pdf);
+
+        if (pdf <= 0.0f)
+        {
+            rayData->shouldTerminate = true;
+            return;
+        }
+
+        if (rayData->rand(sysParam) < 0.5f)
+        {
+            wi = -wi;
+        }
+
+        pdf *= 0.5f;
+
+        f_over_pdf = Float3(1.0f); // f=albedo/2pi; pdf=cos_wi/2pi; this term = f/pdf*cos_wi = albedo
+    }
+
+    extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
+    {
+        const Float3 f = Float3(1.0f) / (2 * M_PI);                 // albedo/2pi
+        const float pdf = abs(dot(wiL, state.normal) / (2 * M_PI)); // cos_wi/2pi
+
+        return Float4(f, pdf);
     }
 }

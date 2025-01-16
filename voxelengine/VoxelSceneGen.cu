@@ -1,5 +1,10 @@
 #include "VoxelSceneGen.h"
+
+#include "Noise.h"
+
 #include "util/KernelHelper.h"
+
+#include "Block.h"
 
 #include <cub/cub.cuh> // For prefix sums
 
@@ -56,7 +61,7 @@ __device__ __host__ void ComputeFaceVertices(Float3 basePos, int faceId, Float3 
     }
 }
 
-__global__ void GenerateVoxelChunk(Voxel *voxels, unsigned int width)
+__global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int width)
 {
     Int3 idx;
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -67,26 +72,61 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, unsigned int width)
         return;
 
     Voxel val;
-    val.id = 0;
-    if (idx.y + idx.x < width - 1)
+    val.id = BlockTypeEmpty;
+
+    float noiseVal = noise[idx.x * width + idx.z];
+
+    float terrainHeight = max(0.1f, (noiseVal * 1.4f - 0.7f + 0.25f) * width);
+    terrainHeight = min(terrainHeight, width * 0.9f);
+    if (idx.y < terrainHeight)
     {
-        val.id = 1;
+        float verticalDepth = terrainHeight - idx.y;
+
+        if (terrainHeight < width * (0.25f + 0.05f))
+        {
+            if (verticalDepth < 3.5f)
+            {
+                val.id = BlockTypeSand;
+            }
+            else
+            {
+                val.id = BlockTypeRocks;
+            }
+        }
+        else if (terrainHeight < width * (0.25f + 0.6f) && terrainHeight > width * (0.25f + 0.3f))
+        {
+            if (verticalDepth < 5.5f)
+            {
+                val.id = BlockTypeCliff;
+            }
+            else
+            {
+                val.id = BlockTypeRocks;
+            }
+        }
+        else
+        {
+            if (verticalDepth < 1.5f)
+            {
+                val.id = BlockTypeSoil;
+            }
+            else if (verticalDepth < 5.5f)
+            {
+                val.id = BlockTypeCliff;
+            }
+            else
+            {
+                val.id = BlockTypeRocks;
+            }
+        }
     }
-    // if (idx.x == 0 || idx.x == width - 1 || idx.z == 0 || idx.z == width - 1)
-    // {
-    //     if (idx.y < width / 2)
-    //     {
-    //         val.id = 1;
-    //     }
-    // }
 
     // This makes sure all material block has at least one block
-    constexpr int numMaterials = 6;
-    for (int i = 0; i < numMaterials; ++i)
+    for (int i = 1; i < BlockTypeMaxNum; ++i)
     {
-        if (idx.x == 0 && idx.y == 0 && idx.z == i)
+        if (idx.x == 1 && idx.y == 1 && idx.z == i)
         {
-            val.id = i + 1;
+            val.id = i;
         }
     }
 
@@ -275,14 +315,33 @@ namespace vox
         dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
 
         size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
+        size_t noiseMapSize = voxelChunk.width * voxelChunk.width;
 
         cudaMalloc(d_data, totalVoxels * sizeof(Voxel));
-        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, voxelChunk.width);
+
+        PerlinNoiseGenerator noiseGenerator;
+        float freq = 1.0f / voxelChunk.width;
+
+        std::vector<float> noiseMap(noiseMapSize);
+        for (int x = 0; x < voxelChunk.width; ++x)
+        {
+            for (int y = 0; y < voxelChunk.width; ++y)
+            {
+                noiseMap[y * voxelChunk.width + x] = noiseGenerator.getNoise(x * freq, y * freq);
+            }
+        }
+
+        float *d_noise;
+        cudaMalloc(&d_noise, noiseMapSize * sizeof(float));
+        cudaMemcpy(d_noise, noiseMap.data(), noiseMapSize * sizeof(float), cudaMemcpyHostToDevice);
+
+        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width);
 
         CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(cudaPeekAtLastError());
 
         cudaMemcpy(voxelChunk.data, *d_data, totalVoxels * sizeof(Voxel), cudaMemcpyDeviceToHost);
+        cudaFree(d_noise);
 
         // std::cout << "voxel:" << std::endl;
         // for (int i = 0; i < totalVoxels; ++i)
@@ -642,7 +701,7 @@ namespace vox
     {
         float xMax = (float)width - 0.1f;
         float xMin = 0.1f;
-        float yMax = (float)(width / 2) - 0.1f;
+        float yMax = (float)(width / 4) - 0.1f;
         float yMin = 0.1f;
         float zMax = (float)width - 0.1f;
         float zMin = 0.1f;

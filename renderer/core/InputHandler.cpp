@@ -6,6 +6,7 @@
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "voxelengine/VoxelEngine.h"
+#include "voxelengine/Block.h"
 
 #include <iostream>
 #include <fstream>
@@ -104,13 +105,26 @@ namespace jazzfusion
                     else if (action == GLFW_RELEASE)
                         inputHandler.moveSpeed = 0.01f;
                 }
+            }
 
-                for (int i = 0; i < 10; ++i)
+            for (int i = 0; i < 10; ++i)
+            {
+                if (key == GLFW_KEY_0 + i)
                 {
-                    if (key == GLFW_KEY_0 + i)
+                    if (action == GLFW_PRESS)
                     {
-                        if (action == GLFW_PRESS)
-                            inputHandler.currentSelectedBlockId = i;
+                        inputHandler.currentSelectedBlockId = i;
+
+                        if (mods == GLFW_MOD_SHIFT)
+                        {
+                            inputHandler.currentSelectedBlockId += 10;
+                        }
+                        else if (mods == GLFW_MOD_CONTROL)
+                        {
+                            inputHandler.currentSelectedBlockId += 20;
+                        }
+
+                        inputHandler.currentSelectedBlockId = min(inputHandler.currentSelectedBlockId, BlockTypeMaxNum - 1);
                     }
                 }
             }

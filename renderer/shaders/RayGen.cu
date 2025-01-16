@@ -27,7 +27,7 @@ namespace jazzfusion
         rayData->isLastBounceDiffuse = rayData->isCurrentBounceDiffuse;
         rayData->isCurrentBounceDiffuse = false;
 
-        rayData->isHitFrontFace = false;
+        rayData->hitFrontFace = false;
         rayData->isHitTransmission = false;
         rayData->isInsideVolume = false;
 
@@ -63,7 +63,7 @@ namespace jazzfusion
 
         if (rayData->isHitTransmission)
         {
-            if (rayData->isHitFrontFace) // Enter
+            if (rayData->hitFrontFace) // Enter
             {
                 volumnIdx = 1;
                 absorptionIor = rayData->absorption_ior;

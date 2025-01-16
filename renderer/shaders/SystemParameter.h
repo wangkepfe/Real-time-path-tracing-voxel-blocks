@@ -107,6 +107,7 @@ namespace jazzfusion
     struct VertexAttributes
     {
         Float3 vertex;
+        Float2 texcoord;
     };
 
     // SBT Record data for the hit group.

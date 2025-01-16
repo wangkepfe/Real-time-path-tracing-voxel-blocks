@@ -356,9 +356,9 @@ namespace jazzfusion
             skyParams.needRegenerate = false;
 
             // Compute sun direction based on the time of day and the sun rotation axis
-            const Float3 axis =
-                normalize(Float3(0.0f, cos(skyParams.sunAxisAngle * Pi_over_180),
-                                 sin(skyParams.sunAxisAngle * Pi_over_180)));
+            Float3 axis = Float3(1.0f, cos(skyParams.sunAxisAngle * Pi_over_180), sin(skyParams.sunAxisAngle * Pi_over_180));
+            axis *= Float3(sin(skyParams.sunAxisRotate * Pi_over_180), 1.0f, cos(skyParams.sunAxisRotate * Pi_over_180));
+            axis = normalize(axis);
             const float angle = fmodf(skyParams.timeOfDay * M_PI, TWO_PI);
             sunDir = rotate3f(axis, angle, cross(Float3(0, 1, 0), axis)).normalized();
 

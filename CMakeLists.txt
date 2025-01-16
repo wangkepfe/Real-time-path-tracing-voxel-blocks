@@ -61,6 +61,7 @@ set( HEADERS
     renderer/util/TextureUtils.h
     renderer/util/RandGenData.h
     renderer/util/RandGenHost.h
+    renderer/util/ModelUtils.h
     renderer/shaders/LinearMath.h
     renderer/shaders/Common.h
     renderer/shaders/Camera.h
@@ -75,6 +76,8 @@ set( HEADERS
     voxelengine/Voxel.h
     voxelengine/VoxelChunk.h
     voxelengine/VoxelMath.h
+    voxelengine/Noise.h
+    voxelengine/ext/PerlinNoise.hpp
 )
 
 set( SOURCES
@@ -91,8 +94,10 @@ set( SOURCES
     renderer/util/RandGenHost.cpp
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
+    renderer/util/ModelUtils.cpp
     voxelengine/VoxelEngine.cpp
     voxelengine/VoxelSceneGen.cu
+    voxelengine/Noise.cpp
 )
 
 set( OPTIX_SHADERS

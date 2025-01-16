@@ -67,8 +67,6 @@ namespace jazzfusion
             return m_shaderTextures.texObjs[id];
         }
 
-        static const std::vector<std::string> &GetTextureFiles();
-
     private:
         TextureManager() {}
 

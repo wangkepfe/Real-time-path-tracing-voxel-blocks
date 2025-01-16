@@ -139,12 +139,14 @@ namespace jazzfusion
         GetValueList()
         {
             return {{&timeOfDay, "Time of Day", 0.01f, 0.99f, false},
-                    {&sunAxisAngle, "Sun Axis Angle", 5.0f, 85.0f, false}};
+                    {&sunAxisAngle, "Sun Axis Angle", 5.0f, 85.0f, false},
+                    {&sunAxisRotate, "Sun Axis Rotate", 0.0f, 360.0f, false}};
         }
 
         bool needRegenerate = true;
         float timeOfDay = 0.25f;
         float sunAxisAngle = 45.0f;
+        float sunAxisRotate = 0.0f;
     };
 
     class GlobalSettings

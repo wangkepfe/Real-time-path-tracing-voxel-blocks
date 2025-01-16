@@ -9,6 +9,7 @@
 #include <optix_function_table.h>
 
 #include <vector>
+#include <array>
 #include <functional>
 
 #include "shaders/SystemParameter.h"
@@ -38,20 +39,6 @@ namespace jazzfusion
         }
         Scene(Scene const &) = delete;
         void operator=(Scene const &) = delete;
-        void createGeometries(
-            OptixFunctionTable &api,
-            OptixDeviceContext &context,
-            CUstream cudaStream,
-            std::vector<GeometryData> &geometries,
-            std::vector<OptixInstance> &instances);
-
-        void updateGeometry(
-            OptixFunctionTable &api,
-            OptixDeviceContext &context,
-            CUstream cudaStream,
-            std::vector<GeometryData> &geometries,
-            std::vector<OptixInstance> &instances,
-            int objectId);
 
         // Scene meshes
         std::vector<VertexAttributes *> m_geometryAttibutes;
@@ -63,9 +50,11 @@ namespace jazzfusion
         std::vector<unsigned int> sceneUpdateObjectId;
         Float3 *edgeToHighlight;
 
-    private:
-        Scene();
-        ~Scene();
+        int uninstancedGeometryCount;
+        int instancedGeometryCount;
+
+        std::unordered_map<int, std::vector<int>> geometryInstanceIdMap;
+        std::vector<std::array<float, 12>> instanceTransformMatrices;
 
         static OptixTraversableHandle CreateGeometry(
             OptixFunctionTable &api,
@@ -76,6 +65,10 @@ namespace jazzfusion
             unsigned int *d_indices,
             unsigned int attributeSize,
             unsigned int indicesSize);
+
+    private:
+        Scene();
+        ~Scene();
     };
 
 }

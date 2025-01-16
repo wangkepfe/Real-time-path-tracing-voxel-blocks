@@ -1,9 +1,12 @@
 #include "VoxelEngine.h"
 #include "VoxelMath.h"
+#include "Block.h"
 
 #include "core/Scene.h"
 #include "core/InputHandler.h"
 #include "core/RenderCamera.h"
+
+#include "util/ModelUtils.h"
 
 namespace vox
 {
@@ -34,9 +37,14 @@ namespace vox
         auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-        totalNumBlockTypes = 6;
-        // totalNumGeometries = totalNumBlockTypes;
-        totalNumGeometries = totalNumBlockTypes + 1;
+        // Important geoemetry count
+        totalNumBlockTypes = BlockTypeMaxNum - 1;
+        totalNumUninstancedGeometries = totalNumBlockTypes + 1; // Plus one for water
+        totalNumInstancedGeometries = 0;
+        totalNumGeometries = totalNumUninstancedGeometries + totalNumInstancedGeometries;
+
+        scene.uninstancedGeometryCount = totalNumUninstancedGeometries;
+        scene.instancedGeometryCount = totalNumInstancedGeometries;
 
         sceneGeometryAttributes.resize(totalNumGeometries);
         sceneGeometryIndices.resize(totalNumGeometries);
@@ -51,7 +59,7 @@ namespace vox
         Voxel *d_data;
         initVoxels(voxelChunk, &d_data);
 
-        for (int i = 0; i < totalNumBlockTypes; ++i)
+        for (int i = 0; i < totalNumUninstancedGeometries - 1; ++i) // Exclude water
         {
             sceneGeometryAttributeSize[i] = 0;
             sceneGeometryIndicesSize[i] = 0;
@@ -75,17 +83,42 @@ namespace vox
         freeDeviceVoxelData(d_data);
 
         // Generate geometry for sea
-        int seaIndex = totalNumGeometries - 1;
+        int seaIndex = totalNumUninstancedGeometries - 1;
         generateSea(
             &(sceneGeometryAttributes[seaIndex]),
             &(sceneGeometryIndices[seaIndex]),
             sceneGeometryAttributeSize[seaIndex],
             sceneGeometryIndicesSize[seaIndex],
             voxelChunk.width);
+
+        std::unordered_map<int, std::vector<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+        std::vector<std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+        for (int i = totalNumUninstancedGeometries; i < totalNumUninstancedGeometries + totalNumInstancedGeometries; ++i)
+        {
+            sceneGeometryAttributeSize[i] = 0;
+            sceneGeometryIndicesSize[i] = 0;
+
+            std::string modelFileName = "data/test_plane.obj";
+
+            loadModel(&(sceneGeometryAttributes[i]),
+                      &(sceneGeometryIndices[i]),
+                      sceneGeometryAttributeSize[i],
+                      sceneGeometryIndicesSize[i],
+                      modelFileName);
+
+            // generateInstances(i + 1, voxelChunk, instanceTransformMatrices, geometryInstanceIdMap[i]);
+        }
     }
 
     void VoxelEngine::reload()
     {
+        // A hack to make sure all materials have a valid geometry
+        for (int i = 1; i < BlockTypeMaxNum; ++i)
+        {
+            voxelChunk.data[GetLinearId(1, 1, i, voxelChunk.width)] = i;
+        }
+
         Voxel *d_data;
         size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
         cudaMalloc(&d_data, totalVoxels * sizeof(Voxel));
@@ -97,7 +130,7 @@ namespace vox
         auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-        for (int i = 0; i < totalNumBlockTypes; ++i)
+        for (int i = 0; i < totalNumUninstancedGeometries - 1; ++i)
         {
             sceneGeometryAttributeSize[i] = 0;
             sceneGeometryIndicesSize[i] = 0;

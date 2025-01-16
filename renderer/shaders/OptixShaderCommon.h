@@ -55,9 +55,10 @@ namespace jazzfusion
         bool isShadowRay;
         bool hasShadowRayHitAnything;
         bool hasShadowRayHitTransmissiveSurface;
+        bool hasShadowRayHitThinfilmSurface;
         bool isCurrentBounceDiffuse;
         bool isLastBounceDiffuse;
-        bool isHitFrontFace;
+        bool hitFrontFace;
         bool isHitTransmission;
         bool isInsideVolume;
 

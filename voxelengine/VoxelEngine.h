@@ -29,6 +29,8 @@ namespace vox
         void reload();
 
         int totalNumBlockTypes;
+        int totalNumUninstancedGeometries;
+        int totalNumInstancedGeometries;
         int totalNumGeometries;
 
         VoxelChunk voxelChunk;

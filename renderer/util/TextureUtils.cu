@@ -15,22 +15,10 @@
 #include <filesystem>
 #include "TextureUtils.h"
 
+#include "voxelengine/Block.h"
+
 namespace jazzfusion
 {
-
-    const std::vector<std::string> &TextureManager::GetTextureFiles()
-    {
-        static const std::vector<std::string> textureFiles = {
-            "rocky_trail",
-            "gray_rocks",
-            "seaworn_stone_tiles",
-            "beige_wall_001",
-            "wood_planks",
-            "bark_willow_02",
-        };
-        return textureFiles;
-    }
-
     __global__ void fillFirstMipmapKernel(
         unsigned char *dMipmap,
         const unsigned char *dSource,

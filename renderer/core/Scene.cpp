@@ -14,69 +14,6 @@ namespace jazzfusion
         CUDA_CHECK(cudaFree(edgeToHighlight));
     }
 
-    void Scene::updateGeometry(
-        OptixFunctionTable &api,
-        OptixDeviceContext &context,
-        CUstream cudaStream,
-        std::vector<GeometryData> &geometries,
-        std::vector<OptixInstance> &instances,
-        int objectId)
-    {
-        GeometryData &geometry = geometries[objectId];
-
-        CUDA_CHECK(cudaFree((void *)geometry.gas));
-
-        OptixInstance &instance = instances[objectId];
-        OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometry, m_geometryAttibutes[objectId], m_geometryIndices[objectId], m_geometryAttibuteSize[objectId], m_geometryIndicesSize[objectId]);
-
-        const float transformMatrix[12] =
-            {
-                1.0f, 0.0f, 0.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f};
-
-        memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-
-        instance.instanceId = objectId;
-        instance.visibilityMask = 255;
-        instance.sbtOffset = objectId;
-        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-        instance.traversableHandle = blasHandle;
-    }
-
-    void Scene::createGeometries(
-        OptixFunctionTable &api,
-        OptixDeviceContext &context,
-        CUstream cudaStream,
-        std::vector<GeometryData> &geometries,
-        std::vector<OptixInstance> &instances)
-    {
-        for (int i = 0; i < m_geometryAttibutes.size(); ++i)
-        {
-            GeometryData geometry = {};
-
-            OptixInstance instance = {};
-            OptixTraversableHandle blasHandle = CreateGeometry(api, context, cudaStream, geometry, m_geometryAttibutes[i], m_geometryIndices[i], m_geometryAttibuteSize[i], m_geometryIndicesSize[i]);
-
-            const float transformMatrix[12] =
-                {
-                    1.0f, 0.0f, 0.0f, 0.0f,
-                    0.0f, 1.0f, 0.0f, 0.0f,
-                    0.0f, 0.0f, 1.0f, 0.0f};
-
-            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-
-            instance.instanceId = i;
-            instance.visibilityMask = 255;
-            instance.sbtOffset = i;
-            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = blasHandle;
-
-            instances.push_back(instance);
-            geometries.push_back(geometry);
-        }
-    }
-
     OptixTraversableHandle Scene::CreateGeometry(
         OptixFunctionTable &api,
         OptixDeviceContext &context,

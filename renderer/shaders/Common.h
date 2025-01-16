@@ -43,6 +43,7 @@ namespace jazzfusion
     {
         INDEX_BSDF_DIFFUSE_REFLECTION = 2,
         INDEX_BSDF_MICROFACET_REFLECTION = 4,
+        INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM = 6,
     };
 
     static constexpr unsigned int RAY_MAT_FLAG_SKY = 0u;

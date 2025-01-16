@@ -30,6 +30,8 @@
 #include <vector>
 #include <filesystem>
 
+#include "voxelengine/Block.h"
+
 namespace
 {
 
@@ -287,19 +289,36 @@ namespace jazzfusion
 
     void OptixRenderer::update()
     {
-        if (Scene::Get().needSceneUpdate)
+        auto &scene = Scene::Get();
+        if (scene.needSceneUpdate)
         {
-            Scene::Get().needSceneUpdate = false;
+            scene.needSceneUpdate = false;
 
-            for (auto objectId : Scene::Get().sceneUpdateObjectId)
+            for (auto objectId : scene.sceneUpdateObjectId)
             {
-                Scene::Get().updateGeometry(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances, objectId);
+                {
+                    GeometryData &geometry = m_geometries[objectId];
+                    CUDA_CHECK(cudaFree((void *)geometry.gas));
+                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
+
+                    OptixInstance &instance = m_instances[objectId];
+                    const float transformMatrix[12] =
+                        {
+                            1.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, 1.0f, 0.0f, 0.0f,
+                            0.0f, 0.0f, 1.0f, 0.0f};
+                    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+                    instance.instanceId = objectId;
+                    instance.visibilityMask = 255;
+                    instance.sbtOffset = objectId;
+                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                    instance.traversableHandle = blasHandle;
+                }
 
                 // Shader binding table record hit group geometry
                 m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
                 m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
                 CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-
                 m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
 
                 // Rebuild BVH
@@ -448,11 +467,11 @@ namespace jazzfusion
             TextureManager &textureManager = TextureManager::Get();
 
             // The order in this array matches the instance ID in the root IAS!
-            for (const auto &textureFile : TextureManager::GetTextureFiles())
+            for (const auto &textureFile : GetTextureFiles())
             {
                 parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
                 parameters.albedo = Float3(1.0f);
-                parameters.uvScale = 5.0f;
+                parameters.uvScale = 2.5f;
                 parameters.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
                 parameters.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
                 parameters.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
@@ -465,12 +484,23 @@ namespace jazzfusion
             // Water material
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
             parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
-            parameters.uvScale = 5.0f;
+            parameters.uvScale = 4.0f;
             parameters.textureAlbedo = 0;
             parameters.textureNormal = textureManager.GetTexture("data/water1.jpg");
             parameters.textureRoughness = 0;
             parameters.flags = 1;
             parameters.absorption = Float3(-logf(0.9f), -logf(0.95f), -logf(1.0f)) * 0.5f;
+            parameters.ior = 1.33f;
+            m_materialParameters.push_back(parameters);
+
+            // Mirror material.
+            parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
+            parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
+            parameters.textureAlbedo = 0;
+            parameters.textureNormal = 0;
+            parameters.textureRoughness = 0;
+            parameters.flags = 0;
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.33f;
             m_materialParameters.push_back(parameters);
 
@@ -483,7 +513,7 @@ namespace jazzfusion
             parameters.flags = 0;
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.33f;
-            m_materialParameters.push_back(parameters); // 3
+            m_materialParameters.push_back(parameters);
 
             // Lambert material
             parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
@@ -494,7 +524,7 @@ namespace jazzfusion
             parameters.flags = 0;
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.5f;
-            m_materialParameters.push_back(parameters); // 2
+            m_materialParameters.push_back(parameters);
 
             // Black BSDF for the light. This last material will not be shown inside the GUI!
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
@@ -505,14 +535,58 @@ namespace jazzfusion
             parameters.flags = 0;
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.0f;
-            m_materialParameters.push_back(parameters); // 4
+            m_materialParameters.push_back(parameters);
         }
 
-        // Create instances
         assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
         assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
-        Scene::Get().createGeometries(m_api, m_context, Backend::Get().getCudaStream(), m_geometries, m_instances);
+        auto &scene = Scene::Get();
+
+        // Create uninstanced geometry BLAS and track instances
+        for (int i = 0; i < scene.uninstancedGeometryCount; ++i)
+        {
+            // Create BLAS for the geometry
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[i], scene.m_geometryIndices[i], scene.m_geometryAttibuteSize[i], scene.m_geometryIndicesSize[i]);
+            m_geometries.push_back(geometry);
+
+            // Create an instance for the geometry
+            OptixInstance instance = {};
+            const float transformMatrix[12] =
+                {
+                    1.0f, 0.0f, 0.0f, 0.0f,
+                    0.0f, 1.0f, 0.0f, 0.0f,
+                    0.0f, 0.0f, 1.0f, 0.0f};
+            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+            instance.instanceId = i;
+            instance.visibilityMask = 255;
+            instance.sbtOffset = i;
+            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+            instance.traversableHandle = blasHandle;
+            m_instances.push_back(instance);
+        }
+
+        // Create instanced geometry and track instances
+        for (int i = scene.uninstancedGeometryCount; i < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++i)
+        {
+            // Create BLAS for the geometry
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[i], scene.m_geometryIndices[i], scene.m_geometryAttibuteSize[i], scene.m_geometryIndicesSize[i]);
+            m_geometries.push_back(geometry);
+
+            for (int instanceId : scene.geometryInstanceIdMap[i])
+            {
+                OptixInstance instance = {};
+                memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                instance.instanceId = instanceId;
+                instance.visibilityMask = 255;
+                instance.sbtOffset = i;
+                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                instance.traversableHandle = blasHandle;
+                m_instances.push_back(instance);
+            }
+        }
 
         // Build BVH
         {
@@ -671,6 +745,10 @@ namespace jazzfusion
             pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection"; // 4
             programGroupDescCallables.push_back(pgd);
             pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection"; // 5
+            programGroupDescCallables.push_back(pgd);
+            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm"; // 6
+            programGroupDescCallables.push_back(pgd);
+            pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm"; // 7
             programGroupDescCallables.push_back(pgd);
 
             programGroupCallables.resize(programGroupDescCallables.size());
