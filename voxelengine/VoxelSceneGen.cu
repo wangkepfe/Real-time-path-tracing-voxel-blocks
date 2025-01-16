@@ -121,8 +121,8 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
         }
     }
 
-    // This makes sure all material block has at least one block
-    for (int i = 1; i < BlockTypeMaxNum; ++i)
+    // This makes sure all uninstanced material block has at least one block
+    for (int i = 1; i < BlockTypeWater; ++i)
     {
         if (idx.x == 1 && idx.y == 1 && idx.z == i)
         {
@@ -771,7 +771,7 @@ namespace vox
         cudaMemcpy(d_attrOut, h_attrOut, faceCount * 4 * sizeof(jazzfusion::VertexAttributes), cudaMemcpyHostToDevice);
         cudaMemcpy(d_idxOut, h_idxOut, faceCount * 6 * sizeof(unsigned int), cudaMemcpyHostToDevice);
 
-        if (1)
+        if (0)
         {
             dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
         }

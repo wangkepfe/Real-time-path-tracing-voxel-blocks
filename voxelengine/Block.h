@@ -12,8 +12,8 @@ enum BlockType
     BlockTypeCliff,
 
     BlockTypeTrunk,
-    BlockTypeLeaves,
-    BlockTypeGrass,
+    BlockTypeUnused1,
+    BlockTypeUnused2,
 
     BlockTypeRocks,
     BlockTypeFloor,
@@ -21,7 +21,11 @@ enum BlockType
     BlockTypeWall,
     BlockTypePlank,
 
-    BlockTypeMaxNum,
+    BlockTypeWater,
+
+    BlockTypeLeaves,
+
+    BlockTypeNum,
 };
 
 inline const std::vector<std::string> &GetTextureFiles()
@@ -32,8 +36,8 @@ inline const std::vector<std::string> &GetTextureFiles()
         "aerial_rocks_02",     // Cliff
 
         "bark_willow_02",  // Trunk
-        "rocky_trail",     // Leaves - unused
-        "aerial_beach_01", // Grass - unused
+        "rocky_trail",     // unused1
+        "aerial_beach_01", // unused2
 
         "gray_rocks",          // Rocks
         "stone_tiles_02",      // Floor

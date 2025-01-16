@@ -294,8 +294,12 @@ namespace jazzfusion
         {
             scene.needSceneUpdate = false;
 
-            for (auto objectId : scene.sceneUpdateObjectId)
+            for (int i = 0; i < scene.sceneUpdateObjectId.size(); ++i)
             {
+                auto objectId = scene.sceneUpdateObjectId[i];
+                
+                auto blockId = objectId + 1;
+                if (blockId < BlockTypeWater)
                 {
                     GeometryData &geometry = m_geometries[objectId];
                     CUDA_CHECK(cudaFree((void *)geometry.gas));
@@ -313,13 +317,47 @@ namespace jazzfusion
                     instance.sbtOffset = objectId;
                     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
                     instance.traversableHandle = blasHandle;
-                }
 
-                // Shader binding table record hit group geometry
-                m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
-                m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-                CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-                m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
+                    // Shader binding table record hit group geometry
+                    m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
+                    m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+                    m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
+                }
+                else if (blockId > BlockTypeWater)
+                {
+                    auto instanceId = scene.sceneUpdateInstanceId[i];
+                    bool hasInstance = instanceIds.count(instanceId);
+
+                    if (hasInstance)
+                    {
+                        instanceIds.erase(instanceId);
+                        int idxToRemove = -1;
+                        for (int j = 0; j < m_instances.size(); ++j)
+                        {
+                            if (m_instances[j].instanceId == instanceId)
+                            {
+                                idxToRemove = j;
+                            }
+                        }
+                        assert(idxToRemove != -1);
+                        m_instances.erase(m_instances.begin() + idxToRemove);
+                    }
+                    else
+                    {
+                        instanceIds.insert(instanceId);
+
+                        OptixInstance instance = {};
+                        memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                        instance.instanceId = instanceId;
+                        instance.visibilityMask = 255;
+                        instance.sbtOffset = objectId;
+                        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                        instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+
+                        m_instances.push_back(instance);
+                    }
+                }
 
                 // Rebuild BVH
                 {
@@ -368,7 +406,8 @@ namespace jazzfusion
                 }
             }
 
-            Scene::Get().sceneUpdateObjectId.clear();
+            scene.sceneUpdateObjectId.clear();
+            scene.sceneUpdateInstanceId.clear();
         }
     }
 
@@ -574,6 +613,7 @@ namespace jazzfusion
             GeometryData geometry = {};
             OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[i], scene.m_geometryIndices[i], scene.m_geometryAttibuteSize[i], scene.m_geometryIndicesSize[i]);
             m_geometries.push_back(geometry);
+            objectIdxToBlasHandleMap[i] = blasHandle;
 
             for (int instanceId : scene.geometryInstanceIdMap[i])
             {
@@ -585,6 +625,7 @@ namespace jazzfusion
                 instance.flags = OPTIX_INSTANCE_FLAG_NONE;
                 instance.traversableHandle = blasHandle;
                 m_instances.push_back(instance);
+                instanceIds.insert(instanceId);
             }
         }
 

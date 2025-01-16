@@ -11,6 +11,12 @@
 namespace vox
 {
 
+    unsigned int PositionToInstanceId(unsigned int offset, unsigned int geometryId, unsigned int x, unsigned int y, unsigned int z, unsigned int width)
+    {
+        unsigned int linearId = GetLinearId(x, y, z, width);
+        return offset + geometryId * width * width * width + linearId;
+    }
+
     static void MouseButtonCallback(int button, int action, int mods)
     {
         if (button == 0 && action == 1)
@@ -38,9 +44,9 @@ namespace vox
         auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
         // Important geoemetry count
-        totalNumBlockTypes = BlockTypeMaxNum - 1;
+        totalNumBlockTypes = BlockTypeWater - 1;
         totalNumUninstancedGeometries = totalNumBlockTypes + 1; // Plus one for water
-        totalNumInstancedGeometries = 0;
+        totalNumInstancedGeometries = 1;
         totalNumGeometries = totalNumUninstancedGeometries + totalNumInstancedGeometries;
 
         scene.uninstancedGeometryCount = totalNumUninstancedGeometries;
@@ -56,9 +62,11 @@ namespace vox
         maxFaceCount.resize(totalNumBlockTypes);
         freeFaces.resize(totalNumBlockTypes);
 
+        // Init voxel
         Voxel *d_data;
         initVoxels(voxelChunk, &d_data);
 
+        // Create geoemetry mesh based on the voxel grid
         for (int i = 0; i < totalNumUninstancedGeometries - 1; ++i) // Exclude water
         {
             sceneGeometryAttributeSize[i] = 0;
@@ -79,7 +87,6 @@ namespace vox
                 d_data,
                 i + 1);
         }
-
         freeDeviceVoxelData(d_data);
 
         // Generate geometry for sea
@@ -91,8 +98,9 @@ namespace vox
             sceneGeometryIndicesSize[seaIndex],
             voxelChunk.width);
 
-        std::unordered_map<int, std::vector<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
-        std::vector<std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+        // Load models for the instanced meshes
+        std::unordered_map<int, std::unordered_set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+        std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
         for (int i = totalNumUninstancedGeometries; i < totalNumUninstancedGeometries + totalNumInstancedGeometries; ++i)
         {
@@ -107,14 +115,37 @@ namespace vox
                       sceneGeometryIndicesSize[i],
                       modelFileName);
 
-            // generateInstances(i + 1, voxelChunk, instanceTransformMatrices, geometryInstanceIdMap[i]);
+            unsigned int blockId = i + 1;
+
+            for (unsigned int x = 0; x < voxelChunk.width; ++x)
+            {
+                for (unsigned int y = 0; y < voxelChunk.width; ++y)
+                {
+                    for (unsigned int z = 0; z < voxelChunk.width; ++z)
+                    {
+                        auto val = voxelChunk.get(x, y, z);
+                        if (val.id == blockId)
+                        {
+                            unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, i, x, y, z, voxelChunk.width);
+
+                            geometryInstanceIdMap[i].insert(instanceId);
+
+                            std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)x,
+                                                               0.0f, 1.0f, 0.0f, (float)y,
+                                                               0.0f, 0.0f, 1.0f, (float)z};
+
+                            instanceTransformMatrices[instanceId] = transform;
+                        }
+                    }
+                }
+            }
         }
     }
 
     void VoxelEngine::reload()
     {
         // A hack to make sure all materials have a valid geometry
-        for (int i = 1; i < BlockTypeMaxNum; ++i)
+        for (int i = 1; i < BlockTypeWater; ++i)
         {
             voxelChunk.data[GetLinearId(1, 1, i, voxelChunk.width)] = i;
         }
@@ -155,6 +186,40 @@ namespace vox
         jazzfusion::Scene::Get().needSceneUpdate = true;
 
         freeDeviceVoxelData(d_data);
+
+        std::unordered_map<int, std::unordered_set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+        std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+        geometryInstanceIdMap.clear();
+        instanceTransformMatrices.clear();
+
+        for (int i = totalNumUninstancedGeometries; i < totalNumUninstancedGeometries + totalNumInstancedGeometries; ++i)
+        {
+            unsigned int blockId = i + 1;
+
+            for (unsigned int x = 0; x < voxelChunk.width; ++x)
+            {
+                for (unsigned int y = 0; y < voxelChunk.width; ++y)
+                {
+                    for (unsigned int z = 0; z < voxelChunk.width; ++z)
+                    {
+                        auto val = voxelChunk.get(x, y, z);
+                        if (val.id == blockId)
+                        {
+                            unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, i, x, y, z, voxelChunk.width);
+
+                            geometryInstanceIdMap[i].insert(instanceId);
+
+                            std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)x,
+                                                               0.0f, 1.0f, 0.0f, (float)y,
+                                                               0.0f, 0.0f, 1.0f, (float)z};
+
+                            instanceTransformMatrices[instanceId] = transform;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     void VoxelEngine::update()
@@ -348,21 +413,36 @@ namespace vox
                     unsigned int newVal = 0;
                     int idx = deleteBlockId - 1;
 
-                    updateSingleVoxel(
-                        deletePos.x, deletePos.y, deletePos.z,
-                        newVal,
-                        voxelChunk,
-                        sceneGeometryAttributes[idx],
-                        sceneGeometryIndices[idx],
-                        faceLocation[idx],
-                        sceneGeometryAttributeSize[idx],
-                        sceneGeometryIndicesSize[idx],
-                        currentFaceCount[idx],
-                        maxFaceCount[idx],
-                        freeFaces[idx]);
+                    if (deleteBlockId < BlockTypeWater)
+                    {
+                        updateSingleVoxel(
+                            deletePos.x, deletePos.y, deletePos.z,
+                            newVal,
+                            voxelChunk,
+                            sceneGeometryAttributes[idx],
+                            sceneGeometryIndices[idx],
+                            faceLocation[idx],
+                            sceneGeometryAttributeSize[idx],
+                            sceneGeometryIndicesSize[idx],
+                            currentFaceCount[idx],
+                            maxFaceCount[idx],
+                            freeFaces[idx]);
 
-                    jazzfusion::Scene::Get().needSceneUpdate = true;
-                    jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                        jazzfusion::Scene::Get().needSceneUpdate = true;
+                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                    }
+                    else if (deleteBlockId > BlockTypeWater)
+                    {
+                        std::unordered_map<int, std::unordered_set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+                        std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+                        unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, idx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                        geometryInstanceIdMap[idx].erase(instanceId);
+
+                        jazzfusion::Scene::Get().needSceneUpdate = true;
+                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                        jazzfusion::Scene::Get().sceneUpdateInstanceId.push_back(instanceId);
+                    }
                 }
             }
             else // create a block
@@ -379,21 +459,41 @@ namespace vox
                     unsigned int newVal = blockId;
                     int idx = blockId - 1;
 
-                    updateSingleVoxel(
-                        createPos.x, createPos.y, createPos.z,
-                        newVal,
-                        voxelChunk,
-                        sceneGeometryAttributes[idx],
-                        sceneGeometryIndices[idx],
-                        faceLocation[idx],
-                        sceneGeometryAttributeSize[idx],
-                        sceneGeometryIndicesSize[idx],
-                        currentFaceCount[idx],
-                        maxFaceCount[idx],
-                        freeFaces[idx]);
+                    if (blockId < BlockTypeWater)
+                    {
+                        updateSingleVoxel(
+                            createPos.x, createPos.y, createPos.z,
+                            newVal,
+                            voxelChunk,
+                            sceneGeometryAttributes[idx],
+                            sceneGeometryIndices[idx],
+                            faceLocation[idx],
+                            sceneGeometryAttributeSize[idx],
+                            sceneGeometryIndicesSize[idx],
+                            currentFaceCount[idx],
+                            maxFaceCount[idx],
+                            freeFaces[idx]);
 
-                    jazzfusion::Scene::Get().needSceneUpdate = true;
-                    jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                        jazzfusion::Scene::Get().needSceneUpdate = true;
+                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                    }
+                    else if (blockId > BlockTypeWater)
+                    {
+                        std::unordered_map<int, std::unordered_set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+                        std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+                        unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, idx, createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                        geometryInstanceIdMap[idx].insert(instanceId);
+
+                        std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)createPos.x,
+                                                           0.0f, 1.0f, 0.0f, (float)createPos.y,
+                                                           0.0f, 0.0f, 1.0f, (float)createPos.z};
+                        instanceTransformMatrices[instanceId] = transform;
+
+                        jazzfusion::Scene::Get().needSceneUpdate = true;
+                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                        jazzfusion::Scene::Get().sceneUpdateInstanceId.push_back(instanceId);
+                    }
                 }
             }
         }

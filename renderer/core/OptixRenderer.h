@@ -75,6 +75,8 @@ namespace jazzfusion
         SystemParameter *m_d_systemParameter;
 
         std::vector<OptixInstance> m_instances;
+        std::unordered_set<unsigned int> instanceIds;
+        std::unordered_map<unsigned int, OptixTraversableHandle> objectIdxToBlasHandleMap;
 
         std::vector<GeometryData> m_geometries;
 

@@ -124,7 +124,12 @@ namespace jazzfusion
                             inputHandler.currentSelectedBlockId += 20;
                         }
 
-                        inputHandler.currentSelectedBlockId = min(inputHandler.currentSelectedBlockId, BlockTypeMaxNum - 1);
+                        inputHandler.currentSelectedBlockId = min(inputHandler.currentSelectedBlockId, BlockTypeNum - 1);
+
+                        if (inputHandler.currentSelectedBlockId == BlockTypeWater)
+                        {
+                            inputHandler.currentSelectedBlockId = 0;
+                        }
                     }
                 }
             }

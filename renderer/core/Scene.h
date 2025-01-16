@@ -11,6 +11,7 @@
 #include <vector>
 #include <array>
 #include <functional>
+#include <unordered_set>
 
 #include "shaders/SystemParameter.h"
 
@@ -48,13 +49,14 @@ namespace jazzfusion
 
         bool needSceneUpdate = false;
         std::vector<unsigned int> sceneUpdateObjectId;
+        std::vector<unsigned int> sceneUpdateInstanceId;
         Float3 *edgeToHighlight;
 
         int uninstancedGeometryCount;
         int instancedGeometryCount;
 
-        std::unordered_map<int, std::vector<int>> geometryInstanceIdMap;
-        std::vector<std::array<float, 12>> instanceTransformMatrices;
+        std::unordered_map<int, std::unordered_set<int>> geometryInstanceIdMap;
+        std::unordered_map<int, std::array<float, 12>> instanceTransformMatrices;
 
         static OptixTraversableHandle CreateGeometry(
             OptixFunctionTable &api,
