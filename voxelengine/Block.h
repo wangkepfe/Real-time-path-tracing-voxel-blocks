@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 enum BlockType
 {
@@ -23,6 +24,7 @@ enum BlockType
 
     BlockTypeWater,
 
+    BlockTypeTest1,
     BlockTypeLeaves,
 
     BlockTypeNum,
@@ -46,4 +48,13 @@ inline const std::vector<std::string> &GetTextureFiles()
         "wood_planks",         // Plank
     };
     return textureFiles;
+}
+
+inline const std::string &GetModelFileName(int blockType)
+{
+    static const std::unordered_map<int, std::string> modelFiles = {
+        {BlockTypeTest1, "data/test_plane.obj"},
+        {BlockTypeLeaves, "data/leavesCube4.obj"},
+    };
+    return modelFiles.at(blockType);
 }

@@ -99,7 +99,9 @@ namespace jazzfusion
         std::filesystem::path cwd = std::filesystem::current_path();
 
         std::vector<std::string> filePaths;
-        for (const auto &textureFile : GetTextureFiles())
+        std::vector<std::string> textureFiles = GetTextureFiles();
+        textureFiles.emplace_back("GreenLeaf10_4K_back");
+        for (const auto &textureFile : textureFiles)
         {
             filePaths.emplace_back("data/" + textureFile + "_albedo.png");
             filePaths.emplace_back("data/" + textureFile + "_normal.png");

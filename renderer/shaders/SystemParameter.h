@@ -24,7 +24,7 @@ namespace jazzfusion
         float ior;         // Index of refraction
 
         Float2 texSize = Float2(1024.0f);
-        unsigned int flags;
+        unsigned int flags = 0;
         float uvScale = 1.0f;
     };
 

@@ -61,6 +61,7 @@ namespace jazzfusion
         bool hitFrontFace;
         bool isHitTransmission;
         bool isInsideVolume;
+        bool isHitThinfilmTransmission;
 
         // Float3 lightEmission;
         // float lightPdf;

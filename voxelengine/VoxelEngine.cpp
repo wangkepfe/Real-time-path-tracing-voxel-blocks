@@ -46,7 +46,7 @@ namespace vox
         // Important geoemetry count
         totalNumBlockTypes = BlockTypeWater - 1;
         totalNumUninstancedGeometries = totalNumBlockTypes + 1; // Plus one for water
-        totalNumInstancedGeometries = 1;
+        totalNumInstancedGeometries = BlockTypeNum - BlockTypeWater - 1;
         totalNumGeometries = totalNumUninstancedGeometries + totalNumInstancedGeometries;
 
         scene.uninstancedGeometryCount = totalNumUninstancedGeometries;
@@ -107,15 +107,15 @@ namespace vox
             sceneGeometryAttributeSize[i] = 0;
             sceneGeometryIndicesSize[i] = 0;
 
-            std::string modelFileName = "data/test_plane.obj";
+            unsigned int blockId = i + 1;
+
+            std::string modelFileName = GetModelFileName(blockId);
 
             loadModel(&(sceneGeometryAttributes[i]),
                       &(sceneGeometryIndices[i]),
                       sceneGeometryAttributeSize[i],
                       sceneGeometryIndicesSize[i],
                       modelFileName);
-
-            unsigned int blockId = i + 1;
 
             for (unsigned int x = 0; x < voxelChunk.width; ++x)
             {
@@ -180,10 +180,7 @@ namespace vox
                 voxelChunk,
                 d_data,
                 i + 1);
-
-            jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(i);
         }
-        jazzfusion::Scene::Get().needSceneUpdate = true;
 
         freeDeviceVoxelData(d_data);
 
@@ -220,6 +217,9 @@ namespace vox
                 }
             }
         }
+
+        jazzfusion::Scene::Get().needSceneUpdate = true;
+        jazzfusion::Scene::Get().needSceneReloadUpdate = true;
     }
 
     void VoxelEngine::update()
@@ -429,10 +429,14 @@ namespace vox
                             freeFaces[idx]);
 
                         jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
                     }
                     else if (deleteBlockId > BlockTypeWater)
                     {
+                        unsigned int vid = GetLinearId(deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                        Voxel oldVoxel = voxelChunk.data[vid];
+                        voxelChunk.data[vid].id = newVal;
+
                         std::unordered_map<int, std::unordered_set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
                         std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
@@ -440,8 +444,8 @@ namespace vox
                         geometryInstanceIdMap[idx].erase(instanceId);
 
                         jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
-                        jazzfusion::Scene::Get().sceneUpdateInstanceId.push_back(instanceId);
+                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
+                        jazzfusion::Scene::Get().sceneUpdateInstanceId = instanceId;
                     }
                 }
             }
@@ -475,10 +479,14 @@ namespace vox
                             freeFaces[idx]);
 
                         jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
+                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
                     }
                     else if (blockId > BlockTypeWater)
                     {
+                        unsigned int vid = GetLinearId(createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                        Voxel oldVoxel = voxelChunk.data[vid];
+                        voxelChunk.data[vid].id = newVal;
+
                         std::unordered_map<int, std::unordered_set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
                         std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
@@ -491,8 +499,8 @@ namespace vox
                         instanceTransformMatrices[instanceId] = transform;
 
                         jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId.push_back(idx);
-                        jazzfusion::Scene::Get().sceneUpdateInstanceId.push_back(instanceId);
+                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
+                        jazzfusion::Scene::Get().sceneUpdateInstanceId = instanceId;
                     }
                 }
             }

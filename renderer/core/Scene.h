@@ -48,8 +48,9 @@ namespace jazzfusion
         std::vector<unsigned int> m_geometryIndicesSize;
 
         bool needSceneUpdate = false;
-        std::vector<unsigned int> sceneUpdateObjectId;
-        std::vector<unsigned int> sceneUpdateInstanceId;
+        bool needSceneReloadUpdate = false;
+        unsigned int sceneUpdateObjectId;
+        unsigned int sceneUpdateInstanceId;
         Float3 *edgeToHighlight;
 
         int uninstancedGeometryCount;

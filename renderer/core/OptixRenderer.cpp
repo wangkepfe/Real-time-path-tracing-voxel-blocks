@@ -292,13 +292,61 @@ namespace jazzfusion
         auto &scene = Scene::Get();
         if (scene.needSceneUpdate)
         {
-            scene.needSceneUpdate = false;
-
-            for (int i = 0; i < scene.sceneUpdateObjectId.size(); ++i)
+            if (scene.needSceneReloadUpdate)
             {
-                auto objectId = scene.sceneUpdateObjectId[i];
-                
+                m_instances.resize(scene.uninstancedGeometryCount);
+                instanceIds.clear();
+
+                // Uninstanced
+                for (int objectId = 0; objectId < scene.uninstancedGeometryCount; ++objectId)
+                {
+                    GeometryData &geometry = m_geometries[objectId];
+                    CUDA_CHECK(cudaFree((void *)geometry.gas));
+                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
+
+                    OptixInstance &instance = m_instances[objectId];
+                    const float transformMatrix[12] =
+                        {
+                            1.0f, 0.0f, 0.0f, 0.0f,
+                            0.0f, 1.0f, 0.0f, 0.0f,
+                            0.0f, 0.0f, 1.0f, 0.0f};
+                    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+                    instance.instanceId = objectId;
+                    instance.visibilityMask = 255;
+                    instance.sbtOffset = objectId;
+                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                    instance.traversableHandle = blasHandle;
+
+                    // Shader binding table record hit group geometry
+                    m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
+                    m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                }
+                // Upload SBT
+                CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * scene.uninstancedGeometryCount, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+
+                // Instanced
+                for (int objectId = scene.uninstancedGeometryCount; objectId < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++objectId)
+                {
+                    for (int instanceId : scene.geometryInstanceIdMap[objectId])
+                    {
+                        OptixInstance instance = {};
+                        memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                        instance.instanceId = instanceId;
+                        instance.visibilityMask = 255;
+                        instance.sbtOffset = objectId;
+                        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                        instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+                        m_instances.push_back(instance);
+                        instanceIds.insert(instanceId);
+                    }
+                }
+            }
+            else
+            {
+                auto objectId = scene.sceneUpdateObjectId;
                 auto blockId = objectId + 1;
+
+                // Uninstanced
                 if (blockId < BlockTypeWater)
                 {
                     GeometryData &geometry = m_geometries[objectId];
@@ -321,12 +369,11 @@ namespace jazzfusion
                     // Shader binding table record hit group geometry
                     m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
                     m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-                    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_instances.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-                    m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
                 }
+                // Instanced
                 else if (blockId > BlockTypeWater)
                 {
-                    auto instanceId = scene.sceneUpdateInstanceId[i];
+                    auto instanceId = scene.sceneUpdateInstanceId;
                     bool hasInstance = instanceIds.count(instanceId);
 
                     if (hasInstance)
@@ -358,56 +405,59 @@ namespace jazzfusion
                         m_instances.push_back(instance);
                     }
                 }
-
-                // Rebuild BVH
-                {
-                    CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
-                    CUDA_CHECK(cudaFree((void *)m_d_ias));
-
-                    CUdeviceptr d_instances;
-
-                    const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-
-                    CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-                    CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-
-                    OptixBuildInput instanceInput = {};
-
-                    instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-                    instanceInput.instanceArray.instances = d_instances;
-                    instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-                    OptixAccelBuildOptions accelBuildOptions = {};
-
-                    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-                    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-                    OptixAccelBufferSizes iasBufferSizes = {};
-
-                    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-                    CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
-
-                    CUdeviceptr d_tmp;
-
-                    CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-                    auto &backend = jazzfusion::Backend::Get();
-                    OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
-                                                      &accelBuildOptions, &instanceInput, 1,
-                                                      d_tmp, iasBufferSizes.tempSizeInBytes,
-                                                      m_d_ias, iasBufferSizes.outputSizeInBytes,
-                                                      &m_systemParameter.topObject, nullptr, 0));
-
-                    CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
-
-                    CUDA_CHECK(cudaFree((void *)d_tmp));
-                    CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
-                }
             }
 
-            scene.sceneUpdateObjectId.clear();
-            scene.sceneUpdateInstanceId.clear();
+            // Rebuild BVH
+            {
+                CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
+                CUDA_CHECK(cudaFree((void *)m_d_ias));
+
+                CUdeviceptr d_instances;
+
+                const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+
+                CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+                CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+
+                OptixBuildInput instanceInput = {};
+
+                instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+                instanceInput.instanceArray.instances = d_instances;
+                instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+
+                OptixAccelBuildOptions accelBuildOptions = {};
+
+                accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+                accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+                OptixAccelBufferSizes iasBufferSizes = {};
+
+                OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+
+                CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+
+                CUdeviceptr d_tmp;
+
+                CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+
+                auto &backend = jazzfusion::Backend::Get();
+                OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
+                                                  &accelBuildOptions, &instanceInput, 1,
+                                                  d_tmp, iasBufferSizes.tempSizeInBytes,
+                                                  m_d_ias, iasBufferSizes.outputSizeInBytes,
+                                                  &m_systemParameter.topObject, nullptr, 0));
+
+                CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+
+                CUDA_CHECK(cudaFree((void *)d_tmp));
+                CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
+            }
+
+            scene.sceneUpdateObjectId = -1;
+            scene.sceneUpdateInstanceId = -1;
+
+            scene.needSceneUpdate = false;
+            scene.needSceneReloadUpdate = false;
         }
     }
 
@@ -527,53 +577,69 @@ namespace jazzfusion
             parameters.textureAlbedo = 0;
             parameters.textureNormal = textureManager.GetTexture("data/water1.jpg");
             parameters.textureRoughness = 0;
-            parameters.flags = 1;
             parameters.absorption = Float3(-logf(0.9f), -logf(0.95f), -logf(1.0f)) * 0.5f;
             parameters.ior = 1.33f;
+            parameters.flags = 1;
             m_materialParameters.push_back(parameters);
 
-            // Mirror material.
+            // Test material
             parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
-            parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
-            parameters.textureAlbedo = 0;
-            parameters.textureNormal = 0;
+            parameters.albedo = Float3(1.0f);
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
+            parameters.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
             parameters.textureRoughness = 0;
-            parameters.flags = 0;
-            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.absorption = Float3(122.0f / 255.0f, 138.0f / 255.0f, 109.0f / 255.0f);
             parameters.ior = 1.33f;
+            parameters.flags = 2;
             m_materialParameters.push_back(parameters);
 
-            // Mirror material.
-            parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-            parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
-            parameters.textureAlbedo = 0;
-            parameters.textureNormal = 0;
+            // Leaf material
+            parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
+            parameters.albedo = Float3(1.0f);
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
+            parameters.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
             parameters.textureRoughness = 0;
-            parameters.flags = 0;
-            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.absorption = Float3(122.0f / 255.0f, 138.0f / 255.0f, 109.0f / 255.0f);
             parameters.ior = 1.33f;
+            parameters.flags = 2;
             m_materialParameters.push_back(parameters);
 
             // Lambert material
             parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
             parameters.albedo = Float3(1.0f, 0.2f, 0.2f);
+            parameters.uvScale = 1.0f;
             parameters.textureAlbedo = 0;
             parameters.textureNormal = 0;
             parameters.textureRoughness = 0;
-            parameters.flags = 0;
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.5f;
+            parameters.flags = 0;
+            m_materialParameters.push_back(parameters);
+
+            // Mirror material
+            parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
+            parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = 0;
+            parameters.textureNormal = 0;
+            parameters.textureRoughness = 0;
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.ior = 1.33f;
+            parameters.flags = 0;
             m_materialParameters.push_back(parameters);
 
             // Black BSDF for the light. This last material will not be shown inside the GUI!
             parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
             parameters.albedo = Float3(0.0f, 1.0f, 1.0f);
+            parameters.uvScale = 1.0f;
             parameters.textureAlbedo = 0;
             parameters.textureNormal = 0;
             parameters.textureRoughness = 0;
-            parameters.flags = 0;
             parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
             parameters.ior = 1.0f;
+            parameters.flags = 0;
             m_materialParameters.push_back(parameters);
         }
 
@@ -860,21 +926,20 @@ namespace jazzfusion
         {
             OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[2], &m_sbtRecordHitRadiance));
 
-            const int numInstances = static_cast<int>(m_instances.size());
-            m_sbtRecordGeometryInstanceData.resize(numInstances);
+            int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
+            m_sbtRecordGeometryInstanceData.resize(numObjects);
 
-            for (int i = 0; i < numInstances; ++i)
+            for (int objectId = 0; objectId < numObjects; ++objectId)
             {
-                const int idx = i;
-                memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                m_sbtRecordGeometryInstanceData[idx].data.indices = (Int3 *)m_geometries[i].indices;
-                m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes *)m_geometries[i].attributes;
-                m_sbtRecordGeometryInstanceData[idx].data.materialIndex = i;
-                m_sbtRecordGeometryInstanceData[idx].data.lightIndex = -1;
+                memcpy(m_sbtRecordGeometryInstanceData[objectId].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
+                m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                m_sbtRecordGeometryInstanceData[objectId].data.materialIndex = objectId;
+                m_sbtRecordGeometryInstanceData[objectId].data.lightIndex = -1;
             }
 
-            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numInstances));
-            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numInstances, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numObjects));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
         }
 
         // Direct callables
@@ -901,8 +966,8 @@ namespace jazzfusion
 
             m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
             m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
-            const int numInstances = static_cast<int>(m_instances.size());
-            m_sbt.hitgroupRecordCount = numInstances;
+            int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
+            m_sbt.hitgroupRecordCount = numObjects;
 
             m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
             m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);

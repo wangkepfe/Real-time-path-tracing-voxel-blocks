@@ -145,6 +145,12 @@ namespace jazzfusion
         PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
         rayData->distance = optixGetRayTmax();
+
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(rayData->distance);
+        // }
+
         // rayData->pos = rayData->pos + rayData->wi * rayData->distance;
 
         GeometryInstanceData *instanceData = reinterpret_cast<GeometryInstanceData *>(optixGetSbtDataPointer());
@@ -163,36 +169,45 @@ namespace jazzfusion
 
         float2 bary = optixGetTriangleBarycentrics();
 
-        float3 objPos, objNorm;
-        float objOffset;
-        SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(
-            /*out*/ objPos,
-            /*out*/ objNorm,
-            /*out*/ objOffset,
-            v0.to_float3(), v1.to_float3(), v2.to_float3(), // v0, v1, v2
-            bary);
+        Float3 frontPos;
+        Float3 backPos;
+        Float3 geometricNormal;
+        {
+            float3 objPos, objNorm;
+            float objOffset;
+            SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(
+                /*out*/ objPos,
+                /*out*/ objNorm,
+                /*out*/ objOffset,
+                v0.to_float3(), v1.to_float3(), v2.to_float3(), // v0, v1, v2
+                bary);
 
-        float3 safePos, safeNorm;
-        float safeOffset;
-        SelfIntersectionAvoidance::transformSafeSpawnOffset(
-            /*out*/ safePos,
-            /*out*/ safeNorm,
-            /*out*/ safeOffset,
-            objPos, // from step 4
-            objNorm,
-            objOffset);
+            float3 safePos, safeNorm;
+            float safeOffset;
+            SelfIntersectionAvoidance::transformSafeSpawnOffset(
+                /*out*/ safePos,
+                /*out*/ safeNorm,
+                /*out*/ safeOffset,
+                objPos, // from step 4
+                objNorm,
+                objOffset);
 
-        float3 frontPos, backPos;
-        SelfIntersectionAvoidance::offsetSpawnPoint(
-            /*out*/ frontPos,
-            /*out*/ backPos,
-            /*position =*/safePos,
-            /*direction=*/safeNorm,
-            /*offset   =*/safeOffset);
+            float3 tmpFrontPos, tmpBackPos;
+            SelfIntersectionAvoidance::offsetSpawnPoint(
+                /*out*/ tmpFrontPos,
+                /*out*/ tmpBackPos,
+                /*position =*/safePos,
+                /*direction=*/safeNorm,
+                /*offset   =*/safeOffset);
 
-        rayData->pos = Float3(frontPos);
+            frontPos = Float3(tmpFrontPos);
+            backPos = Float3(tmpBackPos);
+            geometricNormal = Float3(safeNorm);
+        }
 
-        Float3 geometricNormal(safeNorm);
+        // Default pos
+        rayData->pos = frontPos;
+
         bool hitFrontFace = dot(rayData->wo, geometricNormal) > 0.0f;
 
         const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
@@ -200,6 +215,16 @@ namespace jazzfusion
         rayData->material = (float)materialId;
 
         bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
+
+        if (isThinfilm && !hitFrontFace)
+        {
+            geometricNormal = -geometricNormal;
+            hitFrontFace = true;
+
+            Float3 tmp = frontPos;
+            frontPos = backPos;
+            backPos = tmp;
+        }
 
         if (rayData->isShadowRay)
         {
@@ -212,19 +237,19 @@ namespace jazzfusion
 
                 if (rayData->isInsideVolume)
                 {
-                    rayData->pos = Float3(frontPos);
+                    rayData->pos = frontPos;
                 }
                 else
                 {
-                    rayData->pos = Float3(backPos);
+                    rayData->pos = backPos;
                 }
             }
-            else if (materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM)
+            else if (isThinfilm)
             {
                 rayData->hasShadowRayHitThinfilmSurface = true;
                 rayData->absorption_ior.xyz = parameters.absorption;
 
-                rayData->pos = hitFrontFace ? Float3(backPos) : Float3(frontPos);
+                rayData->pos = backPos;
             }
 
             return;
@@ -259,9 +284,18 @@ namespace jazzfusion
         const Float2 theBarycentrics = Float2(bary);
         const float alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
 
-        if (0)
+        if (parameters.flags == 2) // use texture coordinates
         {
             state.texcoord = va0.texcoord * alpha + va1.texcoord * theBarycentrics.x + va2.texcoord * theBarycentrics.y;
+
+            // if (OPTIX_CENTER_PIXEL())
+            // {
+            //     OPTIX_DEBUG_PRINT(state.texcoord);
+            //     OPTIX_DEBUG_PRINT(va0.texcoord);
+            //     OPTIX_DEBUG_PRINT(va1.texcoord);
+            //     OPTIX_DEBUG_PRINT(va2.texcoord);
+            //     OPTIX_DEBUG_PRINT(Float3(theBarycentrics.x, theBarycentrics.y, alpha));
+            // }
         }
         else
         {
@@ -288,7 +322,8 @@ namespace jazzfusion
         // if (OPTIX_CENTER_PIXEL())
         // {
         //     OPTIX_DEBUG_PRINT(Float4(rayData->pos, rayData->depth));
-        //     OPTIX_DEBUG_PRINT(Float4(Float3(backPos), rayData->depth));
+        //     OPTIX_DEBUG_PRINT(Float4(frontPos, rayData->depth));
+        //     OPTIX_DEBUG_PRINT(Float4(backPos, rayData->depth));
         //     OPTIX_DEBUG_PRINT(Float4(rayData->wo, rayData->depth));
         //     OPTIX_DEBUG_PRINT(Float4(state.geometricNormal, rayData->depth));
         // }
@@ -301,14 +336,17 @@ namespace jazzfusion
         float texMip0Size = parameters.texSize.length();
         float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.01f) / parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
 
-        if (parameters.flags == 1)
-        {
-        }
-
         if (parameters.textureAlbedo != 0)
         {
             const Float3 texColor = Float3(tex2DLod<float4>(parameters.textureAlbedo, state.texcoord.x, state.texcoord.y, lod));
             albedo *= texColor;
+
+            // if (OPTIX_CENTER_PIXEL())
+            // {
+            //     OPTIX_DEBUG_PRINT(state.texcoord);
+            //     OPTIX_DEBUG_PRINT(texColor);
+            //     OPTIX_DEBUG_PRINT(lod);
+            // }
         }
 
         state.roughness = 0.001f;
@@ -374,13 +412,7 @@ namespace jazzfusion
 
         if (isThinfilm)
         {
-            bool isTransmission = dot(rayData->wi, state.normal) <= 0.0f;
-            rayData->pos = ((rayData->hitFrontFace && isTransmission) || (!rayData->hitFrontFace && !isTransmission)) ? Float3(backPos) : Float3(frontPos);
-            // All cases:
-            //   front face + transmission -> back pos
-            //   front face + reflection -> front pos
-            //   back face + transmission -> front pos
-            //   back face + reflection -> back pos
+            rayData->pos = rayData->isHitThinfilmTransmission ? backPos : frontPos;
         }
         else
         {
@@ -394,18 +426,18 @@ namespace jazzfusion
                     }
                     else // reflection
                     {
-                        rayData->pos = Float3(frontPos);
+                        rayData->pos = frontPos;
                     }
                 }
                 else // outside volumn
                 {
                     if (rayData->isHitTransmission) // trasmission
                     {
-                        rayData->pos = Float3(backPos);
+                        rayData->pos = backPos;
                     }
                     else // reflection
                     {
-                        rayData->pos = Float3(frontPos);
+                        rayData->pos = frontPos;
                     }
                 }
             }
@@ -415,11 +447,11 @@ namespace jazzfusion
                 {
                     if (rayData->isHitTransmission) // trasmission
                     {
-                        rayData->pos = Float3(frontPos);
+                        rayData->pos = frontPos;
                     }
                     else // reflection
                     {
-                        rayData->pos = Float3(backPos);
+                        rayData->pos = backPos;
                     }
                 }
                 else // outside volumn
@@ -428,11 +460,11 @@ namespace jazzfusion
 
                     if (rayData->isHitTransmission) // trasmission
                     {
-                        rayData->pos = Float3(backPos);
+                        rayData->pos = backPos;
                     }
                     else // reflection
                     {
-                        rayData->pos = Float3(frontPos);
+                        rayData->pos = frontPos;
                     }
 
                     rayData->f_over_pdf = Float3(1.0f);
@@ -460,13 +492,18 @@ namespace jazzfusion
             surfBsdfOverPdf *= albedo;
         }
 
+        constexpr bool enableDiffuseOptimization = true;
+
         if (isDiffuse)
         {
             // Diffuse after diffuse, shadow ray only
             bool shadowRayOnly = false;
-            if (rayData->isLastBounceDiffuse)
+            if (enableDiffuseOptimization)
             {
-                shadowRayOnly = true;
+                if (rayData->isLastBounceDiffuse)
+                {
+                    shadowRayOnly = true;
+                }
             }
 
             // Env light sample
@@ -580,14 +617,18 @@ namespace jazzfusion
                     Float3 originalAbsorption = rayData->absorption_ior.xyz;
                     bool originalIsInsideVolume = rayData->isInsideVolume;
 
+                    Float3 glassThroughput = Float3(1.0f);
+
                     if (isThinfilm)
                     {
                         bool visibleFromFrontFace = dot(lightSample.direction, state.geometricNormal) > 0.0f;
-                        rayData->pos = visibleFromFrontFace ? Float3(frontPos) : Float3(backPos);
+                        rayData->pos = visibleFromFrontFace ? frontPos : backPos;
+
+                        const float cosTheta = abs(dot(lightSample.direction, state.normal));
+                        glassThroughput = visibleFromFrontFace ? Float3(1.0f) : (rayData->absorption_ior.xyz * cosTheta / M_PI / 0.75f);
                     }
 
                     rayData->wi = lightSample.direction;
-                    Float3 glassThroughput = Float3(1.0f);
 
                     // For glass, go *straight* through the surface and volumn to calculate the direct light contribution
                     // Very wrong caustics but cheap enough and look decent
@@ -633,7 +674,7 @@ namespace jazzfusion
                             else if (rayData->hasShadowRayHitThinfilmSurface)
                             {
                                 const float cosTheta = abs(dot(lightSample.direction, state.normal));
-                                glassThroughput *= rayData->absorption_ior.xyz * cosTheta / (2.0f * M_PI);
+                                glassThroughput *= rayData->absorption_ior.xyz * cosTheta / M_PI / 0.75f;
                                 continue;
                             }
                             else
@@ -650,10 +691,13 @@ namespace jazzfusion
 
                     rayData->isShadowRay = false;
 
-                    if (shadowRayOnly)
+                    if (enableDiffuseOptimization)
                     {
-                        rayData->shouldTerminate = true;
-                        return;
+                        if (shadowRayOnly)
+                        {
+                            rayData->shouldTerminate = true;
+                            return;
+                        }
                     }
                 }
             }

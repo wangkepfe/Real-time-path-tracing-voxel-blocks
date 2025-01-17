@@ -340,21 +340,37 @@ namespace jazzfusion
             return;
         }
 
-        if (rayData->rand(sysParam) < 0.5f)
+        if (rayData->rand(sysParam) < 0.75f)
         {
             wi = -wi;
+            rayData->isHitThinfilmTransmission = true;
+            pdf *= 0.75f;
         }
-
-        pdf *= 0.5f;
+        else
+        {
+            pdf *= 0.25f;
+        }
 
         f_over_pdf = Float3(1.0f); // f=albedo/2pi; pdf=cos_wi/2pi; this term = f/pdf*cos_wi = albedo
     }
 
     extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
     {
-        const Float3 f = Float3(1.0f) / (2 * M_PI);                 // albedo/2pi
-        const float pdf = abs(dot(wiL, state.normal) / (2 * M_PI)); // cos_wi/2pi
+        bool isTransmission = dot(wiL, state.normal) < 0.0f;
 
-        return Float4(f, pdf);
+        if (isTransmission)
+        {
+            const Float3 f = Float3(1.0f) / M_PI / 0.75f;
+            const float pdf = abs(dot(wiL, state.normal)) / M_PI / 0.75f;
+
+            return Float4(f, pdf);
+        }
+        else
+        {
+            const Float3 f = Float3(1.0f) / M_PI / 0.25f;
+            const float pdf = abs(dot(wiL, state.normal)) / M_PI / 0.25f;
+
+            return Float4(f, pdf);
+        }
     }
 }

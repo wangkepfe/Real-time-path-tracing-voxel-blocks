@@ -31,12 +31,19 @@ namespace jazzfusion
         rayData->isHitTransmission = false;
         rayData->isInsideVolume = false;
 
+        rayData->isHitThinfilmTransmission = false;
+
         Float3 extinction;
         if (volumnIdx > 0)
         {
             rayData->isInsideVolume = true;
             extinction = absorptionIor.xyz;
         }
+
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(rayData->depth);
+        // }
 
         UInt2 payload = splitPointer(rayData);
 
@@ -128,7 +135,7 @@ namespace jazzfusion
 
         rayData->hitFirstDiffuseSurface = false;
 
-        static constexpr int BounceLimit = 6;
+        static constexpr int BounceLimit = 2;
 
         while (!pathTerminated)
         {
