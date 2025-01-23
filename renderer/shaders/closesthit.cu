@@ -9,137 +9,6 @@ namespace jazzfusion
 
     extern "C" __constant__ SystemParameter sysParam;
 
-    // Get the 3x4 object to world transform and its inverse from a two-level hierarchy.
-    // Arguments Float4* objectToWorld, Float4* worldToObject shortened for smaller code.
-    __forceinline__ __device__ void getTransforms(Float4 *mW, Float4 *mO)
-    {
-        OptixTraversableHandle handle = optixGetTransformListHandle(0);
-
-        const Float4 *tW = reinterpret_cast<const Float4 *>(optixGetInstanceTransformFromHandle(handle));
-        const Float4 *tO = reinterpret_cast<const Float4 *>(optixGetInstanceInverseTransformFromHandle(handle));
-
-        mW[0] = tW[0];
-        mW[1] = tW[1];
-        mW[2] = tW[2];
-
-        mO[0] = tO[0];
-        mO[1] = tO[1];
-        mO[2] = tO[2];
-    }
-
-    // Functions to get the individual transforms in case only one of them is needed.
-
-    __forceinline__ __device__ void getTransformObjectToWorld(Float4 *mW)
-    {
-        OptixTraversableHandle handle = optixGetTransformListHandle(0);
-
-        const Float4 *tW = reinterpret_cast<const Float4 *>(optixGetInstanceTransformFromHandle(handle));
-
-        mW[0] = tW[0];
-        mW[1] = tW[1];
-        mW[2] = tW[2];
-    }
-
-    __forceinline__ __device__ void getTransformWorldToObject(Float4 *mO)
-    {
-        OptixTraversableHandle handle = optixGetTransformListHandle(0);
-
-        const Float4 *tO = reinterpret_cast<const Float4 *>(optixGetInstanceInverseTransformFromHandle(handle));
-
-        mO[0] = tO[0];
-        mO[1] = tO[1];
-        mO[2] = tO[2];
-    }
-
-    // Matrix3x4 * point. v.w == 1.0f
-    __forceinline__ __device__ Float3 transformPoint(const Float4 *m, Float3 const &v)
-    {
-        Float3 r;
-
-        r.x = m[0].x * v.x + m[0].y * v.y + m[0].z * v.z + m[0].w;
-        r.y = m[1].x * v.x + m[1].y * v.y + m[1].z * v.z + m[1].w;
-        r.z = m[2].x * v.x + m[2].y * v.y + m[2].z * v.z + m[2].w;
-
-        return r;
-    }
-
-    // Matrix3x4 * vector. v.w == 0.0f
-    __forceinline__ __device__ Float3 transformVector(const Float4 *m, Float3 const &v)
-    {
-        Float3 r;
-
-        r.x = m[0].x * v.x + m[0].y * v.y + m[0].z * v.z;
-        r.y = m[1].x * v.x + m[1].y * v.y + m[1].z * v.z;
-        r.z = m[2].x * v.x + m[2].y * v.y + m[2].z * v.z;
-
-        return r;
-    }
-
-    // InverseMatrix3x4^T * normal. v.w == 0.0f
-    // Get the inverse matrix as input and applies it as inverse transpose.
-    __forceinline__ __device__ Float3 transformNormal(const Float4 *m, Float3 const &v)
-    {
-        Float3 r;
-
-        r.x = m[0].x * v.x + m[1].x * v.y + m[2].x * v.z;
-        r.y = m[0].y * v.x + m[1].y * v.y + m[2].y * v.z;
-        r.z = m[0].z * v.x + m[1].z * v.y + m[2].z * v.z;
-
-        return r;
-    }
-
-    // ========================================================================================
-    // Example: Overload a small helper to get the safe world-space position (and normal) from a triangle.
-    // This example uses the SIA library calls you shared earlier.
-    // ========================================================================================
-    __forceinline__ __device__ void getSafeTriangleSpawnOffsetInWorldSpace(
-        const float3 &v0,
-        const float3 &v1,
-        const float3 &v2,
-        float3 &spawnPos,    // [out] final safe position in world space
-        float3 &spawnNormal, // [out] final safe normal in world space
-        float &spawnOffset   // [out] final safe offset along normal in world space
-    )
-    {
-        // 3) Get barycentrics for the hit.
-        float2 bary = optixGetTriangleBarycentrics();
-
-        // 4) Compute the safe offset *in object space*.
-        //    If your GAS is truly in object space, you can do:
-        //    SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(objPos, objNorm, objOffset, v0, v1, v2, bary).
-        //    However, if your triangle data[] is already in world space, you can skip transformSafeSpawnOffset below.
-        //    For demonstration, let's assume data[] is object-space, so we do:
-        float3 objPos, objNorm;
-        float objOffset;
-        SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(
-            /*out*/ objPos,
-            /*out*/ objNorm,
-            /*out*/ objOffset,
-            v0, v1, v2, // v0, v1, v2
-            bary);
-
-        // 5) Now convert that safe offset into world space.
-        //    - If your code uses a single instance transform, the default
-        //      transformSafeSpawnOffset(...) will read the local transform list
-        //      from optixGetTransformListHandle(0..N).
-        //    - If you have multiple levels, you can pass in an array of traversable handles.
-        //    - For a single transform, the following call is enough:
-        float3 wPos, wNorm;
-        float wOffset;
-        SelfIntersectionAvoidance::transformSafeSpawnOffset(
-            /*out*/ wPos,
-            /*out*/ wNorm,
-            /*out*/ wOffset,
-            objPos, // from step 4
-            objNorm,
-            objOffset);
-
-        // 6) Provide the final results back to our caller.
-        spawnPos = wPos;
-        spawnNormal = wNorm;
-        spawnOffset = wOffset;
-    }
-
     extern "C" __global__ void __closesthit__radiance()
     {
         PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
@@ -214,13 +83,6 @@ namespace jazzfusion
         int materialId = parameters.indexBSDF;
         rayData->material = (float)materialId;
 
-        if (materialId == INDEX_BSDF_EMISSIVE)
-        {
-            rayData->radiance = parameters.albedo;
-            rayData->shouldTerminate = true;
-            return;
-        }
-
         bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
 
         if (isThinfilm && !hitFrontFace)
@@ -259,6 +121,13 @@ namespace jazzfusion
                 rayData->pos = backPos;
             }
 
+            return;
+        }
+
+        if (materialId == INDEX_BSDF_EMISSIVE)
+        {
+            rayData->radiance = parameters.albedo;
+            rayData->shouldTerminate = true;
             return;
         }
 
