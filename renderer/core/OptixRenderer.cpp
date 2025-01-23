@@ -343,66 +343,69 @@ namespace jazzfusion
             }
             else
             {
-                auto objectId = scene.sceneUpdateObjectId;
-                auto blockId = objectId + 1;
-
-                // Uninstanced
-                if (blockId < BlockTypeWater)
+                for (int i = 0; i < scene.sceneUpdateObjectId.size(); ++i)
                 {
-                    GeometryData &geometry = m_geometries[objectId];
-                    CUDA_CHECK(cudaFree((void *)geometry.gas));
-                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
+                    auto objectId = scene.sceneUpdateObjectId[i];
+                    auto blockId = objectId + 1;
 
-                    OptixInstance &instance = m_instances[objectId];
-                    const float transformMatrix[12] =
-                        {
-                            1.0f, 0.0f, 0.0f, 0.0f,
-                            0.0f, 1.0f, 0.0f, 0.0f,
-                            0.0f, 0.0f, 1.0f, 0.0f};
-                    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-                    instance.instanceId = objectId;
-                    instance.visibilityMask = 255;
-                    instance.sbtOffset = objectId;
-                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                    instance.traversableHandle = blasHandle;
-
-                    // Shader binding table record hit group geometry
-                    m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
-                    m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-                }
-                // Instanced
-                else if (blockId > BlockTypeWater)
-                {
-                    auto instanceId = scene.sceneUpdateInstanceId;
-                    bool hasInstance = instanceIds.count(instanceId);
-
-                    if (hasInstance)
+                    // Uninstanced
+                    if (blockId < BlockTypeWater)
                     {
-                        instanceIds.erase(instanceId);
-                        int idxToRemove = -1;
-                        for (int j = 0; j < m_instances.size(); ++j)
-                        {
-                            if (m_instances[j].instanceId == instanceId)
+                        GeometryData &geometry = m_geometries[objectId];
+                        CUDA_CHECK(cudaFree((void *)geometry.gas));
+                        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
+
+                        OptixInstance &instance = m_instances[objectId];
+                        const float transformMatrix[12] =
                             {
-                                idxToRemove = j;
-                            }
-                        }
-                        assert(idxToRemove != -1);
-                        m_instances.erase(m_instances.begin() + idxToRemove);
-                    }
-                    else
-                    {
-                        instanceIds.insert(instanceId);
-
-                        OptixInstance instance = {};
-                        memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-                        instance.instanceId = instanceId;
+                                1.0f, 0.0f, 0.0f, 0.0f,
+                                0.0f, 1.0f, 0.0f, 0.0f,
+                                0.0f, 0.0f, 1.0f, 0.0f};
+                        memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+                        instance.instanceId = objectId;
                         instance.visibilityMask = 255;
                         instance.sbtOffset = objectId;
                         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                        instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+                        instance.traversableHandle = blasHandle;
 
-                        m_instances.push_back(instance);
+                        // Shader binding table record hit group geometry
+                        m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
+                        m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                    }
+                    // Instanced
+                    else if (blockId > BlockTypeWater)
+                    {
+                        auto instanceId = scene.sceneUpdateInstanceId[i];
+                        bool hasInstance = instanceIds.count(instanceId);
+
+                        if (hasInstance)
+                        {
+                            instanceIds.erase(instanceId);
+                            int idxToRemove = -1;
+                            for (int j = 0; j < m_instances.size(); ++j)
+                            {
+                                if (m_instances[j].instanceId == instanceId)
+                                {
+                                    idxToRemove = j;
+                                }
+                            }
+                            assert(idxToRemove != -1);
+                            m_instances.erase(m_instances.begin() + idxToRemove);
+                        }
+                        else
+                        {
+                            instanceIds.insert(instanceId);
+
+                            OptixInstance instance = {};
+                            memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                            instance.instanceId = instanceId;
+                            instance.visibilityMask = 255;
+                            instance.sbtOffset = objectId;
+                            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                            instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+
+                            m_instances.push_back(instance);
+                        }
                     }
                 }
             }
@@ -453,8 +456,8 @@ namespace jazzfusion
                 CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
             }
 
-            scene.sceneUpdateObjectId = -1;
-            scene.sceneUpdateInstanceId = -1;
+            scene.sceneUpdateObjectId.clear();
+            scene.sceneUpdateInstanceId.clear();
 
             scene.needSceneUpdate = false;
             scene.needSceneReloadUpdate = false;
@@ -604,6 +607,58 @@ namespace jazzfusion
             parameters.absorption = Float3(122.0f / 255.0f, 138.0f / 255.0f, 109.0f / 255.0f);
             parameters.ior = 1.33f;
             parameters.flags = 2;
+            m_materialParameters.push_back(parameters);
+
+            // Lantern base
+            parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION_METAL;
+            parameters.albedo = Float3(1.0f);
+            parameters.uvScale = 1.0f;
+            std::string textureFile = "beaten-up-metal1";
+            parameters.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
+            parameters.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
+            parameters.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
+            parameters.textureMetallic = textureManager.GetTexture("data/" + textureFile + "_metal.png");
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.ior = 1.5f;
+            parameters.flags = 0;
+            m_materialParameters.push_back(parameters);
+
+            // Lantern light
+            parameters.indexBSDF = INDEX_BSDF_EMISSIVE;
+            parameters.albedo = Float3(255.0f / 255.0f, 61.0f / 255.0f, 4.0f / 255.0f); // 1500 Kelvin color temperature
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = 0;
+            parameters.textureNormal = 0;
+            parameters.textureRoughness = 0;
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.ior = 1.5f;
+            parameters.flags = 0;
+            m_materialParameters.push_back(parameters);
+
+            //------------------------ Testing below ------------------------
+
+            // Test thinwall material
+            parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
+            parameters.albedo = Float3(1.0f, 0.2f, 0.2f);
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = 0;
+            parameters.textureNormal = 0;
+            parameters.textureRoughness = 0;
+            parameters.absorption = Float3(1.0f, 0.2f, 0.2f);
+            parameters.ior = 1.5f;
+            parameters.flags = 0;
+            m_materialParameters.push_back(parameters);
+
+            // Emissive material
+            parameters.indexBSDF = INDEX_BSDF_EMISSIVE;
+            parameters.albedo = Float3(0.2f, 1.0f, 0.2f);
+            parameters.uvScale = 1.0f;
+            parameters.textureAlbedo = 0;
+            parameters.textureNormal = 0;
+            parameters.textureRoughness = 0;
+            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
+            parameters.ior = 1.5f;
+            parameters.flags = 0;
             m_materialParameters.push_back(parameters);
 
             // Lambert material
@@ -816,13 +871,8 @@ namespace jazzfusion
 
         // Direct callables
         {
-            std::string ptxLightSample = ReadPtx("ptx/LightSample.ptx");
             std::string ptxBsdf = ReadPtx("ptx/Bsdf.ptx");
-
-            OptixModule moduleLightSample;
             OptixModule moduleBsdf;
-
-            OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLightSample.c_str(), ptxLightSample.size(), nullptr, nullptr, &moduleLightSample));
             OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxBsdf.c_str(), ptxBsdf.size(), nullptr, nullptr, &moduleBsdf));
 
             std::vector<OptixProgramGroupDesc> programGroupDescCallables;
@@ -831,13 +881,6 @@ namespace jazzfusion
 
             pgd.kind = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
             pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-
-            pgd.callables.moduleDC = moduleLightSample;
-
-            pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
-            programGroupDescCallables.push_back(pgd);
-            pgd.callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
-            programGroupDescCallables.push_back(pgd);
 
             pgd.callables.moduleDC = moduleBsdf;
 
@@ -857,6 +900,10 @@ namespace jazzfusion
             programGroupDescCallables.push_back(pgd);
             pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm"; // 7
             programGroupDescCallables.push_back(pgd);
+            pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection_metal"; // 8
+            programGroupDescCallables.push_back(pgd);
+            pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection_metal"; // 9
+            programGroupDescCallables.push_back(pgd);
 
             programGroupCallables.resize(programGroupDescCallables.size());
             OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
@@ -864,7 +911,6 @@ namespace jazzfusion
             {
                 programGroups.push_back(programGroupCallables[i]);
             }
-            moduleList.push_back(moduleLightSample);
             moduleList.push_back(moduleBsdf);
         }
 

@@ -26,6 +26,8 @@ enum BlockType
 
     BlockTypeTest1,
     BlockTypeLeaves,
+    BlockTypeTestLightBase,
+    BlockTypeTestLight,
 
     BlockTypeNum,
 };
@@ -55,6 +57,8 @@ inline const std::string &GetModelFileName(int blockType)
     static const std::unordered_map<int, std::string> modelFiles = {
         {BlockTypeTest1, "data/test_plane.obj"},
         {BlockTypeLeaves, "data/leavesCube4.obj"},
+        {BlockTypeTestLightBase, "data/lanternBase.obj"},
+        {BlockTypeTestLight, "data/lanternLight.obj"},
     };
     return modelFiles.at(blockType);
 }

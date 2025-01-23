@@ -161,6 +161,27 @@ def convert_images(input_folder, output_folder):
         elif "_Roughness" in file_name:
             base_name = file_name.split("_Roughness")[0]
             output_name = f"{base_name}_rough.png"
+        elif "_BaseColor" in file_name:
+            base_name = file_name.split("_BaseColor")[0]
+            output_name = f"{base_name}_albedo.png"
+        elif "_Normal" in file_name:
+            base_name = file_name.split("_Normal")[0]
+            output_name = f"{base_name}_normal.png"
+        elif "_albedo" in file_name:
+            base_name = file_name.split("_albedo")[0]
+            output_name = f"{base_name}_albedo.png"
+        elif "-Metallic" in file_name:
+            base_name = file_name.split("-Metallic")[0]
+            output_name = f"{base_name}_metal.png"
+        elif "-albedo" in file_name:
+            base_name = file_name.split("-albedo")[0]
+            output_name = f"{base_name}_albedo.png"
+        elif "-Roughness" in file_name:
+            base_name = file_name.split("-Roughness")[0]
+            output_name = f"{base_name}_rough.png"
+        elif "-Normal" in file_name:
+            base_name = file_name.split("-Normal")[0]
+            output_name = f"{base_name}_normal.png"
 
         process_image(file_path, output_folder / output_name)
 

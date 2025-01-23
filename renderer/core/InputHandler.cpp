@@ -23,13 +23,17 @@ namespace jazzfusion
             glfwSetWindowShouldClose(window, 1);
         }
 
-        if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
+        if (key == GLFW_KEY_M && action == GLFW_PRESS)
         {
             if (inputHandler.appmode == AppMode::Menu)
             {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                inputHandler.appmode = AppMode::Gameplay;
+                inputHandler.appmode = AppMode::FreeMove;
                 inputHandler.cursorReset = 1;
+            }
+            else if (inputHandler.appmode == AppMode::FreeMove)
+            {
+                inputHandler.appmode = AppMode::Gameplay;
             }
             else if (inputHandler.appmode == AppMode::Gameplay)
             {
@@ -38,98 +42,145 @@ namespace jazzfusion
             }
         }
 
+        if (mods == GLFW_MOD_CONTROL)
+        {
+            // camera save & load
+            if (key == GLFW_KEY_C && action == GLFW_PRESS)
+            {
+                InputHandler::SaveSceneToFile();
+            }
+            if (key == GLFW_KEY_V && action == GLFW_PRESS)
+            {
+                InputHandler::LoadSceneFromFile();
+            }
+        }
+
+        if (inputHandler.appmode == AppMode::FreeMove)
+        {
+            // movement
+            if (key == GLFW_KEY_W)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveW = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveW = 0;
+            }
+            if (key == GLFW_KEY_S)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveS = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveS = 0;
+            }
+            if (key == GLFW_KEY_A)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveA = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveA = 0;
+            }
+            if (key == GLFW_KEY_D)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveD = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveD = 0;
+            }
+            if (key == GLFW_KEY_C)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveC = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveC = 0;
+            }
+            if (key == GLFW_KEY_X)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveX = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveX = 0;
+            }
+        }
+
         if (inputHandler.appmode == AppMode::Gameplay)
         {
-            if (mods == GLFW_MOD_CONTROL)
+            // movement
+            if (key == GLFW_KEY_W)
             {
-                // camera save & load
-                if (key == GLFW_KEY_C && action == GLFW_PRESS)
-                {
-                    InputHandler::SaveSceneToFile();
-                }
-                if (key == GLFW_KEY_V && action == GLFW_PRESS)
-                {
-                    InputHandler::LoadSceneFromFile();
-                }
+                if (action == GLFW_PRESS)
+                    inputHandler.moveW = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveW = 0;
             }
-            else
+            if (key == GLFW_KEY_S)
             {
-                // movement
-                if (key == GLFW_KEY_W)
-                {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveW = 1;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveW = 0;
-                }
-                if (key == GLFW_KEY_S)
-                {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveS = 1;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveS = 0;
-                }
-                if (key == GLFW_KEY_A)
-                {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveA = 1;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveA = 0;
-                }
-                if (key == GLFW_KEY_D)
-                {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveD = 1;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveD = 0;
-                }
-                if (key == GLFW_KEY_C)
-                {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveC = 1;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveC = 0;
-                }
-                if (key == GLFW_KEY_X)
-                {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveX = 1;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveX = 0;
-                }
+                if (action == GLFW_PRESS)
+                    inputHandler.moveS = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveS = 0;
+            }
+            if (key == GLFW_KEY_A)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveA = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveA = 0;
+            }
+            if (key == GLFW_KEY_D)
+            {
+                if (action == GLFW_PRESS)
+                    inputHandler.moveD = 1;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.moveD = 0;
+            }
 
-                if (key == GLFW_KEY_LEFT_SHIFT)
+            if (key == GLFW_KEY_SPACE)
+            {
+                if (action == GLFW_PRESS)
                 {
-                    if (action == GLFW_PRESS)
-                        inputHandler.moveSpeed = 0.001f;
-                    else if (action == GLFW_RELEASE)
-                        inputHandler.moveSpeed = 0.01f;
+                    inputHandler.fallSpeed = -0.008f;
                 }
             }
 
-            for (int i = 0; i < 10; ++i)
+            if (key == GLFW_KEY_LEFT_CONTROL)
             {
-                if (key == GLFW_KEY_0 + i)
+                if (action == GLFW_PRESS)
+                    inputHandler.height = 1.0f;
+                else if (action == GLFW_RELEASE)
+                    inputHandler.height = 1.5f;
+            }
+        }
+
+        if (key == GLFW_KEY_LEFT_SHIFT)
+        {
+            if (action == GLFW_PRESS)
+                inputHandler.moveSpeed = 0.01f;
+            else if (action == GLFW_RELEASE)
+                inputHandler.moveSpeed = 0.003f;
+        }
+
+        for (int i = 0; i < 10; ++i)
+        {
+            if (key == GLFW_KEY_0 + i)
+            {
+                if (action == GLFW_PRESS)
                 {
-                    if (action == GLFW_PRESS)
+                    inputHandler.currentSelectedBlockId = i;
+
+                    if (mods == GLFW_MOD_SHIFT)
                     {
-                        inputHandler.currentSelectedBlockId = i;
+                        inputHandler.currentSelectedBlockId += 10;
+                    }
+                    else if (mods == GLFW_MOD_CONTROL)
+                    {
+                        inputHandler.currentSelectedBlockId += 20;
+                    }
 
-                        if (mods == GLFW_MOD_SHIFT)
-                        {
-                            inputHandler.currentSelectedBlockId += 10;
-                        }
-                        else if (mods == GLFW_MOD_CONTROL)
-                        {
-                            inputHandler.currentSelectedBlockId += 20;
-                        }
+                    inputHandler.currentSelectedBlockId = min(inputHandler.currentSelectedBlockId, BlockTypeNum - 1);
 
-                        inputHandler.currentSelectedBlockId = min(inputHandler.currentSelectedBlockId, BlockTypeNum - 1);
-
-                        if (inputHandler.currentSelectedBlockId == BlockTypeWater)
-                        {
-                            inputHandler.currentSelectedBlockId = 0;
-                        }
+                    if (inputHandler.currentSelectedBlockId == BlockTypeWater)
+                    {
+                        inputHandler.currentSelectedBlockId = 0;
                     }
                 }
             }
@@ -140,7 +191,7 @@ namespace jazzfusion
     {
         auto &inputHandler = InputHandler::Get();
         Backend &backend = Backend::Get();
-        if (inputHandler.appmode == AppMode::Gameplay)
+        if (inputHandler.appmode == AppMode::FreeMove || inputHandler.appmode == AppMode::Gameplay)
         {
             if (inputHandler.cursorReset)
             {
@@ -170,7 +221,7 @@ namespace jazzfusion
     {
         auto &inputHandler = InputHandler::Get();
         Backend &backend = Backend::Get();
-        if (inputHandler.appmode == AppMode::Gameplay)
+        if (inputHandler.appmode == AppMode::FreeMove || inputHandler.appmode == AppMode::Gameplay)
         {
             inputHandler.mouseButtonCallbackFunc(button, action, mods);
 
@@ -189,27 +240,94 @@ namespace jazzfusion
         auto &camera = RenderCamera::Get().camera;
         Backend &backend = Backend::Get();
 
-        if (moveW || moveS || moveA || moveD || moveC || moveX)
+        float deltaTimeMs = backend.getTimer().getDeltaTime();
+
+        if (appmode == AppMode::FreeMove)
         {
-            Float3 movingDir{0};
-            Float3 strafeDir = cross(camera.dir, Float3(0, 1, 0)).normalize();
+            if (moveW || moveS || moveA || moveD || moveC || moveX)
+            {
+                Float3 movingDir{0};
+                Float3 strafeDir = cross(camera.dir, Float3(0, 1, 0)).normalize();
 
-            if (moveW)
-                movingDir += camera.dir;
-            if (moveS)
-                movingDir -= camera.dir;
-            if (moveA)
-                movingDir -= strafeDir;
-            if (moveD)
-                movingDir += strafeDir;
-            if (moveC)
-                movingDir += Float3(0, 1, 0);
-            if (moveX)
-                movingDir -= Float3(0, 1, 0);
+                if (moveW)
+                    movingDir += camera.dir;
+                if (moveS)
+                    movingDir -= camera.dir;
+                if (moveA)
+                    movingDir -= strafeDir;
+                if (moveD)
+                    movingDir += strafeDir;
+                if (moveC)
+                    movingDir += Float3(0, 1, 0);
+                if (moveX)
+                    movingDir -= Float3(0, 1, 0);
 
-            camera.pos += movingDir * backend.getTimer().getDeltaTime() * moveSpeed;
+                camera.pos += movingDir * deltaTimeMs * moveSpeed;
 
-            backend.resetAccumulationCounter();
+                backend.resetAccumulationCounter();
+            }
+        }
+
+        if (appmode == AppMode::Gameplay)
+        {
+            auto &voxelEngine = vox::VoxelEngine::Get();
+            auto &voxelChunk = voxelEngine.voxelChunk;
+
+            // Horizontal
+            if (moveW || moveS || moveA || moveD)
+            {
+                Float3 movingDir{0};
+
+                Float3 upDir = Float3(0, 1, 0);
+                Float3 strafeRightDir = cross(camera.dir, upDir).normalize();
+                Float3 frontDir = cross(upDir, strafeRightDir).normalize();
+
+                if (moveW)
+                    movingDir += frontDir;
+                if (moveS)
+                    movingDir -= frontDir;
+                if (moveA)
+                    movingDir -= strafeRightDir;
+                if (moveD)
+                    movingDir += strafeRightDir;
+
+                Float3 horizontalMove = movingDir * deltaTimeMs * moveSpeed;
+
+                auto &voxelEngine = vox::VoxelEngine::Get();
+                auto &voxelChunk = voxelEngine.voxelChunk;
+
+                auto v0 = voxelChunk.get(camera.pos + horizontalMove);
+                auto v1 = voxelChunk.get(camera.pos + horizontalMove - Float3(0, 1, 0));
+
+                if (v0.id == BlockTypeEmpty && v1.id == BlockTypeEmpty)
+                {
+                    camera.pos = camera.pos + horizontalMove;
+                }
+            }
+
+            // Vertical
+
+            // Free fall
+            auto v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
+            float fallAccel = 9.8e-6f;
+            fallSpeed += fallAccel * deltaTimeMs;
+            camera.pos.y -= fallSpeed * deltaTimeMs;
+            if (fallSpeed > 0.0f && v2.id != BlockTypeEmpty)
+            {
+                while (v2.id != BlockTypeEmpty)
+                {
+                    camera.pos += Float3(0, 1.0f, 0);
+                    v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
+                }
+                camera.pos.y = static_cast<float>(static_cast<int>(camera.pos.y - height)) + height;
+                fallSpeed = 0.0f;
+            }
+            // head bump to roof
+            auto v3 = voxelChunk.get(camera.pos + Float3(0, 0.49f, 0));
+            if (fallSpeed < 0.0f && v3.id != BlockTypeEmpty)
+            {
+                fallSpeed = 0.0f;
+            }
         }
     }
 
@@ -298,5 +416,4 @@ namespace jazzfusion
             }
         }
     }
-
 }

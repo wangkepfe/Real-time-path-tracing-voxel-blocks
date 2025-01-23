@@ -49,8 +49,8 @@ namespace jazzfusion
 
         bool needSceneUpdate = false;
         bool needSceneReloadUpdate = false;
-        unsigned int sceneUpdateObjectId;
-        unsigned int sceneUpdateInstanceId;
+        std::vector<unsigned int> sceneUpdateObjectId;
+        std::vector<unsigned int> sceneUpdateInstanceId;
         Float3 *edgeToHighlight;
 
         int uninstancedGeometryCount;

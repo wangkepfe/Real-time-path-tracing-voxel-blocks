@@ -12,6 +12,7 @@ namespace jazzfusion
     {
         Gameplay,
         Menu,
+        FreeMove,
     };
 
     class InputHandler
@@ -43,7 +44,7 @@ namespace jazzfusion
     private:
         InputHandler() {}
 
-        float moveSpeed = 0.01f;
+        float moveSpeed = 0.003f;
         float cursorMoveSpeed = 0.001f;
 
         double xpos = 0;
@@ -63,7 +64,10 @@ namespace jazzfusion
 
         std::function<void(int, int, int)> mouseButtonCallbackFunc;
 
-        AppMode appmode = AppMode::Gameplay;
+        AppMode appmode = AppMode::FreeMove;
+
+        float fallSpeed = 0.0f;
+        float height = 1.5f;
     };
 
 }

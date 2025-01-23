@@ -11,11 +11,12 @@ namespace jazzfusion
     // Currently only containing some vertex attributes in world coordinates.
     struct MaterialState
     {
-        // Float3 normalGeo;
         Float3 normal;
         Float2 texcoord;
         Float3 geometricNormal;
+        Float3 albedo;
         float roughness;
+        float metallic;
         Float3 wo;
     };
 

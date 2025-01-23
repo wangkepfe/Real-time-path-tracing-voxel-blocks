@@ -214,6 +214,13 @@ namespace jazzfusion
         int materialId = parameters.indexBSDF;
         rayData->material = (float)materialId;
 
+        if (materialId == INDEX_BSDF_EMISSIVE)
+        {
+            rayData->radiance = parameters.albedo;
+            rayData->shouldTerminate = true;
+            return;
+        }
+
         bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
 
         if (isThinfilm && !hitFrontFace)
@@ -256,24 +263,27 @@ namespace jazzfusion
         }
 
         // UI Box
-        if (rayData->depth == 0)
+        if (0)
         {
-            Float3 highlightPoint[4];
-            highlightPoint[0] = sysParam.edgeToHighlight[0];
-            highlightPoint[1] = sysParam.edgeToHighlight[1];
-            highlightPoint[2] = sysParam.edgeToHighlight[2];
-            highlightPoint[3] = sysParam.edgeToHighlight[3];
-
-            const float tolerance = 0.005f;
-            Float3 dummy;
-            float d0 = PointToSegmentDistance(rayData->pos, highlightPoint[0], highlightPoint[1], dummy);
-            float d1 = PointToSegmentDistance(rayData->pos, highlightPoint[1], highlightPoint[2], dummy);
-            float d2 = PointToSegmentDistance(rayData->pos, highlightPoint[2], highlightPoint[3], dummy);
-            float d3 = PointToSegmentDistance(rayData->pos, highlightPoint[3], highlightPoint[0], dummy);
-
-            if (d0 < tolerance || d1 < tolerance || d2 < tolerance || d3 < tolerance)
+            if (rayData->depth == 0)
             {
-                Store2DFloat4(Float4(1.0f), sysParam.outUiBuffer, Int2(optixGetLaunchIndex().x, optixGetLaunchIndex().y));
+                Float3 highlightPoint[4];
+                highlightPoint[0] = sysParam.edgeToHighlight[0];
+                highlightPoint[1] = sysParam.edgeToHighlight[1];
+                highlightPoint[2] = sysParam.edgeToHighlight[2];
+                highlightPoint[3] = sysParam.edgeToHighlight[3];
+
+                const float tolerance = 0.005f;
+                Float3 dummy;
+                float d0 = PointToSegmentDistance(rayData->pos, highlightPoint[0], highlightPoint[1], dummy);
+                float d1 = PointToSegmentDistance(rayData->pos, highlightPoint[1], highlightPoint[2], dummy);
+                float d2 = PointToSegmentDistance(rayData->pos, highlightPoint[2], highlightPoint[3], dummy);
+                float d3 = PointToSegmentDistance(rayData->pos, highlightPoint[3], highlightPoint[0], dummy);
+
+                if (d0 < tolerance || d1 < tolerance || d2 < tolerance || d3 < tolerance)
+                {
+                    Store2DFloat4(Float4(1.0f), sysParam.outUiBuffer, Int2(optixGetLaunchIndex().x, optixGetLaunchIndex().y));
+                }
             }
         }
 
@@ -349,10 +359,18 @@ namespace jazzfusion
             // }
         }
 
+        state.albedo = albedo;
+
         state.roughness = 0.001f;
         if (parameters.textureRoughness != 0)
         {
             state.roughness = tex2DLod<float1>(parameters.textureRoughness, state.texcoord.x, state.texcoord.y, lod).x;
+        }
+
+        state.metallic = 0.0f;
+        if (parameters.textureMetallic != 0)
+        {
+            state.metallic = tex2DLod<float1>(parameters.textureMetallic, state.texcoord.x, state.texcoord.y, lod).x;
         }
 
         if (parameters.textureNormal != 0)
@@ -391,11 +409,11 @@ namespace jazzfusion
         rayData->normal = state.normal;
         rayData->roughness = state.roughness;
 
-        const bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
+        bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
 
         rayData->isCurrentBounceDiffuse = isDiffuse;
 
-        const int indexBsdfSample = NUM_LIGHT_TYPES + materialId;
+        const int indexBsdfSample = materialId;
 
         Float3 surfWi;
         Float3 surfBsdfOverPdf;
@@ -579,7 +597,7 @@ namespace jazzfusion
                     Float3 rayDir = EqualAreaMapCone(sysParam.sunDir, u, v, sunAngleCosThetaMax);
 
                     // Load sky buffer
-                    Float3 sunEmission = Load2DHalf4(sysParam.sunBuffer, sunIdx).xyz;
+                    Float3 sunEmission = Load2DFloat4(sysParam.sunBuffer, sunIdx).xyz;
 
                     // Set light sample direction and PDF
                     lightSample.direction = rayDir;

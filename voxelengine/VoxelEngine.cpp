@@ -124,7 +124,8 @@ namespace vox
                     for (unsigned int z = 0; z < voxelChunk.width; ++z)
                     {
                         auto val = voxelChunk.get(x, y, z);
-                        if (val.id == blockId)
+                        bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
+                        if (val.id == blockId || specialCase)
                         {
                             unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, i, x, y, z, voxelChunk.width);
 
@@ -201,7 +202,8 @@ namespace vox
                     for (unsigned int z = 0; z < voxelChunk.width; ++z)
                     {
                         auto val = voxelChunk.get(x, y, z);
-                        if (val.id == blockId)
+                        bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
+                        if (val.id == blockId || specialCase)
                         {
                             unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, i, x, y, z, voxelChunk.width);
 
@@ -399,11 +401,12 @@ namespace vox
 
             int blockId = InputHandler::Get().currentSelectedBlockId;
 
+            auto &scene = jazzfusion::Scene::Get();
+
             if (blockId == 0) // delete a block
             {
                 if (hitSurface)
                 {
-                    auto &scene = jazzfusion::Scene::Get();
 
                     auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
                     auto &sceneGeometryIndices = scene.m_geometryIndices;
@@ -428,8 +431,9 @@ namespace vox
                             maxFaceCount[idx],
                             freeFaces[idx]);
 
-                        jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
+                        scene.needSceneUpdate = true;
+                        scene.sceneUpdateObjectId.push_back(idx);
+                        scene.sceneUpdateInstanceId.push_back(0);
                     }
                     else if (deleteBlockId > BlockTypeWater)
                     {
@@ -443,9 +447,22 @@ namespace vox
                         unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, idx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
                         geometryInstanceIdMap[idx].erase(instanceId);
 
-                        jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
-                        jazzfusion::Scene::Get().sceneUpdateInstanceId = instanceId;
+                        scene.needSceneUpdate = true;
+                        scene.sceneUpdateObjectId.push_back(idx);
+                        scene.sceneUpdateInstanceId.push_back(instanceId);
+
+                        bool specialCase = (deleteBlockId == BlockTypeTestLightBase);
+                        if (specialCase)
+                        {
+                            int childBlockId = BlockTypeTestLight;
+                            int childObjectIdx = childBlockId - 1;
+
+                            unsigned int childInstanceId = PositionToInstanceId(totalNumUninstancedGeometries, childObjectIdx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                            geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
+
+                            scene.sceneUpdateObjectId.push_back(childObjectIdx);
+                            scene.sceneUpdateInstanceId.push_back(childInstanceId);
+                        }
                     }
                 }
             }
@@ -478,8 +495,9 @@ namespace vox
                             maxFaceCount[idx],
                             freeFaces[idx]);
 
-                        jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
+                        scene.needSceneUpdate = true;
+                        scene.sceneUpdateObjectId.push_back(idx);
+                        scene.sceneUpdateInstanceId.push_back(0);
                     }
                     else if (blockId > BlockTypeWater)
                     {
@@ -498,9 +516,24 @@ namespace vox
                                                            0.0f, 0.0f, 1.0f, (float)createPos.z};
                         instanceTransformMatrices[instanceId] = transform;
 
-                        jazzfusion::Scene::Get().needSceneUpdate = true;
-                        jazzfusion::Scene::Get().sceneUpdateObjectId = idx;
-                        jazzfusion::Scene::Get().sceneUpdateInstanceId = instanceId;
+                        scene.needSceneUpdate = true;
+                        scene.sceneUpdateObjectId.push_back(idx);
+                        scene.sceneUpdateInstanceId.push_back(instanceId);
+
+                        bool specialCase = (blockId == BlockTypeTestLightBase);
+                        if (specialCase)
+                        {
+                            int childBlockId = BlockTypeTestLight;
+                            int childObjectIdx = childBlockId - 1;
+
+                            unsigned int childInstanceId = PositionToInstanceId(totalNumUninstancedGeometries, childObjectIdx, createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                            geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
+
+                            instanceTransformMatrices[childInstanceId] = transform;
+
+                            scene.sceneUpdateObjectId.push_back(childObjectIdx);
+                            scene.sceneUpdateInstanceId.push_back(childInstanceId);
+                        }
                     }
                 }
             }

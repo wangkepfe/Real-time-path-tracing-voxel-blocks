@@ -107,7 +107,7 @@ namespace jazzfusion
         if (centerViewZ > denoisingRange)
             return;
 
-        if (1)
+        if (0)
         {
             Float3 illum = Load2DFloat4(inBuffer, pixelPos).xyz;
             Float3 albedo = Load2DFloat4(albedoBuffer, pixelPos).xyz;
@@ -117,6 +117,13 @@ namespace jazzfusion
             Float3 out = uiOverlay.x > 0.0f ? uiColor : (illum * albedo);
 
             Store2DFloat4(Float4(out, 0.0f), outBuffer, pixelPos);
+        }
+
+        if (1)
+        {
+            Float3 illum = Load2DFloat4(inBuffer, pixelPos).xyz;
+            Float3 albedo = Load2DFloat4(albedoBuffer, pixelPos).xyz;
+            Store2DFloat4(Float4(illum * albedo, 0.0f), outBuffer, pixelPos);
         }
 
         // Visualize depth

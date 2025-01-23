@@ -44,11 +44,12 @@ namespace jazzfusion
         INDEX_BSDF_DIFFUSE_REFLECTION = 2,
         INDEX_BSDF_MICROFACET_REFLECTION = 4,
         INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM = 6,
+        INDEX_BSDF_MICROFACET_REFLECTION_METAL = 8,
     };
 
-    static constexpr unsigned int RAY_MAT_FLAG_SKY = 0u;
-    static constexpr unsigned int RAY_MAT_FLAG_REFR_AND_REFL = 1u;
-    static constexpr unsigned int RAY_MAT_FLAG_REFL_OR_REFR = 2u;
-    static constexpr unsigned int RAY_MAT_FLAG_DIFFUSE = 3u;
+    enum FunctionIndexEmissive
+    {
+        INDEX_BSDF_EMISSIVE = 10,
+    };
 
 }

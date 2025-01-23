@@ -104,7 +104,6 @@ set( OPTIX_SHADERS
     renderer/shaders/ClosestHit.cu
     renderer/shaders/Miss.cu
     renderer/shaders/RayGen.cu
-    renderer/shaders/LightSample.cu
     renderer/shaders/Bsdf.cu
 )
 

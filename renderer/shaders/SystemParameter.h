@@ -15,7 +15,7 @@ namespace jazzfusion
         TexObj textureAlbedo = 0;
         TexObj textureNormal = 0;
         TexObj textureRoughness = 0;
-        TexObj textureUnused = 0;
+        TexObj textureMetallic = 0;
 
         Float3 albedo; // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
         int indexBSDF; // BSDF index to use in the closest hit program
@@ -28,18 +28,8 @@ namespace jazzfusion
         float uvScale = 1.0f;
     };
 
-    enum LightType
-    {
-        LIGHT_ENVIRONMENT = 0,   // constant color or spherical environment map.
-        LIGHT_PARALLELOGRAM = 1, // Parallelogram area light.
-
-        NUM_LIGHT_TYPES = 2
-    };
-
     struct __align__(16) LightDefinition
     {
-        LightType type; // Constant or spherical environment, rectangle (parallelogram).
-
         // Rectangle lights are defined in world coordinates as footpoint and two vectors spanning a parallelogram.
         // All in world coordinates with no scaling.
         Float3 position;
@@ -57,8 +47,6 @@ namespace jazzfusion
 
     struct LightSample
     {
-        Float3 position;
-        float distance;
         Float3 direction;
         Float3 emission;
         float pdf;

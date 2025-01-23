@@ -4,6 +4,8 @@
 
 #include "VoxelMath.h"
 
+#include "Block.h"
+
 #include <optional>
 #include <iostream>
 
@@ -44,6 +46,15 @@ namespace vox
         void set(unsigned int x, unsigned int y, unsigned int z, unsigned int id)
         {
             data[GetLinearId(x, y, z, width)].id = id;
+        }
+
+        Voxel get(jazzfusion::Float3 pos)
+        {
+            if (pos.y <= 8)
+            {
+                return Voxel{BlockTypeWater};
+            }
+            return data[GetLinearId((unsigned int)pos.x, (unsigned int)pos.y, (unsigned int)pos.z, width)];
         }
 
         Voxel *data;

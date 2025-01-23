@@ -101,12 +101,14 @@ namespace jazzfusion
         std::vector<std::string> filePaths;
         std::vector<std::string> textureFiles = GetTextureFiles();
         textureFiles.emplace_back("GreenLeaf10_4K_back");
+        textureFiles.emplace_back("beaten-up-metal1");
         for (const auto &textureFile : textureFiles)
         {
             filePaths.emplace_back("data/" + textureFile + "_albedo.png");
             filePaths.emplace_back("data/" + textureFile + "_normal.png");
             filePaths.emplace_back("data/" + textureFile + "_rough.png");
         }
+        filePaths.emplace_back("data/beaten-up-metal1_metal.png");
         filePaths.emplace_back("data/water1.jpg");
 
         m_textures.resize(filePaths.size());

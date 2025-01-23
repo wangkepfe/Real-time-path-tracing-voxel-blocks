@@ -51,7 +51,7 @@ namespace jazzfusion
             Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, skyRes);
 
             // Blend the sky color with mist
-            Float3 mistColor = Float3(0.2f);
+            Float3 mistColor = Float3(skyCdf[skyRes.x - 1] / (float)skyRes.x);
             float blenderFactor = clampf((rayDir.y + 0.4f) * (1.0f / 0.5f));
 
             // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
@@ -83,7 +83,7 @@ namespace jazzfusion
             {
                 sunIdx.x = sunRes.x - (-sunIdx.x) % sunRes.x;
             }
-            Float3 sunEmission = Load2DHalf4(sysParam.sunBuffer, sunIdx).xyz;
+            Float3 sunEmission = Load2DFloat4(sysParam.sunBuffer, sunIdx).xyz;
 
             // Float3 sunEmission = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.sunBuffer, sunUv, sunRes);
 
