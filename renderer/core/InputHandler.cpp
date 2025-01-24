@@ -308,20 +308,25 @@ namespace jazzfusion
             // Vertical
 
             // Free fall
-            auto v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
             float fallAccel = 9.8e-6f;
             fallSpeed += fallAccel * deltaTimeMs;
             camera.pos.y -= fallSpeed * deltaTimeMs;
+
+            auto v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
+
             if (fallSpeed > 0.0f && v2.id != BlockTypeEmpty)
             {
                 while (v2.id != BlockTypeEmpty)
                 {
-                    camera.pos += Float3(0, 1.0f, 0);
+                    camera.pos.y += 1.0f;
                     v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
                 }
                 camera.pos.y = static_cast<float>(static_cast<int>(camera.pos.y - height)) + height;
                 fallSpeed = 0.0f;
             }
+
+            std::cout << "camera.pos.y = " << camera.pos.y << "\n";
+
             // head bump to roof
             auto v3 = voxelChunk.get(camera.pos + Float3(0, 0.49f, 0));
             if (fallSpeed < 0.0f && v3.id != BlockTypeEmpty)

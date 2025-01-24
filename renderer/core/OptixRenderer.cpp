@@ -625,7 +625,7 @@ namespace jazzfusion
 
             // Lantern light
             parameters.indexBSDF = INDEX_BSDF_EMISSIVE;
-            parameters.albedo = Float3(255.0f / 255.0f, 61.0f / 255.0f, 4.0f / 255.0f); // 1500 Kelvin color temperature
+            parameters.albedo = Float3(255.0f / 255.0f, 61.0f / 255.0f, 4.0f / 255.0f) * (10000.0f) / (683.0f * 108.0f); // 1500 Kelvin color temperature, 10000 Lux
             parameters.uvScale = 1.0f;
             parameters.textureAlbedo = 0;
             parameters.textureNormal = 0;

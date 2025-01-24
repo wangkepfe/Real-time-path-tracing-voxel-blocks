@@ -42,7 +42,8 @@ namespace jazzfusion
 
         ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferManager.GetBuffer2D(IlluminationOutputBuffer),
-            Int2(inputWidth, inputHeight));
+            Int2(inputWidth, inputHeight),
+            postProcessParams);
 
         // if (renderPassSettings.enableSharpening)
         // {

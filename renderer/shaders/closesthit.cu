@@ -265,9 +265,9 @@ namespace jazzfusion
             {
                 Float2 texcoord1 = state.texcoord;
                 Float2 texcoord2 = state.texcoord;
-                texcoord1.x += sysParam.timeInSecond * 0.04f;
+                texcoord1.x += sysParam.timeInSecond * 0.1f;
                 texcoord2 *= 2.0f;
-                texcoord2.y += sysParam.timeInSecond * 0.02f;
+                texcoord2.y += sysParam.timeInSecond * 0.05f;
                 Float3 normal1 = Float3(tex2DLod<float4>(parameters.textureNormal, texcoord1.x, texcoord1.y, lod)) - 0.5f;
                 Float3 normal2 = Float3(tex2DLod<float4>(parameters.textureNormal, texcoord2.x, texcoord2.y, lod)) - 0.5f;
                 state.normal = normalize(normal1 + normal2 * 2.0f);

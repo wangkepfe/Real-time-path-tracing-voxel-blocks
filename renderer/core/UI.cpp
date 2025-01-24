@@ -89,7 +89,7 @@ namespace jazzfusion
                     std::get<0>(item),
                     std::get<2>(item),
                     std::get<3>(item),
-                    "%.2f",
+                    "%.8f",
                     std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
         }
 
@@ -102,7 +102,7 @@ namespace jazzfusion
                                        std::get<0>(item),
                                        std::get<2>(item),
                                        std::get<3>(item),
-                                       "%.3f",
+                                       "%.8f",
                                        std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None))
                 {
                     skyParams.needRegenerate = true;

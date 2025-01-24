@@ -135,7 +135,7 @@ namespace jazzfusion
 
         rayData->hitFirstDiffuseSurface = false;
 
-        static constexpr int BounceLimit = 2;
+        static constexpr int BounceLimit = 6;
 
         while (!pathTerminated)
         {

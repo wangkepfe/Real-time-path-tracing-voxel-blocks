@@ -253,7 +253,6 @@ namespace jazzfusion
         }
 
         Float3 rgbColor = XyzToRgbSrgb(xyzColor);
-        rgbColor = Float3(1.0f);
 
         return rgbColor;
     }
@@ -269,8 +268,7 @@ namespace jazzfusion
 
         Float3 rayDir = EqualAreaMap(u, v);
 
-        const float skyScalar = 1.0f;
-        Float3 color = GetSkyRadiance(rayDir, sunDir, skyParams) * skyScalar;
+        Float3 color = GetSkyRadiance(rayDir, sunDir, skyParams) * skyParams.skyBrightness;
 
         color = max3f(color, Float3(0.0f));
 
@@ -294,8 +292,7 @@ namespace jazzfusion
         Float3 raydir =
             EqualAreaMapCone(sunDir, u, v, cos(sunAngle * M_PI / 180.0f / 2.0f));
 
-        const float sunScalar = 1.0f;
-        Float3 color = GetSunRadiance(raydir, sunDir, skyParams) * sunScalar;
+        Float3 color = GetSunRadiance(raydir, sunDir, skyParams) * skyParams.skyBrightness;
 
         color = max3f(color, Float3(0.0f));
 

@@ -120,17 +120,15 @@ namespace jazzfusion
         GetValueList()
         {
             return {
-                {&exposure, "Exposure", 0.01f, 100.0f, true},
-                {&gain, "Gain", 1.0f, 10000.0f, true},
-                {&maxWhite, "Max White", 1.0f, 10000.0f, true},
-                {&gamma, "Gamma", 1.0f, 5.0f, false},
+                {&postGain, "Post Gain", 1.0f, 100.0f, true},
+                {&gain, "Gain", 1.0f, 100.0f, true},
+                {&maxWhite, "Max White", 0.000001f, 100.0f, true},
             };
         }
 
-        float exposure = 1.0f;
-        float gain = 1.0f;
-        float maxWhite = 3.0f;
-        float gamma = 2.2f;
+        float postGain = 1.0f;
+        float gain = 16.0f;
+        float maxWhite = 1.0f;
     };
 
     struct SkyParams
@@ -140,13 +138,15 @@ namespace jazzfusion
         {
             return {{&timeOfDay, "Time of Day", 0.01f, 0.99f, false},
                     {&sunAxisAngle, "Sun Axis Angle", 5.0f, 85.0f, false},
-                    {&sunAxisRotate, "Sun Axis Rotate", 0.0f, 360.0f, false}};
+                    {&sunAxisRotate, "Sun Axis Rotate", 0.0f, 360.0f, false},
+                    {&skyBrightness, "Sky Brightness", 0.000001f, 1.0f, true}};
         }
 
         bool needRegenerate = true;
         float timeOfDay = 0.25f;
         float sunAxisAngle = 45.0f;
         float sunAxisRotate = 0.0f;
+        float skyBrightness = 1.0f;
     };
 
     class GlobalSettings

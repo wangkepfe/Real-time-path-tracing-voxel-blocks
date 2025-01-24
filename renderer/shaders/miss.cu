@@ -10,7 +10,6 @@ namespace jazzfusion
 
     extern "C" __global__ void __miss__env_sphere()
     {
-        // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
         PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
         if (rayData->isShadowRay)
@@ -19,7 +18,6 @@ namespace jazzfusion
         }
 
         Float3 emission = Float3(0);
-        float misWeight = 1.0f;
 
         const Int2 &skyRes = sysParam.skyRes;
         const Int2 &sunRes = sysParam.sunRes;
@@ -32,30 +30,21 @@ namespace jazzfusion
 
         const Float3 &rayDir = rayData->wi;
 
+        float misWeight = 1.0f;
+
         // Map the ray diretcion to uv
         Float2 uv;
-        bool hitDisk = EqualAreaMapCone(uv, sysParam.sunDir, rayDir, sunAngleCosThetaMax);
 
         // Sky
         {
             // Map the ray diretcion to uv
             uv = EqualAreaMap(rayDir);
-            // Int2 skyIdx((int)(uv.x * skyRes.x), (int)(uv.y * skyRes.y));
-            // Wrapping around on X dimension
-            // if (skyIdx.x >= skyRes.x) { skyIdx.x %= skyRes.x; }
-            // if (skyIdx.x < 0) { skyIdx.x = skyRes.x - (-skyIdx.x) % skyRes.x; }
-
-            // Load buffer
-            // Float3 skyEmission = Load2DHalf4(sysParam.skyBuffer, skyIdx).xyz;
-
             Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, skyRes);
 
             // Blend the sky color with mist
-            Float3 mistColor = Float3(skyCdf[skyRes.x - 1] / (float)skyRes.x);
+            Float3 mistColor = Float3(skyCdf[skyRes.x - 1] / (float)skyRes.x); // Average color of elevation=0
             float blenderFactor = clampf((rayDir.y + 0.4f) * (1.0f / 0.5f));
 
-            // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
-            // then calculate light emission with multiple importance sampling for this implicit light hit as well.
             if (rayData->isLastBounceDiffuse)
             {
                 const float maxSkyCdf = skyCdf[skySize - 1];
@@ -69,10 +58,10 @@ namespace jazzfusion
         }
 
         // Is the ray hitting the solar disk, then compute the sun emission
+        bool hitDisk = EqualAreaMapCone(uv, sysParam.sunDir, rayDir, sunAngleCosThetaMax);
         if (hitDisk)
         {
             Int2 sunIdx((int)(uv.x * sunRes.x), (int)(uv.y * sunRes.y));
-            // Float2 sunUv = uv * sunRes;
 
             // Wrapping around on X dimension
             if (sunIdx.x >= sunRes.x)
@@ -85,10 +74,6 @@ namespace jazzfusion
             }
             Float3 sunEmission = Load2DFloat4(sysParam.sunBuffer, sunIdx).xyz;
 
-            // Float3 sunEmission = SampleBicubicSmoothStep<Load2DFuncHalf4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.sunBuffer, sunUv, sunRes);
-
-            // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
-            // then calculate light emission with multiple importance sampling for this implicit light hit as well.
             if (rayData->isLastBounceDiffuse)
             {
                 const float maxSunCdf = sunCdf[sunSize - 1];
@@ -102,7 +87,6 @@ namespace jazzfusion
         }
 
         rayData->radiance = emission * misWeight;
-        // rayData->totalDistance = RayMax;
         rayData->distance = RayMax;
         rayData->shouldTerminate = true;
     }

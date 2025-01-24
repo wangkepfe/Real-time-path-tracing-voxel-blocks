@@ -5,7 +5,7 @@
 namespace jazzfusion
 {
 
-    __global__ void ToneMappingReinhardExtended(SurfObj colorBuffer, Int2 size)
+    __global__ void ToneMappingReinhardExtended(SurfObj colorBuffer, Int2 size, PostProcessParams postProcessParams)
     {
         Int2 idx;
         idx.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -15,15 +15,16 @@ namespace jazzfusion
 
         Float3 color = Load2DFloat4(colorBuffer, idx).xyz;
 
-        float gain = 20.0f;
-        float maxWhite = 20.0f;
-        float gamma = 2.2f;
+        float gain = postProcessParams.gain;
+        float postGain = postProcessParams.postGain;
+        float maxWhite = postProcessParams.maxWhite;
 
         color *= gain;
+        maxWhite *= gain;
         color = color * ((color / Float3(maxWhite * maxWhite)) + 1.0f) / (color + 1.0f);
+        color *= postGain;
 
-        // color = color / (color + 1.0f);
-
+        float gamma = 2.2f;
         color = pow3f(color, Float3(1.0f / gamma));
 
         Store2DFloat4(Float4(color, 1.0), colorBuffer, idx);
