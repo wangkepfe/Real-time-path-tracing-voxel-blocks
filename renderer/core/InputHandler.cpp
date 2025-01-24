@@ -325,7 +325,7 @@ namespace jazzfusion
                 fallSpeed = 0.0f;
             }
 
-            std::cout << "camera.pos.y = " << camera.pos.y << "\n";
+            // std::cout << "camera.pos.y = " << camera.pos.y << "\n";
 
             // head bump to roof
             auto v3 = voxelChunk.get(camera.pos + Float3(0, 0.49f, 0));

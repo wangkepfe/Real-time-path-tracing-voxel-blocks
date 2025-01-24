@@ -443,7 +443,7 @@ namespace jazzfusion
 
                     // Set light sample direction and PDF
                     lightSample.direction = rayDir;
-                    lightSample.pdf = sampledSkyPdf;
+                    lightSample.pdf = sampledSkyPdf * sampleSkyVsSun;
                     lightSample.emission = skyEmission;
                 }
                 else // Choose to sample sun
@@ -470,7 +470,7 @@ namespace jazzfusion
 
                     // Set light sample direction and PDF
                     lightSample.direction = rayDir;
-                    lightSample.pdf = sampledSunPdf;
+                    lightSample.pdf = sampledSunPdf * (1.0f - sampleSkyVsSun);
                     lightSample.emission = sunEmission;
                 }
             }

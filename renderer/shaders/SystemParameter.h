@@ -108,4 +108,15 @@ namespace jazzfusion
         int lightIndex; // Negative means not a light.
     };
 
+    struct Surface
+    {
+        Float3 worldPos;
+        Float3 viewDir;
+        float viewDepth;
+        Float3 normal;
+        Float3 geoNormal;
+        Float3 diffuseAlbedo;
+        float roughness;
+    };
+
 }

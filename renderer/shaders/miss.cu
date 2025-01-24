@@ -32,6 +32,18 @@ namespace jazzfusion
 
         float misWeight = 1.0f;
 
+        // The accumulated all sky luminance
+        const float maxSkyCdf = skyCdf[skySize - 1];
+
+        // The accumulated all sun luminance
+        const float maxSunCdf = sunCdf[sunSize - 1];
+
+        const float totalSkyLum = maxSkyCdf * TWO_PI / skySize; // Jacobian of the hemisphere mapping
+        const float totalSunLum = maxSunCdf * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
+
+        // Sample sky or sun pdf
+        const float sampleSkyVsSun = totalSkyLum / (totalSkyLum + totalSunLum);
+
         // Map the ray diretcion to uv
         Float2 uv;
 
@@ -50,6 +62,7 @@ namespace jazzfusion
                 const float maxSkyCdf = skyCdf[skySize - 1];
                 float lightSamplePdf = dot(skyEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSkyCdf;
                 lightSamplePdf *= skySize / TWO_PI;
+                lightSamplePdf *= sampleSkyVsSun;
                 misWeight = powerHeuristic(rayData->pdf, lightSamplePdf);
             }
 
@@ -79,6 +92,7 @@ namespace jazzfusion
                 const float maxSunCdf = sunCdf[sunSize - 1];
                 float lightSamplePdf = dot(sunEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSunCdf;
                 lightSamplePdf *= sunSize / (TWO_PI * (1.0f - sunAngleCosThetaMax));
+                lightSamplePdf *= (1.0f - sampleSkyVsSun);
                 misWeight = powerHeuristic(rayData->pdf, lightSamplePdf);
             }
 
