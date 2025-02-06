@@ -5,17 +5,6 @@
 
 namespace jazzfusion
 {
-
-    __device__ float saturate(float x)
-    {
-        return fminf(fmaxf(x, 0.0f), 1.0f);
-    }
-
-    __device__ Float2 saturate(const Float2 &v)
-    {
-        return Float2(saturate(v.x), saturate(v.y));
-    }
-
     __device__ float LinearStep(float a, float b, float x)
     {
         return saturate((x - a) / (b - a));

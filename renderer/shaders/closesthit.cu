@@ -213,7 +213,7 @@ namespace jazzfusion
 
         state.texcoord /= parameters.uvScale;
         float texMip0Size = parameters.texSize.length();
-        float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.01f) / parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
+        float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.2f) / parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
 
         if (parameters.textureAlbedo != 0)
         {
@@ -234,6 +234,11 @@ namespace jazzfusion
         if (parameters.textureRoughness != 0)
         {
             state.roughness = tex2DLod<float1>(parameters.textureRoughness, state.texcoord.x, state.texcoord.y, lod).x;
+        }
+
+        if (rayData->hitFirstDiffuseSurface && state.roughness < 0.5f) // Roughness control path regulization: After the first diffuse, all BSDF increase its roughness
+        {
+            state.roughness *= 2.0f;
         }
 
         state.metallic = 0.0f;
@@ -399,33 +404,25 @@ namespace jazzfusion
                 const Int2 skyRes(512, 256);
                 const Int2 sunRes(32, 32);
 
-                const float *skyCdf = sysParam.skyCdf;
-                const float *sunCdf = sysParam.sunCdf;
-
+                const AliasTable &skyAliasTable = *sysParam.skyAliasTable;
+                const AliasTable &sunAliasTable = *sysParam.sunAliasTable;
+                const float &accumulatedSkyLuminance = sysParam.accumulatedSkyLuminance;
+                const float &accumulatedSunLuminance = sysParam.accumulatedSunLuminance;
                 const int skySize = skyRes.x * skyRes.y;
                 const int sunSize = sunRes.x * sunRes.y;
                 const float sunAngle = 0.51f; // angular diagram in degrees
                 const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
 
-                // The accumulated all sky luminance
-                const float maxSkyCdf = skyCdf[skySize - 1];
-
-                // The accumulated all sun luminance
-                const float maxSunCdf = sunCdf[sunSize - 1];
-
-                const float totalSkyLum = maxSkyCdf * TWO_PI / skySize; // Jacobian of the hemisphere mapping
-                const float totalSunLum = maxSunCdf * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
+                const float totalSkyLum = accumulatedSkyLuminance * TWO_PI / skySize; // Jacobian of the hemisphere mapping
+                const float totalSunLum = accumulatedSunLuminance * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
 
                 // Sample sky or sun pdf
                 const float sampleSkyVsSun = totalSkyLum / (totalSkyLum + totalSunLum);
 
                 if (sampleSkyVsSun > rayData->rand(sysParam))
                 {
-                    // Binary search in range 0 to size-2, since we want result+1 to be the index, we'll need to subtract result for calculating PDF
-                    const int sampledSkyIdx = BinarySearch(skyCdf, 0, skySize - 2, rayData->rand(sysParam) * maxSkyCdf) + 1;
-
-                    // Subtract neighbor CDF to get PDF, divided by max CDF to get the probability
-                    float sampledSkyPdf = (skyCdf[sampledSkyIdx] - skyCdf[sampledSkyIdx - 1]) / maxSkyCdf;
+                    float sampledSkyPdf;
+                    const int sampledSkyIdx = skyAliasTable.sample(rayData->rand(sysParam), sampledSkyPdf);
 
                     // Each tile has area 2Pi / resolution, pdf = 1/area = resolution / 2Pi
                     sampledSkyPdf = sampledSkyPdf * skySize / TWO_PI;
@@ -448,11 +445,8 @@ namespace jazzfusion
                 }
                 else // Choose to sample sun
                 {
-                    // Binary search in range 0 to size-2, since we want result+1 to be the index, we'll need to subtract result for calculating PDF
-                    const int sampledSunIdx = BinarySearch(sunCdf, 0, sunSize - 2, rayData->rand(sysParam) * maxSunCdf) + 1;
-
-                    // Subtract neighbor CDF to get PDF, divided by max CDF to get the probability
-                    float sampledSunPdf = (sunCdf[sampledSunIdx] - sunCdf[sampledSunIdx - 1]) / maxSunCdf;
+                    float sampledSunPdf;
+                    const int sampledSunIdx = sunAliasTable.sample(rayData->rand(sysParam), sampledSunPdf);
 
                     // Each tile has area = coneAnglularArea / resolution, pdf = 1/area = resolution / (TWO_PI * (1.0f - cosThetaMax))
                     sampledSunPdf = sampledSunPdf * sunSize / (TWO_PI * (1.0f - sunAngleCosThetaMax));

@@ -23,8 +23,8 @@ namespace jazzfusion
         const Int2 &sunRes = sysParam.sunRes;
         const int skySize = skyRes.x * skyRes.y;
         const int sunSize = sunRes.x * sunRes.y;
-        const float *skyCdf = sysParam.skyCdf;
-        const float *sunCdf = sysParam.sunCdf;
+        const float &accumulatedSkyLuminance = sysParam.accumulatedSkyLuminance;
+        const float &accumulatedSunLuminance = sysParam.accumulatedSunLuminance;
         const float sunAngle = 0.51f; // angular diagram in degrees
         const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
 
@@ -32,14 +32,8 @@ namespace jazzfusion
 
         float misWeight = 1.0f;
 
-        // The accumulated all sky luminance
-        const float maxSkyCdf = skyCdf[skySize - 1];
-
-        // The accumulated all sun luminance
-        const float maxSunCdf = sunCdf[sunSize - 1];
-
-        const float totalSkyLum = maxSkyCdf * TWO_PI / skySize; // Jacobian of the hemisphere mapping
-        const float totalSunLum = maxSunCdf * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
+        const float totalSkyLum = accumulatedSkyLuminance * TWO_PI / skySize; // Jacobian of the hemisphere mapping
+        const float totalSunLum = accumulatedSunLuminance * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
 
         // Sample sky or sun pdf
         const float sampleSkyVsSun = totalSkyLum / (totalSkyLum + totalSunLum);
@@ -54,13 +48,12 @@ namespace jazzfusion
             Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, skyRes);
 
             // Blend the sky color with mist
-            Float3 mistColor = Float3(skyCdf[skyRes.x - 1] / (float)skyRes.x); // Average color of elevation=0
+            Float3 mistColor = Float3(accumulatedSkyLuminance / skySize); // Average color of elevation=0
             float blenderFactor = clampf((rayDir.y + 0.4f) * (1.0f / 0.5f));
 
             if (rayData->isLastBounceDiffuse)
             {
-                const float maxSkyCdf = skyCdf[skySize - 1];
-                float lightSamplePdf = dot(skyEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSkyCdf;
+                float lightSamplePdf = dot(skyEmission, Float3(0.3f, 0.6f, 0.1f)) / accumulatedSkyLuminance;
                 lightSamplePdf *= skySize / TWO_PI;
                 lightSamplePdf *= sampleSkyVsSun;
                 misWeight = powerHeuristic(rayData->pdf, lightSamplePdf);
@@ -89,8 +82,7 @@ namespace jazzfusion
 
             if (rayData->isLastBounceDiffuse)
             {
-                const float maxSunCdf = sunCdf[sunSize - 1];
-                float lightSamplePdf = dot(sunEmission, Float3(0.3f, 0.6f, 0.1f)) / maxSunCdf;
+                float lightSamplePdf = dot(sunEmission, Float3(0.3f, 0.6f, 0.1f)) / accumulatedSunLuminance;
                 lightSamplePdf *= sunSize / (TWO_PI * (1.0f - sunAngleCosThetaMax));
                 lightSamplePdf *= (1.0f - sampleSkyVsSun);
                 misWeight = powerHeuristic(rayData->pdf, lightSamplePdf);

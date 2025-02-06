@@ -308,40 +308,25 @@ namespace jazzfusion
         skySize = skyRes.x * skyRes.y;
         sunSize = sunRes.x * sunRes.y;
 
-        int skyScanBlockCount = skySize / skyScanBlockSize;
-        int sunScanBlockCount = sunSize / sunScanBlockSize;
-
-        CUDA_CHECK(cudaMalloc((void **)&skyCdf, skySize * sizeof(float)));
-        CUDA_CHECK(cudaMemset(skyCdf, 0, skySize * sizeof(float)));
-
         CUDA_CHECK(cudaMalloc((void **)&skyPdf, skySize * sizeof(float)));
         CUDA_CHECK(cudaMemset(skyPdf, 0, skySize * sizeof(float)));
-
-        CUDA_CHECK(
-            cudaMalloc((void **)&skyCdfScanTmp, skyScanBlockCount * sizeof(float)));
-        CUDA_CHECK(cudaMemset(skyCdfScanTmp, 0, skyScanBlockCount * sizeof(float)));
-
-        CUDA_CHECK(cudaMalloc((void **)&sunCdf, sunSize * sizeof(float)));
-        CUDA_CHECK(cudaMemset(sunCdf, 0, sunSize * sizeof(float)));
 
         CUDA_CHECK(cudaMalloc((void **)&sunPdf, sunSize * sizeof(float)));
         CUDA_CHECK(cudaMemset(sunPdf, 0, sunSize * sizeof(float)));
 
-        CUDA_CHECK(
-            cudaMalloc((void **)&sunCdfScanTmp, sunScanBlockCount * sizeof(float)));
-        CUDA_CHECK(cudaMemset(sunCdfScanTmp, 0, sunScanBlockCount * sizeof(float)));
+        CUDA_CHECK(cudaMalloc((void **)&d_skyAliasTable, sizeof(AliasTable)));
+        CUDA_CHECK(cudaMalloc((void **)&d_sunAliasTable, sizeof(AliasTable)));
 
         initSkyConstantBuffer();
     }
 
     SkyModel::~SkyModel()
     {
-        cudaFree(skyCdf);
         cudaFree(skyPdf);
-        cudaFree(skyCdfScanTmp);
-        cudaFree(sunCdf);
         cudaFree(sunPdf);
-        cudaFree(sunCdfScanTmp);
+
+        cudaFree(d_skyAliasTable);
+        cudaFree(d_sunAliasTable);
     }
 
     void SkyModel::update()
@@ -373,8 +358,8 @@ namespace jazzfusion
                 bufferManager.GetBuffer2D(SkyBuffer), skyPdf, skyRes, sunDir,
                 skyParams);
 
-            // Scan for CDF
-            Scan(skyPdf, skyCdf, skyCdfScanTmp, skySize, skyScanBlockSize, 1);
+            skyAliasTable.update(skyPdf, skyRes.x * skyRes.y, accumulatedSkyLuminance);
+            cudaMemcpy(d_skyAliasTable, &skyAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 
             // Generate sun on GPU
             SkySun KERNEL_ARGS2(GetGridDim(sunRes.x, sunRes.y, BLOCK_DIM_8x8x1),
@@ -382,8 +367,8 @@ namespace jazzfusion
                 bufferManager.GetBuffer2D(SunBuffer), sunPdf, sunRes, sunDir,
                 skyParams);
 
-            // Scan for CDF
-            Scan(sunPdf, sunCdf, sunCdfScanTmp, sunSize, sunScanBlockSize, 1);
+            sunAliasTable.update(sunPdf, sunRes.x * sunRes.y, accumulatedSunLuminance);
+            cudaMemcpy(d_sunAliasTable, &sunAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 
             CUDA_CHECK(cudaDeviceSynchronize());
             CUDA_CHECK(cudaPeekAtLastError());

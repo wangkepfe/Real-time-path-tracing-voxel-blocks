@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LinearMath.h"
+#include "AliasTable.h"
 #include "Camera.h"
 #include "RandGen.h"
 #include <optix.h>
@@ -28,23 +29,6 @@ namespace jazzfusion
         float uvScale = 1.0f;
     };
 
-    struct __align__(16) LightDefinition
-    {
-        // Rectangle lights are defined in world coordinates as footpoint and two vectors spanning a parallelogram.
-        // All in world coordinates with no scaling.
-        Float3 position;
-        Float3 vecU;
-        Float3 vecV;
-        Float3 normal;
-        float area;
-        Float3 emission;
-
-        // Manual padding to float4 alignment goes here.
-        float unused0;
-        float unused1;
-        float unused2;
-    };
-
     struct LightSample
     {
         Float3 direction;
@@ -66,14 +50,14 @@ namespace jazzfusion
         SurfObj outMotionVector;
         SurfObj outUiBuffer;
 
-        LightDefinition *lightDefinitions;
-
         MaterialParameter *materialParameters;
 
         SurfObj skyBuffer;
         SurfObj sunBuffer;
-        float *skyCdf;
-        float *sunCdf;
+        AliasTable *skyAliasTable;
+        AliasTable *sunAliasTable;
+        float accumulatedSkyLuminance;
+        float accumulatedSunLuminance;
         Int2 skyRes;
         Int2 sunRes;
         Float3 sunDir;
@@ -85,7 +69,6 @@ namespace jazzfusion
         int sampleIndex;
         float sceneEpsilon;
 
-        int numLights;
         BlueNoiseRandGenerator randGen;
         float noiseBlend;
         int accumulationCounter;
@@ -105,18 +88,5 @@ namespace jazzfusion
         VertexAttributes *attributes;
 
         int materialIndex;
-        int lightIndex; // Negative means not a light.
     };
-
-    struct Surface
-    {
-        Float3 worldPos;
-        Float3 viewDir;
-        float viewDepth;
-        Float3 normal;
-        Float3 geoNormal;
-        Float3 diffuseAlbedo;
-        float roughness;
-    };
-
 }

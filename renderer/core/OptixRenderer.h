@@ -95,7 +95,6 @@ namespace jazzfusion
 
         SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
 
-        std::vector<LightDefinition> m_lightDefinitions;
         std::vector<MaterialParameter> m_materialParameters;
 
         BlueNoiseRandGeneratorHost h_randGen{};

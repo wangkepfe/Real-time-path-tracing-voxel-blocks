@@ -12,6 +12,7 @@ add_definitions("-DNOMINMAX")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
 
 find_package(OptiX81)
 set(OPTIX_INCLUDE_DIR "${OPTIX81_INCLUDE_DIR}")
@@ -69,6 +70,7 @@ set( HEADERS
     renderer/shaders/Sampler.h
     renderer/shaders/SystemParameter.h
     renderer/shaders/RandGen.h
+    renderer/shaders/AliasTable.h
     renderer/sky/Sky.h
     renderer/sky/SkyData.h
     voxelengine/VoxelEngine.h
@@ -98,6 +100,7 @@ set( SOURCES
     voxelengine/VoxelEngine.cpp
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp
+    renderer/shaders/AliasTable.cu
 )
 
 set( OPTIX_SHADERS
@@ -105,6 +108,7 @@ set( OPTIX_SHADERS
     renderer/shaders/Miss.cu
     renderer/shaders/RayGen.cu
     renderer/shaders/Bsdf.cu
+    renderer/shaders/AliasTable.cu
 )
 
 set( SHADERS_HEADERS
@@ -118,6 +122,7 @@ set( SHADERS_HEADERS
     renderer/shaders/Sampler.h
     renderer/shaders/RandGen.h
     renderer/shaders/SelfHit.h
+    renderer/shaders/AliasTable.h
 )
 
 message("PTX_DIR = " "${PTX_DIR}")
@@ -126,7 +131,7 @@ NVCUDA_COMPILE_PTX( SOURCES ${OPTIX_SHADERS}
                     DEPENDENCIES ${SHADERS_HEADERS}
                     TARGET_PATH "${PTX_DIR}"
                     GENERATED_FILES PTX_SOURCES
-                    NVCC_OPTIONS "-arch=sm_89" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/renderer/shaders"
+                    NVCC_OPTIONS "-arch=sm_89" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "--extended-lambda" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/renderer/shaders"
                   )
 
 source_group("imgui"           FILES ${IMGUI} )

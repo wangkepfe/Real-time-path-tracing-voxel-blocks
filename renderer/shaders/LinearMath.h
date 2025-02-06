@@ -56,6 +56,8 @@
 #ifndef SAFE_COSINE_EPSI
 #define SAFE_COSINE_EPSI 1e-5f
 #endif
+static constexpr float FloatOneMinusEpsilon = 0x1.fffffep-1;
+static constexpr float OneMinusEpsilon = FloatOneMinusEpsilon;
 
 namespace jazzfusion
 {
@@ -1843,5 +1845,15 @@ namespace jazzfusion
     INL_HOST_DEVICE float radians(float degrees)
     {
         return degrees * (M_PI / 180.0f);
+    }
+
+    INL_HOST_DEVICE float saturate(float x)
+    {
+        return fminf(fmaxf(x, 0.0f), 1.0f);
+    }
+
+    INL_HOST_DEVICE Float2 saturate(const Float2 &v)
+    {
+        return Float2(saturate(v.x), saturate(v.y));
     }
 }

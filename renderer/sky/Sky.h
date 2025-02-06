@@ -1,61 +1,65 @@
 #pragma once
 
 #include "shaders/LinearMath.h"
+#include "shaders/AliasTable.h"
 
 namespace jazzfusion
 {
 
-class SkyModel
-{
-public:
-    static SkyModel& Get()
+    class SkyModel
     {
-        static SkyModel instance;
-        return instance;
-    }
-    SkyModel(SkyModel const&) = delete;
-    ~SkyModel();
-    void operator=(SkyModel const&) = delete;
+    public:
+        static SkyModel &Get()
+        {
+            static SkyModel instance;
+            return instance;
+        }
+        SkyModel(SkyModel const &) = delete;
+        ~SkyModel();
+        void operator=(SkyModel const &) = delete;
 
+        void init();
+        void update();
 
-    void init();
-    void update();
+        void initSkyConstantBuffer();
+        void updateSkyState();
 
-    void initSkyConstantBuffer();
-    void updateSkyState();
+        Int2 getSkyRes() const { return skyRes; }
+        Int2 getSunRes() const { return sunRes; }
 
-    Int2 getSkyRes() const { return skyRes; }
-    Int2 getSunRes() const { return sunRes; }
+        AliasTable *getSkyAliasTable() const { return d_skyAliasTable; }
+        AliasTable *getSunAliasTable() const { return d_sunAliasTable; }
 
-    float* getSkyCdf() const { return skyCdf; }
-    float* getSunCdf() const { return sunCdf; }
+        float getAccumulatedSkyLuminance() const { return accumulatedSkyLuminance; }
+        float getAccumulatedSunLuminance() const { return accumulatedSunLuminance; }
 
-    Float3 getSunDir() const { return sunDir; }
+        Float3 getSunDir() const { return sunDir; }
 
-private:
-    SkyModel() {}
+    private:
+        SkyModel() {}
 
-    float getFittingData(const float* elevMatrix, float solarElevation, int i);
-    float getFittingData2(const float* elevMatrix, float solarElevation);
+        float getFittingData(const float *elevMatrix, float solarElevation, int i);
+        float getFittingData2(const float *elevMatrix, float solarElevation);
 
-    float* skyPdf;
-    float* skyCdf;
-    float* skyCdfScanTmp;
+        float *skyPdf;
+        float *sunPdf;
 
-    float* sunPdf;
-    float* sunCdf;
-    float* sunCdfScanTmp;
+        AliasTable skyAliasTable;
+        AliasTable sunAliasTable;
 
-    Int2 skyRes{ 512, 256 };
-    Int2 sunRes{ 32, 32 };
+        AliasTable *d_skyAliasTable;
+        AliasTable *d_sunAliasTable;
 
-    int skySize{};
-    int sunSize{};
+        float accumulatedSkyLuminance;
+        float accumulatedSunLuminance;
 
-    int skyScanBlockSize{ 256 };
-    int sunScanBlockSize{ 32 };
+        Int2 skyRes{512, 256};
+        Int2 sunRes{32, 32};
 
-    Float3 sunDir{};
-};
+        int skySize{};
+        int sunSize{};
+
+        Float3 sunDir{};
+    };
 
 }

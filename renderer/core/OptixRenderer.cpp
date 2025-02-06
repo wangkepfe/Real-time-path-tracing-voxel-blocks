@@ -102,7 +102,6 @@ namespace jazzfusion
         auto &backend = jazzfusion::Backend::Get();
         CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-        CUDA_CHECK(cudaFree((void *)m_systemParameter.lightDefinitions));
         CUDA_CHECK(cudaFree((void *)m_systemParameter.materialParameters));
         CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
 
@@ -147,6 +146,8 @@ namespace jazzfusion
 
         const auto &skyModel = SkyModel::Get();
         m_systemParameter.sunDir = skyModel.getSunDir();
+        m_systemParameter.accumulatedSkyLuminance = skyModel.getAccumulatedSkyLuminance();
+        m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
 
         auto &bufferManager = BufferManager::Get();
         BufferSetFloat4(bufferManager.GetBufferDim(UiBuffer), bufferManager.GetBuffer2D(UiBuffer), Float4(0.0f));
@@ -469,7 +470,6 @@ namespace jazzfusion
         {
             m_systemParameter.topObject = 0;
             m_systemParameter.outputBuffer = 0;
-            m_systemParameter.lightDefinitions = nullptr;
             m_systemParameter.materialParameters = nullptr;
 
             const auto &bufferManager = BufferManager::Get();
@@ -486,8 +486,10 @@ namespace jazzfusion
 
             m_systemParameter.skyBuffer = bufferManager.GetBuffer2D(SkyBuffer);
             m_systemParameter.sunBuffer = bufferManager.GetBuffer2D(SunBuffer);
-            m_systemParameter.skyCdf = skyModel.getSkyCdf(); // This buffer is allocated in Backend::init()
-            m_systemParameter.sunCdf = skyModel.getSunCdf();
+            m_systemParameter.skyAliasTable = skyModel.getSkyAliasTable();
+            m_systemParameter.sunAliasTable = skyModel.getSunAliasTable();
+            m_systemParameter.accumulatedSkyLuminance = skyModel.getAccumulatedSkyLuminance();
+            m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
             m_systemParameter.skyRes = skyModel.getSkyRes();
             m_systemParameter.sunRes = skyModel.getSunRes();
 
@@ -495,7 +497,6 @@ namespace jazzfusion
 
             m_systemParameter.iterationIndex = 0;
             m_systemParameter.sceneEpsilon = 0; // 500.0f * 1.0e-7f;
-            m_systemParameter.numLights = 0;
 
             m_d_ias = 0;
 
@@ -981,7 +982,6 @@ namespace jazzfusion
                 m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
                 m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
                 m_sbtRecordGeometryInstanceData[objectId].data.materialIndex = objectId;
-                m_sbtRecordGeometryInstanceData[objectId].data.lightIndex = -1;
             }
 
             CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numObjects));
@@ -1022,14 +1022,9 @@ namespace jazzfusion
 
         // Setup "sysParam" data.
         {
-            assert((sizeof(LightDefinition) & 15) == 0); // Check alignment to float4
-            CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.lightDefinitions, sizeof(LightDefinition) * m_lightDefinitions.size()));
-            CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.lightDefinitions, m_lightDefinitions.data(), sizeof(LightDefinition) * m_lightDefinitions.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-
             CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
             CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
-            m_systemParameter.numLights = static_cast<unsigned int>(m_lightDefinitions.size());
             m_systemParameter.iterationIndex = 0;
 
             CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
