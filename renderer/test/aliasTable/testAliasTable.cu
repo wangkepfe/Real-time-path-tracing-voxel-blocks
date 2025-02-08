@@ -8,8 +8,6 @@
 #include <ctime>
 #include <algorithm>
 
-using namespace jazzfusion;
-
 // Kernel that calls the device-side sample() function for each sample.
 __global__ void sampleKernel(const AliasTable table, const float *d_randoms,
                              unsigned int *d_indices, float *d_pmf, int numSamples)

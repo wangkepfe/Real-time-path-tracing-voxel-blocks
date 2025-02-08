@@ -8,43 +8,38 @@
 #include <cstring>
 #include <functional>
 
-namespace vox
+class VoxelEngine
 {
-
-    class VoxelEngine
+public:
+    static VoxelEngine &Get()
     {
-    public:
-        static VoxelEngine &Get()
-        {
-            static VoxelEngine instance;
-            return instance;
-        }
-        VoxelEngine(VoxelEngine const &) = delete;
-        void operator=(VoxelEngine const &) = delete;
-        ~VoxelEngine();
+        static VoxelEngine instance;
+        return instance;
+    }
+    VoxelEngine(VoxelEngine const &) = delete;
+    void operator=(VoxelEngine const &) = delete;
+    ~VoxelEngine();
 
-        void init();
-        void update();
-        void generateVoxels();
-        void reload();
+    void init();
+    void update();
+    void generateVoxels();
+    void reload();
 
-        int totalNumBlockTypes;
-        int totalNumUninstancedGeometries;
-        int totalNumInstancedGeometries;
-        int totalNumGeometries;
+    int totalNumBlockTypes;
+    int totalNumUninstancedGeometries;
+    int totalNumInstancedGeometries;
+    int totalNumGeometries;
 
-        VoxelChunk voxelChunk;
-        bool leftMouseButtonClicked = false;
+    VoxelChunk voxelChunk;
+    bool leftMouseButtonClicked = false;
 
-        std::vector<unsigned int> currentFaceCount;
-        std::vector<unsigned int> maxFaceCount;
-        std::vector<std::vector<unsigned int>> freeFaces;
-        std::vector<std::vector<unsigned int>> faceLocation;
+    std::vector<unsigned int> currentFaceCount;
+    std::vector<unsigned int> maxFaceCount;
+    std::vector<std::vector<unsigned int>> freeFaces;
+    std::vector<std::vector<unsigned int>> faceLocation;
 
-    private:
-        VoxelEngine()
-        {
-        }
-    };
-
-}
+private:
+    VoxelEngine()
+    {
+    }
+};

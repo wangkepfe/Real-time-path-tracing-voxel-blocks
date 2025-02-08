@@ -4,57 +4,54 @@
 #include "shaders/LinearMath.h"
 #include "shaders/Sampler.h"
 
-namespace jazzfusion
+__global__ void BufferSetFloat1_impl(Int2 bufferDim, SurfObj outBuffer, float val)
 {
-    __global__ void BufferSetFloat1_impl(Int2 bufferDim, SurfObj outBuffer, float val)
+    Int2 threadPos;
+    threadPos.x = threadIdx.x;
+    threadPos.y = threadIdx.y;
+
+    Int2 pixelPos;
+    pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
+    pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (pixelPos.x >= bufferDim.x || pixelPos.y >= bufferDim.y)
     {
-        Int2 threadPos;
-        threadPos.x = threadIdx.x;
-        threadPos.y = threadIdx.y;
-
-        Int2 pixelPos;
-        pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
-        pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
-
-        if (pixelPos.x >= bufferDim.x || pixelPos.y >= bufferDim.y)
-        {
-            return;
-        }
-
-        Store2DFloat1(val, outBuffer, pixelPos);
+        return;
     }
 
-    void BufferSetFloat1(Int2 bufferDim, SurfObj outBuffer, float val)
+    Store2DFloat1(val, outBuffer, pixelPos);
+}
+
+void BufferSetFloat1(Int2 bufferDim, SurfObj outBuffer, float val)
+{
+    BufferSetFloat1_impl KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+        bufferDim,
+        outBuffer,
+        val);
+}
+
+__global__ void BufferSetFloat4_impl(Int2 bufferDim, SurfObj outBuffer, Float4 val)
+{
+    Int2 threadPos;
+    threadPos.x = threadIdx.x;
+    threadPos.y = threadIdx.y;
+
+    Int2 pixelPos;
+    pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
+    pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (pixelPos.x >= bufferDim.x || pixelPos.y >= bufferDim.y)
     {
-        BufferSetFloat1_impl KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferDim,
-            outBuffer,
-            val);
+        return;
     }
 
-    __global__ void BufferSetFloat4_impl(Int2 bufferDim, SurfObj outBuffer, Float4 val)
-    {
-        Int2 threadPos;
-        threadPos.x = threadIdx.x;
-        threadPos.y = threadIdx.y;
+    Store2DFloat4(val, outBuffer, pixelPos);
+}
 
-        Int2 pixelPos;
-        pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
-        pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
-
-        if (pixelPos.x >= bufferDim.x || pixelPos.y >= bufferDim.y)
-        {
-            return;
-        }
-
-        Store2DFloat4(val, outBuffer, pixelPos);
-    }
-
-    void BufferSetFloat4(Int2 bufferDim, SurfObj outBuffer, Float4 val)
-    {
-        BufferSetFloat4_impl KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferDim,
-            outBuffer,
-            val);
-    }
+void BufferSetFloat4(Int2 bufferDim, SurfObj outBuffer, Float4 val)
+{
+    BufferSetFloat4_impl KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+        bufferDim,
+        outBuffer,
+        val);
 }

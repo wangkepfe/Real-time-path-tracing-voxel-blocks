@@ -24,32 +24,27 @@
 
 #define OPTIMIZED_BLUE_NOISE_SPP 4
 
-namespace jazzfusion
+static constexpr float RayMax = 1.0e27f;
+static constexpr float RayMaxLowerBound = 1.0e26f;
+
+// Specular materials only have sample function, they do not have evaluate function
+enum FunctionIndexSpecular
 {
+    INDEX_BSDF_SPECULAR_REFLECTION = 0,
+    INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 1,
+    NUM_SPECULAR_BSDF = 2,
+};
 
-    static constexpr float RayMax = 1.0e27f;
-    static constexpr float RayMaxLowerBound = 1.0e26f;
+// Diffuse materials have sample function at the index, and the evaluate function at index + 1
+enum FunctionIndexDiffuse
+{
+    INDEX_BSDF_DIFFUSE_REFLECTION = 2,
+    INDEX_BSDF_MICROFACET_REFLECTION = 4,
+    INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM = 6,
+    INDEX_BSDF_MICROFACET_REFLECTION_METAL = 8,
+};
 
-    // Specular materials only have sample function, they do not have evaluate function
-    enum FunctionIndexSpecular
-    {
-        INDEX_BSDF_SPECULAR_REFLECTION = 0,
-        INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION = 1,
-        NUM_SPECULAR_BSDF = 2,
-    };
-
-    // Diffuse materials have sample function at the index, and the evaluate function at index + 1
-    enum FunctionIndexDiffuse
-    {
-        INDEX_BSDF_DIFFUSE_REFLECTION = 2,
-        INDEX_BSDF_MICROFACET_REFLECTION = 4,
-        INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM = 6,
-        INDEX_BSDF_MICROFACET_REFLECTION_METAL = 8,
-    };
-
-    enum FunctionIndexEmissive
-    {
-        INDEX_BSDF_EMISSIVE = 10,
-    };
-
-}
+enum FunctionIndexEmissive
+{
+    INDEX_BSDF_EMISSIVE = 10,
+};

@@ -97,7 +97,7 @@ set( SOURCES
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
     renderer/util/ModelUtils.cpp
-    voxelengine/VoxelEngine.cpp
+    voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp
     renderer/shaders/AliasTable.cu

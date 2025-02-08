@@ -2,9 +2,6 @@
 
 #include "shaders/RandGen.h"
 
-namespace jazzfusion
-{
-
 struct BlueNoiseRandGeneratorHost
 {
     BlueNoiseRandGeneratorHost() { init(); }
@@ -24,12 +21,10 @@ struct BlueNoiseRandGeneratorHost
         return randGen;
     }
 
-    unsigned char* sobol_256spp_256d;
-    unsigned char* scramblingTile;
+    unsigned char *sobol_256spp_256d;
+    unsigned char *scramblingTile;
 
 #if OPTIMIZED_BLUE_NOISE_SPP != 1
-    unsigned char* rankingTile;
+    unsigned char *rankingTile;
 #endif
 };
-
-}

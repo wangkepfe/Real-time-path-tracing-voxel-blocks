@@ -3,6 +3,9 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+
+#include "shaders/LinearMath.h"
 
 enum BlockType
 {
@@ -61,4 +64,20 @@ inline const std::string &GetModelFileName(int blockType)
         {BlockTypeTestLight, "data/lanternLight.obj"},
     };
     return modelFiles.at(blockType);
+}
+
+inline bool IsBlockEmissive(int blockType)
+{
+    static const std::unordered_set<int> emissiveBlocks = {
+        BlockTypeTestLight,
+    };
+    return emissiveBlocks.count(blockType);
+}
+
+inline Float3 GetEmissiveRadiance(int blockType)
+{
+    static const std::unordered_map<int, Float3> emissiveBlockRadiance = {
+        {BlockTypeTestLight, Float3(255.0f, 61.0f, 4.0f) / 255.0f * 10000.0f / (683.0f * 108.0f)}, // 1500 Kelvin color temperature, 10000 Lux
+    };
+    return emissiveBlockRadiance.at(blockType);
 }

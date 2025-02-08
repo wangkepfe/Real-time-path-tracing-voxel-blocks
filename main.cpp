@@ -12,15 +12,15 @@
 
 int main(int argc, char *argv[])
 {
-    auto &backend = jazzfusion::Backend::Get();
-    auto &renderer = jazzfusion::OptixRenderer::Get();
+    auto &backend = Backend::Get();
+    auto &renderer = OptixRenderer::Get();
 
     try
     {
-        auto &ui = jazzfusion::UI::Get();
-        auto &bufferManager = jazzfusion::BufferManager::Get();
-        auto &textureManager = jazzfusion::TextureManager::Get();
-        auto &voxelengine = vox::VoxelEngine::Get();
+        auto &ui = UI::Get();
+        auto &bufferManager = BufferManager::Get();
+        auto &textureManager = TextureManager::Get();
+        auto &voxelengine = VoxelEngine::Get();
 
         voxelengine.init();
         backend.init();

@@ -2,25 +2,20 @@
 
 #include "shaders/Camera.h"
 
-namespace jazzfusion
+class RenderCamera
 {
-
-    class RenderCamera
+public:
+    static RenderCamera &Get()
     {
-    public:
-        static RenderCamera &Get()
-        {
-            static RenderCamera instance;
-            return instance;
-        }
-        RenderCamera(RenderCamera const &) = delete;
-        void operator=(RenderCamera const &) = delete;
+        static RenderCamera instance;
+        return instance;
+    }
+    RenderCamera(RenderCamera const &) = delete;
+    void operator=(RenderCamera const &) = delete;
 
-        Camera camera{};
-        Camera historyCamera{};
+    Camera camera{};
+    Camera historyCamera{};
 
-    private:
-        RenderCamera() {}
-    };
-
-}
+private:
+    RenderCamera() {}
+};

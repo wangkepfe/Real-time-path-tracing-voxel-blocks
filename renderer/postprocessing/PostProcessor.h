@@ -9,29 +9,24 @@
 #define TexObj cudaTextureObject_t
 #endif
 
-namespace jazzfusion
+class PostProcessor
 {
-
-    class PostProcessor
+public:
+    static PostProcessor &Get()
     {
-    public:
-        static PostProcessor &Get()
-        {
-            static PostProcessor instance;
-            return instance;
-        }
-        PostProcessor(PostProcessor const &) = delete;
-        void operator=(PostProcessor const &) = delete;
+        static PostProcessor instance;
+        return instance;
+    }
+    PostProcessor(PostProcessor const &) = delete;
+    void operator=(PostProcessor const &) = delete;
 
-        void run(Float4 *interopBuffer, int inputWidth, int inputHeight, int outputWidth, int outputHeight);
+    void run(Float4 *interopBuffer, int inputWidth, int inputHeight, int outputWidth, int outputHeight);
 
-    private:
-        PostProcessor() {}
+private:
+    PostProcessor() {}
 
-        int inputWidth;
-        int inputHeight;
-        int outputWidth;
-        int outputHeight;
-    };
-
-}
+    int inputWidth;
+    int inputHeight;
+    int outputWidth;
+    int outputHeight;
+};

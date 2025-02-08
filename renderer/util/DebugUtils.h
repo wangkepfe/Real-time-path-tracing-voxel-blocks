@@ -5,9 +5,6 @@
 #include "cassert"
 #include <iostream>
 
-namespace jazzfusion
-{
-
 #define CUDA_CHECK(call)                                                                                                                                           \
     {                                                                                                                                                              \
         const cudaError_t error = call;                                                                                                                            \
@@ -27,5 +24,3 @@ namespace jazzfusion
             assert(!"OPTIX_CHECK fatal");                                                                                   \
         }                                                                                                                   \
     }
-
-}

@@ -3,25 +3,22 @@
 #include <cstdint>
 #include "shaders/LinearMath.h"
 
-namespace vox
+using VoxelDataType = uint8_t;
+
+struct Voxel
 {
-    using VoxelDataType = uint8_t;
+    INL_HOST_DEVICE Voxel() {}
+    INL_HOST_DEVICE ~Voxel() {}
 
-    struct Voxel
+    INL_HOST_DEVICE Voxel(VoxelDataType id) : id{id} {}
+
+    union
     {
-        INL_HOST_DEVICE Voxel() {}
-        INL_HOST_DEVICE ~Voxel() {}
-
-        INL_HOST_DEVICE Voxel(VoxelDataType id) : id{id} {}
-
-        union
+        struct
         {
-            struct
-            {
-                VoxelDataType id : 8;
-            };
-
-            VoxelDataType allBits;
+            VoxelDataType id : 8;
         };
+
+        VoxelDataType allBits;
     };
-}
+};

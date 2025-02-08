@@ -2,9 +2,6 @@
 
 #include "shaders/LinearMath.h"
 
-namespace jazzfusion
-{
-
 inline __device__ Float3 XyzToRgbAces2065(Float3 xyzColor)
 {
     // ACES 2065-1 D60
@@ -47,6 +44,4 @@ inline __device__ Float3 Aces2065ToSrgb(Float3 color)
     Float3 rgbColor = xyzToRgb1 * (Inverse(xyzToRgb2) * color);
 
     return rgbColor;
-}
-
 }

@@ -2,60 +2,59 @@
 
 #include <cuda_runtime.h>
 
-namespace jazzfusion
+//-----------------------------------------------------------------------------
+// Data structure for a bin (alias table entry)
+struct AliasTableBin
 {
-    //-----------------------------------------------------------------------------
-    // Data structure for a bin (alias table entry)
-    struct AliasTableBin
+    float q;   // scaled probability (after alias processing)
+    float p;   // original normalized probability
+    int alias; // alias index (or -1 if none)
+};
+
+//-----------------------------------------------------------------------------
+// The AliasTable class. In the constructor, we assume that 'd_weights' is a pointer
+// to an array of float weights in GPU memory and that there are 'n' of them.
+class AliasTable
+{
+public:
+    // Default constructor.
+    AliasTable() : bins(nullptr), len(0) {}
+
+    // builds the alias table on the GPU.
+    void update(const float *d_weights, unsigned int n, float &sumWeight);
+
+    // Destructor.
+    ~AliasTable();
+
+    __host__ __device__ bool initialized() const { return bins != nullptr; }
+
+    // Device function to perform sampling.
+    __device__ unsigned int sample(float u, float &pmf) const
     {
-        float q;   // scaled probability (after alias processing)
-        float p;   // original normalized probability
-        int alias; // alias index (or -1 if none)
-    };
-
-    //-----------------------------------------------------------------------------
-    // The AliasTable class. In the constructor, we assume that 'd_weights' is a pointer
-    // to an array of float weights in GPU memory and that there are 'n' of them.
-    class AliasTable
-    {
-    public:
-        // Default constructor.
-        AliasTable() : bins(nullptr), len(0) {}
-
-        // builds the alias table on the GPU.
-        void update(const float *d_weights, unsigned int n, float &sumWeight);
-
-        // Destructor.
-        ~AliasTable();
-
-        // Device function to perform sampling.
-        __device__ unsigned int sample(float u, float &pmf) const
+        int offset = min(int(u * len), int(len - 1));
+        // Use a value slightly less than 1 to avoid floating–point issues.
+        float up = min(u * len - offset, 0.999999f);
+        if (up < bins[offset].q)
         {
-            int offset = min(int(u * len), int(len - 1));
-            // Use a value slightly less than 1 to avoid floating–point issues.
-            float up = min(u * len - offset, 0.999999f);
-            if (up < bins[offset].q)
-            {
-                pmf = bins[offset].p;
-                return offset;
-            }
-            else
-            {
-                int alias = bins[offset].alias;
-                pmf = bins[alias].p;
-                return alias;
-            }
+            pmf = bins[offset].p;
+            return offset;
         }
+        else
+        {
+            int alias = bins[offset].alias;
+            pmf = bins[alias].p;
+            return alias;
+        }
+    }
 
-        // Host/device inline functions.
-        __host__ __device__ unsigned int size() const { return len; }
-        __device__ float PMF(unsigned int index) const { return bins[index].p; }
+    // Host/device inline functions.
+    __host__ __device__ unsigned int size() const { return len; }
+    __device__ float PMF(unsigned int index) const { return bins[index].p; }
 
-    private:
-        AliasTableBin *bins = nullptr;
-        unsigned int len;
-    };
-}
+private:
+    AliasTableBin *bins = nullptr;
+    unsigned int len;
+};
 
 // int offset = min(int(u * len), int(len - 1));
 // pmf = 1.0f / float(len);

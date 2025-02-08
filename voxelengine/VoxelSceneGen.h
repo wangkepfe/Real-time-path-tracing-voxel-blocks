@@ -6,41 +6,38 @@
 
 #include <vector>
 
-namespace vox
-{
-    void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data);
+void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data);
 
-    void generateMesh(jazzfusion::VertexAttributes **attr,
-                      unsigned int **indices,
-                      std::vector<unsigned int> &faceLocation,
-                      unsigned int &attrSize,
-                      unsigned int &indicesSize,
-                      unsigned int &currentFaceCount,
-                      unsigned int &maxFaceCount,
-                      VoxelChunk &voxelChunk,
-                      Voxel *d_data,
-                      int id);
+void generateMesh(VertexAttributes **attr,
+                  unsigned int **indices,
+                  std::vector<unsigned int> &faceLocation,
+                  unsigned int &attrSize,
+                  unsigned int &indicesSize,
+                  unsigned int &currentFaceCount,
+                  unsigned int &maxFaceCount,
+                  VoxelChunk &voxelChunk,
+                  Voxel *d_data,
+                  int id);
 
-    void freeDeviceVoxelData(Voxel *d_data);
+void freeDeviceVoxelData(Voxel *d_data);
 
-    void updateSingleVoxel(
-        unsigned int x,
-        unsigned int y,
-        unsigned int z,
-        unsigned int newVal,
-        VoxelChunk &voxelChunk,
-        jazzfusion::VertexAttributes *attr,
-        unsigned int *indices,
-        std::vector<unsigned int> &faceLocation,
-        unsigned int &attrSize,
-        unsigned int &indicesSize,
-        unsigned int &currentFaceCount,
-        unsigned int &maxFaceCount,
-        std::vector<unsigned int> &freeFaces);
+void updateSingleVoxel(
+    unsigned int x,
+    unsigned int y,
+    unsigned int z,
+    unsigned int newVal,
+    VoxelChunk &voxelChunk,
+    VertexAttributes *attr,
+    unsigned int *indices,
+    std::vector<unsigned int> &faceLocation,
+    unsigned int &attrSize,
+    unsigned int &indicesSize,
+    unsigned int &currentFaceCount,
+    unsigned int &maxFaceCount,
+    std::vector<unsigned int> &freeFaces);
 
-    void generateSea(jazzfusion::VertexAttributes **attr,
-                     unsigned int **indices,
-                     unsigned int &attrSize,
-                     unsigned int &indicesSize,
-                     int width);
-}
+void generateSea(VertexAttributes **attr,
+                 unsigned int **indices,
+                 unsigned int &attrSize,
+                 unsigned int &indicesSize,
+                 int width);

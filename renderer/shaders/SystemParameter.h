@@ -4,89 +4,94 @@
 #include "AliasTable.h"
 #include "Camera.h"
 #include "RandGen.h"
+#include "Restir.h"
 #include <optix.h>
 
-namespace jazzfusion
+// Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
+// Alignment of all data types used here is 4 bytes.
+struct __align__(16) MaterialParameter
 {
+    TexObj textureAlbedo = 0;
+    TexObj textureNormal = 0;
+    TexObj textureRoughness = 0;
+    TexObj textureMetallic = 0;
 
-    // Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
-    // Alignment of all data types used here is 4 bytes.
-    struct __align__(16) MaterialParameter
-    {
-        TexObj textureAlbedo = 0;
-        TexObj textureNormal = 0;
-        TexObj textureRoughness = 0;
-        TexObj textureMetallic = 0;
+    Float3 albedo; // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
+    int indexBSDF; // BSDF index to use in the closest hit program
 
-        Float3 albedo; // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
-        int indexBSDF; // BSDF index to use in the closest hit program
+    Float3 absorption; // Absorption coefficient
+    float ior;         // Index of refraction
 
-        Float3 absorption; // Absorption coefficient
-        float ior;         // Index of refraction
+    Float2 texSize = Float2(1024.0f);
+    unsigned int flags = 0;
+    float uvScale = 1.0f;
+};
 
-        Float2 texSize = Float2(1024.0f);
-        unsigned int flags = 0;
-        float uvScale = 1.0f;
-    };
+struct SystemParameter
+{
+    Camera camera;
 
-    struct LightSample
-    {
-        Float3 direction;
-        Float3 emission;
-        float pdf;
-    };
+    OptixTraversableHandle topObject;
 
-    struct SystemParameter
-    {
-        Camera camera;
+    SurfObj outputBuffer;
+    SurfObj outNormal;
+    SurfObj outDepth;
+    SurfObj outAlbedo;
+    SurfObj outMaterial;
+    SurfObj outMotionVector;
+    SurfObj outUiBuffer;
 
-        OptixTraversableHandle topObject;
+    MaterialParameter *materialParameters;
 
-        SurfObj outputBuffer;
-        SurfObj outNormal;
-        SurfObj outDepth;
-        SurfObj outAlbedo;
-        SurfObj outMaterial;
-        SurfObj outMotionVector;
-        SurfObj outUiBuffer;
+    SurfObj skyBuffer;
+    SurfObj sunBuffer;
+    AliasTable *skyAliasTable;
+    AliasTable *sunAliasTable;
+    float accumulatedSkyLuminance;
+    float accumulatedSunLuminance;
+    Int2 skyRes;
+    Int2 sunRes;
+    Float3 sunDir;
 
-        MaterialParameter *materialParameters;
+    LightInfo *lights;
+    AliasTable *lightAliasTable;
 
-        SurfObj skyBuffer;
-        SurfObj sunBuffer;
-        AliasTable *skyAliasTable;
-        AliasTable *sunAliasTable;
-        float accumulatedSkyLuminance;
-        float accumulatedSunLuminance;
-        Int2 skyRes;
-        Int2 sunRes;
-        Float3 sunDir;
+    Float3 *edgeToHighlight;
 
-        Float3 *edgeToHighlight;
+    int iterationIndex;
+    int samplePerIteration;
+    int sampleIndex;
+    float sceneEpsilon;
 
-        int iterationIndex;
-        int samplePerIteration;
-        int sampleIndex;
-        float sceneEpsilon;
+    BlueNoiseRandGenerator randGen;
+    int accumulationCounter;
+    float timeInSecond;
+};
 
-        BlueNoiseRandGenerator randGen;
-        float noiseBlend;
-        int accumulationCounter;
-        float timeInSecond;
-    };
+struct VertexAttributes
+{
+    Float3 vertex;
+    Float2 texcoord;
+};
 
-    struct VertexAttributes
-    {
-        Float3 vertex;
-        Float2 texcoord;
-    };
+// SBT Record data for the hit group.
+struct GeometryInstanceData
+{
+    Int3 *indices;
+    VertexAttributes *attributes;
 
-    // SBT Record data for the hit group.
-    struct GeometryInstanceData
-    {
-        Int3 *indices;
-        VertexAttributes *attributes;
+    int materialIndex;
+};
 
-        int materialIndex;
-    };
+#ifdef __CUDA_ARCH__
+INL_DEVICE float rand(const SystemParameter &sysParam, int &randIdx)
+{
+    UInt2 idx = UInt2(optixGetLaunchIndex());
+    return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex * sysParam.samplePerIteration + sysParam.sampleIndex, randIdx++);
 }
+
+INL_DEVICE Float2 rand2(const SystemParameter &sysParam, int &randIdx)
+{
+    return Float2(rand(sysParam, randIdx), rand(sysParam, randIdx));
+}
+#endif // __CUDA_ARCH__

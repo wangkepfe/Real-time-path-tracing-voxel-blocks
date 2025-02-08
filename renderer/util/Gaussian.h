@@ -7,9 +7,6 @@
 #define PRINT_GAUSSIAN_KERNAL 1
 #define USE_PRECALCULATED_GAUSSIAN 1
 
-namespace jazzfusion
-{
-
 #if USE_PRECALCULATED_GAUSSIAN
 
 inline __device__ float GetGaussian3x3(unsigned int i)
@@ -17,8 +14,7 @@ inline __device__ float GetGaussian3x3(unsigned int i)
     float cGaussian3x3[] = {
         0.0578968, 0.0921378, 0.0584323,
         0.0921378, 0.146629, 0.09299,
-        0.0584322, 0.0929898, 0.0589727
-    };
+        0.0584322, 0.0929898, 0.0589727};
     return cGaussian3x3[i];
 }
 
@@ -29,8 +25,7 @@ inline __device__ float GetGaussian5x5(unsigned int i)
         0.0144464, 0.0578968, 0.0921378, 0.0584323, 0.0147159,
         0.0229902, 0.0921378, 0.146629, 0.09299, 0.023419,
         0.01458, 0.0584322, 0.0929898, 0.0589727, 0.014852,
-        0.00367191, 0.0147158, 0.0234191, 0.0148519, 0.0037404
-    };
+        0.00367191, 0.0147158, 0.0234191, 0.0148519, 0.0037404};
     return cGaussian5x5[i];
 }
 
@@ -43,8 +38,7 @@ inline __device__ float GetGaussian7x7(unsigned int i)
         0.00225698, 0.0229902, 0.0921378, 0.146629, 0.09299, 0.023419, 0.00232076,
         0.00143134, 0.01458, 0.0584322, 0.0929898, 0.0589727, 0.014852, 0.00147179,
         0.000360475, 0.00367191, 0.0147158, 0.0234191, 0.0148519, 0.0037404, 0.000370662,
-        3.57221e-05, 0.000363875, 0.0014583, 0.00232075, 0.00147179, 0.000370662, 3.67315e-05
-    };
+        3.57221e-05, 0.000363875, 0.0014583, 0.00232075, 0.00147179, 0.000370662, 3.67315e-05};
     return cGaussian7x7[i];
 }
 
@@ -74,14 +68,14 @@ inline float GaussianIsotropic2D(float x, float y, float sigma)
     return expf(-(x * x + y * y) / (2 * sigma * sigma)) / (2 * M_PI * sigma * sigma);
 }
 
-inline void CalculateGaussianKernel(float* fGaussian, float sigma, int radius)
+inline void CalculateGaussianKernel(float *fGaussian, float sigma, int radius)
 {
     int size = radius * 2 + 1;
     const int step = 100;
     int kernelSize = size * size;
     int sampleDimSize = size * step;
     int sampleCount = sampleDimSize * sampleDimSize;
-    float* sampleData = new float[sampleCount];
+    float *sampleData = new float[sampleCount];
     for (int i = 0; i < sampleCount; ++i)
     {
         int xi = i % sampleDimSize;
@@ -127,7 +121,7 @@ inline void CalculateGaussianKernel(float* fGaussian, float sigma, int radius)
 inline void CalculateGaussian3x3()
 {
     int kernelSize = 9;
-    float* fGaussian = new float[kernelSize];
+    float *fGaussian = new float[kernelSize];
     CalculateGaussianKernel(fGaussian, GAUSSIAN_3x3_SIGMA, 1);
     GpuErrorCheck(cudaMemcpyToSymbol(cGaussian3x3, fGaussian, sizeof(float) * kernelSize));
     delete fGaussian;
@@ -136,7 +130,7 @@ inline void CalculateGaussian3x3()
 inline void CalculateGaussian5x5()
 {
     int kernelSize = 25;
-    float* fGaussian = new float[kernelSize];
+    float *fGaussian = new float[kernelSize];
     CalculateGaussianKernel(fGaussian, GAUSSIAN_5x5_SIGMA, 2);
     GpuErrorCheck(cudaMemcpyToSymbol(cGaussian5x5, fGaussian, sizeof(float) * kernelSize));
     delete fGaussian;
@@ -145,12 +139,11 @@ inline void CalculateGaussian5x5()
 inline void CalculateGaussian7x7()
 {
     int kernelSize = 49;
-    float* fGaussian = new float[kernelSize];
+    float *fGaussian = new float[kernelSize];
     CalculateGaussianKernel(fGaussian, GAUSSIAN_7x7_SIGMA, 3);
     GpuErrorCheck(cudaMemcpyToSymbol(cGaussian7x7, fGaussian, sizeof(float) * kernelSize));
     delete fGaussian;
 }
 
 #endif
-
 }

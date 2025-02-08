@@ -17,61 +17,63 @@
 
 #include "util/DebugUtils.h"
 
-namespace jazzfusion
+// The actual geometries are tracked in m_geometries.
+struct GeometryData
 {
+    unsigned int *indices;
+    VertexAttributes *attributes;
+    size_t numIndices;    // Count of unsigned ints, not triplets.
+    size_t numAttributes; // Count of VertexAttributes structs.
+    CUdeviceptr gas;
+};
 
-    // The actual geometries are tracked in m_geometries.
-    struct GeometryData
+class Scene
+{
+public:
+    static Scene &Get()
     {
-        unsigned int *indices;
-        VertexAttributes *attributes;
-        size_t numIndices;    // Count of unsigned ints, not triplets.
-        size_t numAttributes; // Count of VertexAttributes structs.
-        CUdeviceptr gas;
-    };
+        static Scene instance;
+        return instance;
+    }
+    Scene(Scene const &) = delete;
+    void operator=(Scene const &) = delete;
 
-    class Scene
-    {
-    public:
-        static Scene &Get()
-        {
-            static Scene instance;
-            return instance;
-        }
-        Scene(Scene const &) = delete;
-        void operator=(Scene const &) = delete;
+    // Scene meshes
+    std::vector<VertexAttributes *> m_geometryAttibutes;
+    std::vector<unsigned int *> m_geometryIndices;
+    std::vector<unsigned int> m_geometryAttibuteSize;
+    std::vector<unsigned int> m_geometryIndicesSize;
 
-        // Scene meshes
-        std::vector<VertexAttributes *> m_geometryAttibutes;
-        std::vector<unsigned int *> m_geometryIndices;
-        std::vector<unsigned int> m_geometryAttibuteSize;
-        std::vector<unsigned int> m_geometryIndicesSize;
+    bool needSceneUpdate = false;
+    bool needSceneReloadUpdate = false;
+    std::vector<unsigned int> sceneUpdateObjectId;
+    std::vector<unsigned int> sceneUpdateInstanceId;
+    Float3 *edgeToHighlight;
 
-        bool needSceneUpdate = false;
-        bool needSceneReloadUpdate = false;
-        std::vector<unsigned int> sceneUpdateObjectId;
-        std::vector<unsigned int> sceneUpdateInstanceId;
-        Float3 *edgeToHighlight;
+    int uninstancedGeometryCount;
+    int instancedGeometryCount;
 
-        int uninstancedGeometryCount;
-        int instancedGeometryCount;
+    std::unordered_map<int, std::unordered_set<int>> geometryInstanceIdMap;
+    std::unordered_map<int, std::array<float, 12>> instanceTransformMatrices;
 
-        std::unordered_map<int, std::unordered_set<int>> geometryInstanceIdMap;
-        std::unordered_map<int, std::array<float, 12>> instanceTransformMatrices;
+    std::vector<LightInfo *> m_lights;
+    std::vector<unsigned int> m_numTriLights;
 
-        static OptixTraversableHandle CreateGeometry(
-            OptixFunctionTable &api,
-            OptixDeviceContext &context,
-            CUstream cudaStream,
-            GeometryData &geometry,
-            VertexAttributes *d_attributes,
-            unsigned int *d_indices,
-            unsigned int attributeSize,
-            unsigned int indicesSize);
+    LightInfo *d_mergedLights = nullptr;
+    AliasTable lightAliasTable;
+    AliasTable *d_lightAliasTable = nullptr;
 
-    private:
-        Scene();
-        ~Scene();
-    };
+    static OptixTraversableHandle CreateGeometry(
+        OptixFunctionTable &api,
+        OptixDeviceContext &context,
+        CUstream cudaStream,
+        GeometryData &geometry,
+        VertexAttributes *d_attributes,
+        unsigned int *d_indices,
+        unsigned int attributeSize,
+        unsigned int indicesSize);
 
-}
+private:
+    Scene();
+    ~Scene();
+};

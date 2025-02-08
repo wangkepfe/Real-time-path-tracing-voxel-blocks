@@ -10,9 +10,6 @@
 
 #include <fstream>
 
-using namespace jazzfusion;
-using namespace vox;
-
 __device__ __host__ void ComputeFaceVertices(Float3 basePos, int faceId, Float3 outVerts[4])
 {
     switch (faceId)
@@ -122,8 +119,13 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
     }
 
     // This makes sure all uninstanced material block has at least one block
-    for (int i = 1; i < BlockTypeWater; ++i)
+    for (int i = 1; i < BlockTypeNum; ++i)
     {
+        if (i == BlockTypeWater)
+        {
+            continue;
+        }
+
         if (idx.x == 1 && idx.y == 1 && idx.z == i)
         {
             val.id = i;
@@ -259,7 +261,7 @@ __global__ void CompactMesh(
 namespace
 {
     bool dumpMeshToOBJ(
-        const jazzfusion::VertexAttributes *attr,
+        const VertexAttributes *attr,
         const unsigned int *indices,
         unsigned int attrSize,
         unsigned int indicesSize,
@@ -307,473 +309,470 @@ namespace
     }
 }
 
-namespace vox
+void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data)
 {
-    void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data)
+    dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
+    dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
+
+    size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
+    size_t noiseMapSize = voxelChunk.width * voxelChunk.width;
+
+    cudaMalloc(d_data, totalVoxels * sizeof(Voxel));
+
+    PerlinNoiseGenerator noiseGenerator;
+    float freq = 1.0f / voxelChunk.width;
+
+    std::vector<float> noiseMap(noiseMapSize);
+    for (int x = 0; x < voxelChunk.width; ++x)
     {
-        dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
-        dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
-
-        size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
-        size_t noiseMapSize = voxelChunk.width * voxelChunk.width;
-
-        cudaMalloc(d_data, totalVoxels * sizeof(Voxel));
-
-        PerlinNoiseGenerator noiseGenerator;
-        float freq = 1.0f / voxelChunk.width;
-
-        std::vector<float> noiseMap(noiseMapSize);
-        for (int x = 0; x < voxelChunk.width; ++x)
+        for (int y = 0; y < voxelChunk.width; ++y)
         {
-            for (int y = 0; y < voxelChunk.width; ++y)
-            {
-                noiseMap[y * voxelChunk.width + x] = noiseGenerator.getNoise(x * freq, y * freq);
-            }
-        }
-
-        float *d_noise;
-        cudaMalloc(&d_noise, noiseMapSize * sizeof(float));
-        cudaMemcpy(d_noise, noiseMap.data(), noiseMapSize * sizeof(float), cudaMemcpyHostToDevice);
-
-        GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width);
-
-        CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaPeekAtLastError());
-
-        cudaMemcpy(voxelChunk.data, *d_data, totalVoxels * sizeof(Voxel), cudaMemcpyDeviceToHost);
-        cudaFree(d_noise);
-
-        // std::cout << "voxel:" << std::endl;
-        // for (int i = 0; i < totalVoxels; ++i)
-        // {
-        //     auto val = voxelChunk.data[i];
-        //     std::cout << (int)(val.id) << " ";
-        // }
-        // std::cout << std::endl;
-    }
-
-    void freeDeviceVoxelData(Voxel *d_data)
-    {
-        CUDA_CHECK(cudaFree(d_data));
-    }
-
-    void generateMesh(jazzfusion::VertexAttributes **attr,
-                      unsigned int **indices,
-                      std::vector<unsigned int> &faceLocation,
-                      unsigned int &attrSize,
-                      unsigned int &indicesSize,
-                      unsigned int &currentFaceCount,
-                      unsigned int &maxFaceCount,
-                      VoxelChunk &voxelChunk,
-                      Voxel *d_data,
-                      int id)
-    {
-        dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
-        dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
-
-        unsigned int *d_faceValid;
-        unsigned int *d_faceLocation;
-        size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
-        size_t totalFaces = totalVoxels * 6;
-        cudaMalloc(&d_faceValid, totalFaces * sizeof(unsigned int));
-        cudaMalloc(&d_faceLocation, totalFaces * sizeof(unsigned int));
-
-        // 2. Mark valid faces
-        MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(d_data, d_faceValid, voxelChunk.width, id);
-
-        CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaPeekAtLastError());
-
-        // std::vector<unsigned int> h_faceValid(totalFaces);
-        // cudaMemcpy(h_faceValid.data(), d_faceValid, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-        // std::cout << "face valid id = " << id << std::endl;
-        // for (auto val : h_faceValid)
-        // {
-        //     std::cout << val << " ";
-        // }
-        // std::cout << std::endl;
-
-        // 3. Prefix sum on face validity
-        unsigned int *d_faceValidPrefixSum;
-        cudaMalloc(&d_faceValidPrefixSum, totalFaces * sizeof(unsigned int));
-
-        void *d_temp_storage = NULL;
-        size_t temp_storage_bytes = 0;
-        // Determine temp storage size
-        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
-        cudaMalloc(&d_temp_storage, temp_storage_bytes);
-        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
-        cudaFree(d_temp_storage);
-
-        CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaPeekAtLastError());
-
-        // 4. Find how many faces are valid total
-        cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
-        // maxFaceCount = currentFaceCount * 2;
-        maxFaceCount = totalFaces / 4;
-
-        attrSize = currentFaceCount * 4;
-        indicesSize = currentFaceCount * 6;
-
-        if (*attr != nullptr)
-        {
-            cudaFree(*attr);
-        }
-        if (*indices != nullptr)
-        {
-            cudaFree(*indices);
-        }
-
-        cudaMallocManaged(attr, maxFaceCount * 4 * sizeof(jazzfusion::VertexAttributes));
-        cudaMallocManaged(indices, maxFaceCount * 6 * sizeof(unsigned int));
-
-        // 5. Compact the mesh
-        CompactMesh KERNEL_ARGS2(gridDim, blockDim)(*attr, *indices, d_faceLocation, d_data, d_faceValidPrefixSum, voxelChunk.width, id);
-
-        CUDA_CHECK(cudaDeviceSynchronize());
-        CUDA_CHECK(cudaPeekAtLastError());
-
-        faceLocation.resize(totalFaces);
-        cudaMemcpy(faceLocation.data(), d_faceLocation, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-
-        if (0)
-        {
-            dumpMeshToOBJ(*attr, *indices, attrSize, indicesSize, "debug" + std::to_string(id) + ".obj");
-        }
-
-        // Cleanup
-        cudaFree(d_faceValid);
-        cudaFree(d_faceLocation);
-        cudaFree(d_faceValidPrefixSum);
-    }
-
-    void updateSingleFace(
-        int faceId,
-        std::vector<unsigned int> &faceLocation,
-        bool shouldExist,
-        int f,
-        jazzfusion::VertexAttributes *attr,
-        unsigned int *indices,
-        std::vector<unsigned int> &freeFaces,
-        unsigned int &currentFaceCount,
-        unsigned int &maxFaceCount,
-        Float3 centerPos)
-    {
-        unsigned int existingFaceIndex = faceLocation[faceId];
-        bool currentlyExists = (existingFaceIndex != UINT_MAX);
-
-        if (currentlyExists && !shouldExist)
-        {
-            // Remove the face
-            // Zero out vertices and indices so it doesn't render
-            unsigned int vOffset = existingFaceIndex * 4;
-            unsigned int iOffset = existingFaceIndex * 6;
-
-            for (int i = 0; i < 4; i++)
-            {
-                attr[vOffset + i].vertex = Float3(0.0f, 0.0f, 0.0f);
-            }
-            for (int i = 0; i < 6; i++)
-            {
-                indices[iOffset + i] = 0; // or invalid index, if the renderer checks this
-            }
-
-            // Mark this face slot as free for reuse
-            freeFaces.push_back((unsigned int)existingFaceIndex);
-            faceLocation[faceId] = UINT_MAX; // face no longer exists
-        }
-        else if (!currentlyExists && shouldExist)
-        {
-            // Add a new face
-            unsigned int newFaceIndex;
-            if (!freeFaces.empty())
-            {
-                // Reuse a freed slot
-                newFaceIndex = freeFaces.back();
-                freeFaces.pop_back();
-            }
-            else
-            {
-                // Append at the end if we have capacity
-                if (currentFaceCount >= maxFaceCount)
-                {
-                    // Out of space - you may choose to reallocate or do a full rebuild
-                    // For now, just return or handle error
-                    return;
-                }
-                newFaceIndex = currentFaceCount;
-                currentFaceCount++;
-            }
-
-            Float3 verts[4];
-            ComputeFaceVertices(centerPos, f, verts);
-
-            unsigned int vOffset = newFaceIndex * 4;
-            unsigned int iOffset = newFaceIndex * 6;
-
-            // Write vertices
-            for (int i = 0; i < 4; i++)
-            {
-                attr[vOffset + i].vertex = verts[i];
-            }
-
-            // Write indices
-            indices[iOffset + 0] = vOffset + 0;
-            indices[iOffset + 1] = vOffset + 1;
-            indices[iOffset + 2] = vOffset + 2;
-
-            indices[iOffset + 3] = vOffset + 0;
-            indices[iOffset + 4] = vOffset + 2;
-            indices[iOffset + 5] = vOffset + 3;
-
-            // Update mapping
-            faceLocation[faceId] = newFaceIndex;
+            noiseMap[y * voxelChunk.width + x] = noiseGenerator.getNoise(x * freq, y * freq);
         }
     }
 
-    bool getColocatedFace(int &colocatedVid, int &colocatedFaceF, Float3 &colocatedCenterPos, unsigned int x, unsigned int y, unsigned int z, int f, VoxelChunk &voxelChunk)
+    float *d_noise;
+    cudaMalloc(&d_noise, noiseMapSize * sizeof(float));
+    cudaMemcpy(d_noise, noiseMap.data(), noiseMapSize * sizeof(float), cudaMemcpyHostToDevice);
+
+    GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    cudaMemcpy(voxelChunk.data, *d_data, totalVoxels * sizeof(Voxel), cudaMemcpyDeviceToHost);
+    cudaFree(d_noise);
+
+    // std::cout << "voxel:" << std::endl;
+    // for (int i = 0; i < totalVoxels; ++i)
+    // {
+    //     auto val = voxelChunk.data[i];
+    //     std::cout << (int)(val.id) << " ";
+    // }
+    // std::cout << std::endl;
+}
+
+void freeDeviceVoxelData(Voxel *d_data)
+{
+    CUDA_CHECK(cudaFree(d_data));
+}
+
+void generateMesh(VertexAttributes **attr,
+                  unsigned int **indices,
+                  std::vector<unsigned int> &faceLocation,
+                  unsigned int &attrSize,
+                  unsigned int &indicesSize,
+                  unsigned int &currentFaceCount,
+                  unsigned int &maxFaceCount,
+                  VoxelChunk &voxelChunk,
+                  Voxel *d_data,
+                  int id)
+{
+    dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
+    dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
+
+    unsigned int *d_faceValid;
+    unsigned int *d_faceLocation;
+    size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
+    size_t totalFaces = totalVoxels * 6;
+    cudaMalloc(&d_faceValid, totalFaces * sizeof(unsigned int));
+    cudaMalloc(&d_faceLocation, totalFaces * sizeof(unsigned int));
+
+    // 2. Mark valid faces
+    MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(d_data, d_faceValid, voxelChunk.width, id);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    // std::vector<unsigned int> h_faceValid(totalFaces);
+    // cudaMemcpy(h_faceValid.data(), d_faceValid, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+    // std::cout << "face valid id = " << id << std::endl;
+    // for (auto val : h_faceValid)
+    // {
+    //     std::cout << val << " ";
+    // }
+    // std::cout << std::endl;
+
+    // 3. Prefix sum on face validity
+    unsigned int *d_faceValidPrefixSum;
+    cudaMalloc(&d_faceValidPrefixSum, totalFaces * sizeof(unsigned int));
+
+    void *d_temp_storage = NULL;
+    size_t temp_storage_bytes = 0;
+    // Determine temp storage size
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
+    cudaMalloc(&d_temp_storage, temp_storage_bytes);
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
+    cudaFree(d_temp_storage);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    // 4. Find how many faces are valid total
+    cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
+    // maxFaceCount = currentFaceCount * 2;
+    maxFaceCount = totalFaces / 4;
+
+    attrSize = currentFaceCount * 4;
+    indicesSize = currentFaceCount * 6;
+
+    if (*attr != nullptr)
     {
-        // Remember:
-        // f = 0 => Up    => neighbor in +Y direction => opposite face is 1 (Down)
-        // f = 1 => Down  => neighbor in -Y direction => opposite face is 0 (Up)
-        // f = 2 => Left  => neighbor in -X direction => opposite face is 3 (Right)
-        // f = 3 => Right => neighbor in +X direction => opposite face is 2 (Left)
-        // f = 4 => Back  => neighbor in +Z direction => opposite face is 5 (Front)
-        // f = 5 => Front => neighbor in -Z direction => opposite face is 4 (Back)
-
-        // Check each face direction, ensure we stay within [0, width-1] bounds
-        if (f == 0 && y < voxelChunk.width - 1) // Up => neighbor is (x, y+1, z)
-        {
-            colocatedVid = GetLinearId(x, y + 1, z, voxelChunk.width);
-            colocatedFaceF = 1; // Down
-            colocatedCenterPos = Float3((float)x, (float)(y + 1), (float)z);
-            return true;
-        }
-        else if (f == 1 && y > 0) // Down => neighbor is (x, y-1, z)
-        {
-            colocatedVid = GetLinearId(x, y - 1, z, voxelChunk.width);
-            colocatedFaceF = 0; // Up
-            colocatedCenterPos = Float3((float)x, (float)(y - 1), (float)z);
-            return true;
-        }
-        else if (f == 2 && x > 0) // Left => neighbor is (x-1, y, z)
-        {
-            colocatedVid = GetLinearId(x - 1, y, z, voxelChunk.width);
-            colocatedFaceF = 3; // Right
-            colocatedCenterPos = Float3((float)(x - 1), (float)y, (float)z);
-            return true;
-        }
-        else if (f == 3 && x < voxelChunk.width - 1) // Right => neighbor is (x+1, y, z)
-        {
-            colocatedVid = GetLinearId(x + 1, y, z, voxelChunk.width);
-            colocatedFaceF = 2; // Left
-            colocatedCenterPos = Float3((float)(x + 1), (float)y, (float)z);
-            return true;
-        }
-        else if (f == 4 && z < voxelChunk.width - 1) // Back => neighbor is (x, y, z+1)
-        {
-            colocatedVid = GetLinearId(x, y, z + 1, voxelChunk.width);
-            colocatedFaceF = 5; // Front
-            colocatedCenterPos = Float3((float)x, (float)y, (float)(z + 1));
-            return true;
-        }
-        else if (f == 5 && z > 0) // Front => neighbor is (x, y, z-1)
-        {
-            colocatedVid = GetLinearId(x, y, z - 1, voxelChunk.width);
-            colocatedFaceF = 4; // Back
-            colocatedCenterPos = Float3((float)x, (float)y, (float)(z - 1));
-            return true;
-        }
-
-        // If no valid opposite/neighbor within bounds was found, return false
-        return false;
+        cudaFree(*attr);
+    }
+    if (*indices != nullptr)
+    {
+        cudaFree(*indices);
     }
 
-    // CPU function to update the mesh for a single changed voxel (add or remove).
-    // newVal = 1 if the voxel is now filled, 0 if empty.
-    // This function:
-    // 1. Updates the voxel data.
-    // 2. Recomputes which faces should be present for this voxel.
-    // 3. Adds or removes faces in the mesh buffers accordingly.
-    void updateSingleVoxel(
-        unsigned int x,
-        unsigned int y,
-        unsigned int z,
-        unsigned int newVal,
-        VoxelChunk &voxelChunk,
-        jazzfusion::VertexAttributes *attr,
-        unsigned int *indices,
-        std::vector<unsigned int> &faceLocation,
-        unsigned int &attrSize,
-        unsigned int &indicesSize,
-        unsigned int &currentFaceCount,
-        unsigned int &maxFaceCount,
-        std::vector<unsigned int> &freeFaces)
+    cudaMallocManaged(attr, maxFaceCount * 4 * sizeof(VertexAttributes));
+    cudaMallocManaged(indices, maxFaceCount * 6 * sizeof(unsigned int));
+
+    // 5. Compact the mesh
+    CompactMesh KERNEL_ARGS2(gridDim, blockDim)(*attr, *indices, d_faceLocation, d_data, d_faceValidPrefixSum, voxelChunk.width, id);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    faceLocation.resize(totalFaces);
+    cudaMemcpy(faceLocation.data(), d_faceLocation, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+
+    if (0)
     {
-        // Update the voxel
-        unsigned int vid = GetLinearId(x, y, z, voxelChunk.width);
-        Voxel oldVoxel = voxelChunk.data[vid];
-        voxelChunk.data[vid].id = newVal;
+        dumpMeshToOBJ(*attr, *indices, attrSize, indicesSize, "debug" + std::to_string(id) + ".obj");
+    }
 
-        // If voxel state didn't change, no update needed
-        if (oldVoxel.id == newVal)
-            return;
+    // Cleanup
+    cudaFree(d_faceValid);
+    cudaFree(d_faceLocation);
+    cudaFree(d_faceValidPrefixSum);
+}
 
-        // For each of the 6 faces of this voxel, determine if the face should exist
-        // Face is valid if voxel is filled and neighbor in that direction is empty.
-        bool facesShouldExist[6];
-        Int3 faceDirections[6] = {
-            {0, 1, 0},  // Up
-            {0, -1, 0}, // Down
-            {-1, 0, 0}, // Left
-            {1, 0, 0},  // Right
-            {0, 0, 1},  // Back
-            {0, 0, -1}  // Front
-        };
-        for (int f = 0; f < 6; f++)
+void updateSingleFace(
+    int faceId,
+    std::vector<unsigned int> &faceLocation,
+    bool shouldExist,
+    int f,
+    VertexAttributes *attr,
+    unsigned int *indices,
+    std::vector<unsigned int> &freeFaces,
+    unsigned int &currentFaceCount,
+    unsigned int &maxFaceCount,
+    Float3 centerPos)
+{
+    unsigned int existingFaceIndex = faceLocation[faceId];
+    bool currentlyExists = (existingFaceIndex != UINT_MAX);
+
+    if (currentlyExists && !shouldExist)
+    {
+        // Remove the face
+        // Zero out vertices and indices so it doesn't render
+        unsigned int vOffset = existingFaceIndex * 4;
+        unsigned int iOffset = existingFaceIndex * 6;
+
+        for (int i = 0; i < 4; i++)
         {
-            Int3 dir = faceDirections[f];
-            unsigned int nx = x + dir.x;
-            unsigned int ny = y + dir.y;
-            unsigned int nz = z + dir.z;
-            bool neighEmpty = isNeighborEmpty(nx, ny, nz, voxelChunk.width, voxelChunk.data, newVal, oldVoxel.id);
-            facesShouldExist[f] = ((newVal != 0) && neighEmpty) || ((newVal == 0) && !neighEmpty);
+            attr[vOffset + i].vertex = Float3(0.0f, 0.0f, 0.0f);
+        }
+        for (int i = 0; i < 6; i++)
+        {
+            indices[iOffset + i] = 0; // or invalid index, if the renderer checks this
         }
 
-        Float3 centerPos((float)x, (float)y, (float)z);
-
-        for (int f = 0; f < 6; f++)
+        // Mark this face slot as free for reuse
+        freeFaces.push_back((unsigned int)existingFaceIndex);
+        faceLocation[faceId] = UINT_MAX; // face no longer exists
+    }
+    else if (!currentlyExists && shouldExist)
+    {
+        // Add a new face
+        unsigned int newFaceIndex;
+        if (!freeFaces.empty())
         {
-            int faceId = (int)(vid * 6 + f);
-            bool shouldExist = (newVal != 0) ? facesShouldExist[f] : false;
+            // Reuse a freed slot
+            newFaceIndex = freeFaces.back();
+            freeFaces.pop_back();
+        }
+        else
+        {
+            // Append at the end if we have capacity
+            if (currentFaceCount >= maxFaceCount)
+            {
+                // Out of space - you may choose to reallocate or do a full rebuild
+                // For now, just return or handle error
+                return;
+            }
+            newFaceIndex = currentFaceCount;
+            currentFaceCount++;
+        }
+
+        Float3 verts[4];
+        ComputeFaceVertices(centerPos, f, verts);
+
+        unsigned int vOffset = newFaceIndex * 4;
+        unsigned int iOffset = newFaceIndex * 6;
+
+        // Write vertices
+        for (int i = 0; i < 4; i++)
+        {
+            attr[vOffset + i].vertex = verts[i];
+        }
+
+        // Write indices
+        indices[iOffset + 0] = vOffset + 0;
+        indices[iOffset + 1] = vOffset + 1;
+        indices[iOffset + 2] = vOffset + 2;
+
+        indices[iOffset + 3] = vOffset + 0;
+        indices[iOffset + 4] = vOffset + 2;
+        indices[iOffset + 5] = vOffset + 3;
+
+        // Update mapping
+        faceLocation[faceId] = newFaceIndex;
+    }
+}
+
+bool getColocatedFace(int &colocatedVid, int &colocatedFaceF, Float3 &colocatedCenterPos, unsigned int x, unsigned int y, unsigned int z, int f, VoxelChunk &voxelChunk)
+{
+    // Remember:
+    // f = 0 => Up    => neighbor in +Y direction => opposite face is 1 (Down)
+    // f = 1 => Down  => neighbor in -Y direction => opposite face is 0 (Up)
+    // f = 2 => Left  => neighbor in -X direction => opposite face is 3 (Right)
+    // f = 3 => Right => neighbor in +X direction => opposite face is 2 (Left)
+    // f = 4 => Back  => neighbor in +Z direction => opposite face is 5 (Front)
+    // f = 5 => Front => neighbor in -Z direction => opposite face is 4 (Back)
+
+    // Check each face direction, ensure we stay within [0, width-1] bounds
+    if (f == 0 && y < voxelChunk.width - 1) // Up => neighbor is (x, y+1, z)
+    {
+        colocatedVid = GetLinearId(x, y + 1, z, voxelChunk.width);
+        colocatedFaceF = 1; // Down
+        colocatedCenterPos = Float3((float)x, (float)(y + 1), (float)z);
+        return true;
+    }
+    else if (f == 1 && y > 0) // Down => neighbor is (x, y-1, z)
+    {
+        colocatedVid = GetLinearId(x, y - 1, z, voxelChunk.width);
+        colocatedFaceF = 0; // Up
+        colocatedCenterPos = Float3((float)x, (float)(y - 1), (float)z);
+        return true;
+    }
+    else if (f == 2 && x > 0) // Left => neighbor is (x-1, y, z)
+    {
+        colocatedVid = GetLinearId(x - 1, y, z, voxelChunk.width);
+        colocatedFaceF = 3; // Right
+        colocatedCenterPos = Float3((float)(x - 1), (float)y, (float)z);
+        return true;
+    }
+    else if (f == 3 && x < voxelChunk.width - 1) // Right => neighbor is (x+1, y, z)
+    {
+        colocatedVid = GetLinearId(x + 1, y, z, voxelChunk.width);
+        colocatedFaceF = 2; // Left
+        colocatedCenterPos = Float3((float)(x + 1), (float)y, (float)z);
+        return true;
+    }
+    else if (f == 4 && z < voxelChunk.width - 1) // Back => neighbor is (x, y, z+1)
+    {
+        colocatedVid = GetLinearId(x, y, z + 1, voxelChunk.width);
+        colocatedFaceF = 5; // Front
+        colocatedCenterPos = Float3((float)x, (float)y, (float)(z + 1));
+        return true;
+    }
+    else if (f == 5 && z > 0) // Front => neighbor is (x, y, z-1)
+    {
+        colocatedVid = GetLinearId(x, y, z - 1, voxelChunk.width);
+        colocatedFaceF = 4; // Back
+        colocatedCenterPos = Float3((float)x, (float)y, (float)(z - 1));
+        return true;
+    }
+
+    // If no valid opposite/neighbor within bounds was found, return false
+    return false;
+}
+
+// CPU function to update the mesh for a single changed voxel (add or remove).
+// newVal = 1 if the voxel is now filled, 0 if empty.
+// This function:
+// 1. Updates the voxel data.
+// 2. Recomputes which faces should be present for this voxel.
+// 3. Adds or removes faces in the mesh buffers accordingly.
+void updateSingleVoxel(
+    unsigned int x,
+    unsigned int y,
+    unsigned int z,
+    unsigned int newVal,
+    VoxelChunk &voxelChunk,
+    VertexAttributes *attr,
+    unsigned int *indices,
+    std::vector<unsigned int> &faceLocation,
+    unsigned int &attrSize,
+    unsigned int &indicesSize,
+    unsigned int &currentFaceCount,
+    unsigned int &maxFaceCount,
+    std::vector<unsigned int> &freeFaces)
+{
+    // Update the voxel
+    unsigned int vid = GetLinearId(x, y, z, voxelChunk.width);
+    Voxel oldVoxel = voxelChunk.data[vid];
+    voxelChunk.data[vid].id = newVal;
+
+    // If voxel state didn't change, no update needed
+    if (oldVoxel.id == newVal)
+        return;
+
+    // For each of the 6 faces of this voxel, determine if the face should exist
+    // Face is valid if voxel is filled and neighbor in that direction is empty.
+    bool facesShouldExist[6];
+    Int3 faceDirections[6] = {
+        {0, 1, 0},  // Up
+        {0, -1, 0}, // Down
+        {-1, 0, 0}, // Left
+        {1, 0, 0},  // Right
+        {0, 0, 1},  // Back
+        {0, 0, -1}  // Front
+    };
+    for (int f = 0; f < 6; f++)
+    {
+        Int3 dir = faceDirections[f];
+        unsigned int nx = x + dir.x;
+        unsigned int ny = y + dir.y;
+        unsigned int nz = z + dir.z;
+        bool neighEmpty = isNeighborEmpty(nx, ny, nz, voxelChunk.width, voxelChunk.data, newVal, oldVoxel.id);
+        facesShouldExist[f] = ((newVal != 0) && neighEmpty) || ((newVal == 0) && !neighEmpty);
+    }
+
+    Float3 centerPos((float)x, (float)y, (float)z);
+
+    for (int f = 0; f < 6; f++)
+    {
+        int faceId = (int)(vid * 6 + f);
+        bool shouldExist = (newVal != 0) ? facesShouldExist[f] : false;
+
+        updateSingleFace(
+            faceId,
+            faceLocation,
+            shouldExist,
+            f,
+            attr,
+            indices,
+            freeFaces,
+            currentFaceCount,
+            maxFaceCount,
+            centerPos);
+
+        int colocatedFaceF;
+        int colocatedVid;
+        Float3 colocatedCenterPos;
+        bool hasColocatedFace = getColocatedFace(colocatedVid, colocatedFaceF, colocatedCenterPos, x, y, z, f, voxelChunk);
+        if (hasColocatedFace)
+        {
+            int colocatedFaceId = colocatedVid * 6 + colocatedFaceF;
+
+            shouldExist = (newVal != 0) ? false : facesShouldExist[f];
 
             updateSingleFace(
-                faceId,
+                colocatedFaceId,
                 faceLocation,
                 shouldExist,
-                f,
+                colocatedFaceF,
                 attr,
                 indices,
                 freeFaces,
                 currentFaceCount,
                 maxFaceCount,
-                centerPos);
-
-            int colocatedFaceF;
-            int colocatedVid;
-            Float3 colocatedCenterPos;
-            bool hasColocatedFace = getColocatedFace(colocatedVid, colocatedFaceF, colocatedCenterPos, x, y, z, f, voxelChunk);
-            if (hasColocatedFace)
-            {
-                int colocatedFaceId = colocatedVid * 6 + colocatedFaceF;
-
-                shouldExist = (newVal != 0) ? false : facesShouldExist[f];
-
-                updateSingleFace(
-                    colocatedFaceId,
-                    faceLocation,
-                    shouldExist,
-                    colocatedFaceF,
-                    attr,
-                    indices,
-                    freeFaces,
-                    currentFaceCount,
-                    maxFaceCount,
-                    colocatedCenterPos);
-            }
-        }
-
-        attrSize = currentFaceCount * 4;
-        indicesSize = currentFaceCount * 6;
-
-        if (0)
-        {
-            dumpMeshToOBJ(attr, indices, attrSize, indicesSize, "debug" + std::to_string(x) + "_" + std::to_string(y) + "_" + std::to_string(z) + ".obj");
+                colocatedCenterPos);
         }
     }
 
-    void generateSea(jazzfusion::VertexAttributes **attr,
-                     unsigned int **indices,
-                     unsigned int &attrSize,
-                     unsigned int &indicesSize,
-                     int width)
+    attrSize = currentFaceCount * 4;
+    indicesSize = currentFaceCount * 6;
+
+    if (0)
     {
-        float xMax = (float)width - 0.1f;
-        float xMin = 0.1f;
-        float yMax = (float)(width / 4) - 0.1f;
-        float yMin = 0.1f;
-        float zMax = (float)width - 0.1f;
-        float zMin = 0.1f;
+        dumpMeshToOBJ(attr, indices, attrSize, indicesSize, "debug" + std::to_string(x) + "_" + std::to_string(y) + "_" + std::to_string(z) + ".obj");
+    }
+}
 
-        float scaleX = xMax - xMin;
-        float scaleY = yMax - yMin;
-        float scaleZ = zMax - zMin;
+void generateSea(VertexAttributes **attr,
+                 unsigned int **indices,
+                 unsigned int &attrSize,
+                 unsigned int &indicesSize,
+                 int width)
+{
+    float xMax = (float)width - 0.1f;
+    float xMin = 0.1f;
+    float yMax = (float)(width / 4) - 0.1f;
+    float yMin = 0.1f;
+    float zMax = (float)width - 0.1f;
+    float zMin = 0.1f;
 
-        if (*attr != nullptr)
+    float scaleX = xMax - xMin;
+    float scaleY = yMax - yMin;
+    float scaleZ = zMax - zMin;
+
+    if (*attr != nullptr)
+    {
+        cudaFree(*attr);
+    }
+    if (*indices != nullptr)
+    {
+        cudaFree(*indices);
+    }
+
+    int faceCount = 6;
+
+    cudaMalloc(attr, faceCount * 4 * sizeof(VertexAttributes));
+    cudaMalloc(indices, faceCount * 6 * sizeof(unsigned int));
+
+    attrSize = faceCount * 4;
+    indicesSize = faceCount * 6;
+
+    VertexAttributes *d_attrOut = *attr;
+    unsigned int *d_idxOut = *indices;
+
+    std::vector<VertexAttributes> attrOut(faceCount * 4);
+    std::vector<unsigned int> idxOut(faceCount * 6);
+
+    VertexAttributes *h_attrOut = attrOut.data();
+    unsigned int *h_idxOut = idxOut.data();
+
+    for (int f = 0; f < faceCount; f++)
+    {
+        unsigned int newFaceIndex = f; // We can treat f as the face index
+
+        unsigned int vOffset = newFaceIndex * 4; // each face has 4 vertices
+        unsigned int iOffset = newFaceIndex * 6; // each face has 6 indices
+
+        Float3 verts[4];
+        ComputeFaceVertices(Float3(0.0f, 0.0f, 0.0f), f, verts);
+
+        for (int i = 0; i < 4; i++)
         {
-            cudaFree(*attr);
-        }
-        if (*indices != nullptr)
-        {
-            cudaFree(*indices);
-        }
+            Float3 &v = verts[i];
+            float scaledX = xMin + v.x * scaleX;
+            float scaledY = yMin + v.y * scaleY;
+            float scaledZ = zMin + v.z * scaleZ;
 
-        int faceCount = 6;
-
-        cudaMalloc(attr, faceCount * 4 * sizeof(jazzfusion::VertexAttributes));
-        cudaMalloc(indices, faceCount * 6 * sizeof(unsigned int));
-
-        attrSize = faceCount * 4;
-        indicesSize = faceCount * 6;
-
-        jazzfusion::VertexAttributes *d_attrOut = *attr;
-        unsigned int *d_idxOut = *indices;
-
-        std::vector<jazzfusion::VertexAttributes> attrOut(faceCount * 4);
-        std::vector<unsigned int> idxOut(faceCount * 6);
-
-        jazzfusion::VertexAttributes *h_attrOut = attrOut.data();
-        unsigned int *h_idxOut = idxOut.data();
-
-        for (int f = 0; f < faceCount; f++)
-        {
-            unsigned int newFaceIndex = f; // We can treat f as the face index
-
-            unsigned int vOffset = newFaceIndex * 4; // each face has 4 vertices
-            unsigned int iOffset = newFaceIndex * 6; // each face has 6 indices
-
-            Float3 verts[4];
-            ComputeFaceVertices(Float3(0.0f, 0.0f, 0.0f), f, verts);
-
-            for (int i = 0; i < 4; i++)
-            {
-                Float3 &v = verts[i];
-                float scaledX = xMin + v.x * scaleX;
-                float scaledY = yMin + v.y * scaleY;
-                float scaledZ = zMin + v.z * scaleZ;
-
-                h_attrOut[vOffset + i].vertex.x = scaledX;
-                h_attrOut[vOffset + i].vertex.y = scaledY;
-                h_attrOut[vOffset + i].vertex.z = scaledZ;
-            }
-
-            // Set up the two triangles for this face
-            h_idxOut[iOffset + 0] = vOffset + 0;
-            h_idxOut[iOffset + 1] = vOffset + 1;
-            h_idxOut[iOffset + 2] = vOffset + 2;
-
-            h_idxOut[iOffset + 3] = vOffset + 0;
-            h_idxOut[iOffset + 4] = vOffset + 2;
-            h_idxOut[iOffset + 5] = vOffset + 3;
+            h_attrOut[vOffset + i].vertex.x = scaledX;
+            h_attrOut[vOffset + i].vertex.y = scaledY;
+            h_attrOut[vOffset + i].vertex.z = scaledZ;
         }
 
-        cudaMemcpy(d_attrOut, h_attrOut, faceCount * 4 * sizeof(jazzfusion::VertexAttributes), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_idxOut, h_idxOut, faceCount * 6 * sizeof(unsigned int), cudaMemcpyHostToDevice);
+        // Set up the two triangles for this face
+        h_idxOut[iOffset + 0] = vOffset + 0;
+        h_idxOut[iOffset + 1] = vOffset + 1;
+        h_idxOut[iOffset + 2] = vOffset + 2;
 
-        if (0)
-        {
-            dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
-        }
+        h_idxOut[iOffset + 3] = vOffset + 0;
+        h_idxOut[iOffset + 4] = vOffset + 2;
+        h_idxOut[iOffset + 5] = vOffset + 3;
+    }
+
+    cudaMemcpy(d_attrOut, h_attrOut, faceCount * 4 * sizeof(VertexAttributes), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_idxOut, h_idxOut, faceCount * 6 * sizeof(unsigned int), cudaMemcpyHostToDevice);
+
+    if (0)
+    {
+        dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
     }
 }

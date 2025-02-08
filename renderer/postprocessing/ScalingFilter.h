@@ -2,9 +2,6 @@
 #include "shaders/HalfPrecision.h"
 #include "shaders/Sampler.h"
 
-namespace jazzfusion
-{
-
 INL_DEVICE Half4 FsrEasuRH(TexObj inputTex, Float2 p)
 {
     ushort4 ret = tex2Dgather<ushort4>(inputTex, p.x, p.y, 0);
@@ -32,10 +29,10 @@ INL_DEVICE Half4 FsrEasuBH(TexObj inputTex, Float2 p)
 //------------------------------------------------------------------------------------------------------------------------------
 // This runs 2 taps in parallel.
 INL_DEVICE void FsrEasuTapH(
-    Half2& aCR,
-    Half2& aCG,
-    Half2& aCB,
-    Half2& aW,
+    Half2 &aCR,
+    Half2 &aCG,
+    Half2 &aCB,
+    Half2 &aW,
     Half2 offX,
     Half2 offY,
     Half2 dir,
@@ -68,9 +65,9 @@ INL_DEVICE void FsrEasuTapH(
 //------------------------------------------------------------------------------------------------------------------------------
 // This runs 2 taps in parallel.
 INL_DEVICE void FsrEasuSetH(
-    Half2& dirPX,
-    Half2& dirPY,
-    Half2& lenP,
+    Half2 &dirPX,
+    Half2 &dirPY,
+    Half2 &lenP,
     Half2 pp,
     bool biST,
     bool biUV,
@@ -233,16 +230,15 @@ __global__ void EdgeAdaptiveSpatialUpsampling(
     // half oL = zzonL.z;
     // half nL = zzonL.w;
 
-
-//      +---+---+
-//      | b | c |
-//  +---+---+---+---+
-//  | e | f | g | h |
-//  +---+---+---+---+
-//  | i | j | k | l |
-//  +---+---+---+---+
-//      | n | o |
-//      +---+---+
+    //      +---+---+
+    //      | b | c |
+    //  +---+---+---+---+
+    //  | e | f | g | h |
+    //  +---+---+---+---+
+    //  | i | j | k | l |
+    //  +---+---+---+---+
+    //      | n | o |
+    //      +---+---+
     Int2 idxF = Int2(fp.x, fp.y);
     Int2 idxB = idxF + Int2(0, -1);
     Int2 idxC = idxF + Int2(1, -1);
@@ -343,6 +339,4 @@ __global__ void EdgeAdaptiveSpatialUpsampling(
     Half4 pix = min4h(Half4(bothR.y, bothG.y, bothB.y, half(0)), max4h(-Half4(bothR.x, bothG.x, bothB.x, half(0)), aC * Half4(rcp(aW))));
 
     Store2DHalf4(pix, outBuffer, ip);
-}
-
 }

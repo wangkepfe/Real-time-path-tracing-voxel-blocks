@@ -19,19 +19,16 @@
 
 #include <GLFW/glfw3.h>
 
-namespace jazzfusion
-{
-
 class UI
 {
 public:
-    static UI& Get()
+    static UI &Get()
     {
         static UI instance;
         return instance;
     }
-    UI(UI const&) = delete;
-    void operator=(UI const&) = delete;
+    UI(UI const &) = delete;
+    void operator=(UI const &) = delete;
     ~UI();
 
     void init();
@@ -43,5 +40,3 @@ public:
 private:
     UI() {}
 };
-
-}

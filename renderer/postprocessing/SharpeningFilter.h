@@ -2,11 +2,8 @@
 #include "shaders/HalfPrecision.h"
 #include "shaders/Sampler.h"
 
-namespace jazzfusion
-{
-
-INL_DEVICE Float3 min3f3(const Float3& v1, const Float3& v2, const Float3& v3) { return min3f(min3f(v1, v2), v3); }
-INL_DEVICE Float3 max3f3(const Float3& v1, const Float3& v2, const Float3& v3) { return max3f(max3f(v1, v2), v3); }
+INL_DEVICE Float3 min3f3(const Float3 &v1, const Float3 &v2, const Float3 &v3) { return min3f(min3f(v1, v2), v3); }
+INL_DEVICE Float3 max3f3(const Float3 &v1, const Float3 &v2, const Float3 &v3) { return max3f(max3f(v1, v2), v3); }
 
 __global__ void SharpeningFilter(SurfObj colorBuffer, Int2 texSize)
 {
@@ -18,7 +15,8 @@ __global__ void SharpeningFilter(SurfObj colorBuffer, Int2 texSize)
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
     idx.y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (idx.x >= texSize.x || idx.y >= texSize.y) return;
+    if (idx.x >= texSize.x || idx.y >= texSize.y)
+        return;
 
     Float3 color[3][3];
 
@@ -65,6 +63,4 @@ __global__ void SharpeningFilter(SurfObj colorBuffer, Int2 texSize)
     outColor /= (Float3(1.0f) + Float3(4.0f) * w);
 
     Store2DHalf4(Float4(outColor, 1.0f), colorBuffer, idx);
-}
-
 }
