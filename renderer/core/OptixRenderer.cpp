@@ -321,7 +321,7 @@ void OptixRenderer::update()
             memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
             instance.instanceId = objectId;
             instance.visibilityMask = 255;
-            instance.sbtOffset = objectId;
+            instance.sbtOffset = objectId * numTypesOfRays;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = blasHandle;
 
@@ -343,7 +343,7 @@ void OptixRenderer::update()
                 memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
                 instance.instanceId = instanceId;
                 instance.visibilityMask = 255;
-                instance.sbtOffset = objectId;
+                instance.sbtOffset = objectId * numTypesOfRays;
                 instance.flags = OPTIX_INSTANCE_FLAG_NONE;
                 instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
                 m_instances.push_back(instance);
@@ -374,7 +374,7 @@ void OptixRenderer::update()
                 memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
                 instance.instanceId = objectId;
                 instance.visibilityMask = 255;
-                instance.sbtOffset = objectId;
+                instance.sbtOffset = objectId * numTypesOfRays;
                 instance.flags = OPTIX_INSTANCE_FLAG_NONE;
                 instance.traversableHandle = blasHandle;
 
@@ -412,7 +412,7 @@ void OptixRenderer::update()
                     memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
                     instance.instanceId = instanceId;
                     instance.visibilityMask = 255;
-                    instance.sbtOffset = objectId;
+                    instance.sbtOffset = objectId * numTypesOfRays;
                     instance.flags = OPTIX_INSTANCE_FLAG_NONE;
                     instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
 
@@ -479,6 +479,10 @@ void OptixRenderer::update()
 
 void OptixRenderer::init()
 {
+    Scene &scene = Scene::Get();
+    constexpr int numTypesOfRays = 2;
+    const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
+
     {
         m_systemParameter.topObject = 0;
         m_systemParameter.outputBuffer = 0;
@@ -714,8 +718,6 @@ void OptixRenderer::init()
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
-    auto &scene = Scene::Get();
-
     // Create uninstanced geometry BLAS and track instances
     for (int i = 0; i < scene.uninstancedGeometryCount; ++i)
     {
@@ -734,7 +736,7 @@ void OptixRenderer::init()
         memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
         instance.instanceId = i;
         instance.visibilityMask = 255;
-        instance.sbtOffset = i;
+        instance.sbtOffset = i * numTypesOfRays;
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = blasHandle;
         m_instances.push_back(instance);
@@ -755,7 +757,7 @@ void OptixRenderer::init()
             memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
             instance.instanceId = instanceId;
             instance.visibilityMask = 255;
-            instance.sbtOffset = i;
+            instance.sbtOffset = i * numTypesOfRays;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = blasHandle;
             m_instances.push_back(instance);
@@ -825,8 +827,6 @@ void OptixRenderer::init()
     std::vector<OptixModule> moduleList;
     std::vector<OptixProgramGroup> programGroups;
     std::vector<OptixProgramGroup> programGroupCallables;
-    constexpr int numTypesOfRays = 2;
-    const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
 
     // Raygen
     {
