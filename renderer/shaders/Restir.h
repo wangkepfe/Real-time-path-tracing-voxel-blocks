@@ -626,72 +626,49 @@ struct TriangleLight
 //     }
 // }
 
-// float ImportanceSampleGGX_VNDF_PDF(float roughness, float3 N, float3 V, float3 L)
+// float RAB_GetSurfaceBrdfPdf(Surface surface, float3 wi)
 // {
-//     float3 H = normalize(L + V);
-//     float NoH = saturate(dot(N, H));
-//     float VoH = saturate(dot(V, H));
+//     Float3 f;
+//     float pdf;
 
-//     float alpha = square(roughness);
-//     float D = square(alpha) / (M_PI * square(square(NoH) * square(alpha) + (1 - square(NoH))));
-//     return (VoH > 0.0f) ? D / (4.0f * VoH) : 0.0f;
-// }
+//     FresnelBlendReflectionBSDFEvaluate(surface.normal, surface.geoNormal, wi, wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
 
-// float RAB_GetSurfaceBrdfPdf(Surface surface, float3 dir)
-// {
-//     float cosTheta = saturate(dot(surface.normal, dir));
-//     float diffusePdf = cosTheta / M_PI;
-//     float specularPdf = ImportanceSampleGGX_VNDF_PDF(max(surface.roughness, kMinRoughness), surface.normal, surface.viewDir, dir);
-//     float pdf = cosTheta > 0.f ? lerp(specularPdf, diffusePdf, surface.diffuseProbability) : 0.f;
 //     return pdf;
 // }
 
-// bool RAB_GetSurfaceBrdfSample(Surface surface, Float3 u, out float3 dir)
+// bool RAB_GetSurfaceBrdfSample(Surface surface, Float3 u, float3 &wi, float &pdf)
 // {
-//     // Inputs
-//     float roughness = surface.roughness;
-//     Float3 wo = surface.wo;
-//     Float3 n = surface.normal;
+//     Float3 bsdfOverPdf;
 
-//     // Roughness to alpha
-//     float alpha = max1f(sqrtf(roughness), 0.001f);
-//     float alpha2 = alpha * alpha;
+//     FresnelBlendReflectionBSDFSample(u, surface.normal, surface.geoNormal, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), wi, bsdfOverPdf, pdf);
 
-//     // Sample normal in local TBN space
-//     float cosTheta = 1.0f / sqrtf(1.0f + alpha2 * u.x / (1.0f - u.x));
-//     float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
-//     float phi = TWO_PI * u.y;
-//     Float3 wh = Float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+//     return pdf > 0.0f;
+// }
 
-//     // Align to world space
-//     const Float3 h = Float3(n.x, n.y, n.z + 1.0f);
-//     const float k = dot(wh, h) / (1.0f + fabsf(axis.z));
-//     wh = k * h - wh;
+// // Computes the weight of the given light samples when the given surface is
+// // shaded using that light sample. Exact or approximate BRDF evaluation can be
+// // used to compute the weight. ReSTIR will converge to a correct lighting result
+// // even if all samples have a fixed weight of 1.0, but that will be very noisy.
+// // Scaling of the weights can be arbitrary, as long as it's consistent
+// // between all lights and surfaces.
+// float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Surface surface)
+// {
+//     if (lightSample.solidAnglePdf <= 0)
+//         return 0;
 
-//     // Reflection on surface defined by half vector
-//     Float3 wi = normalize((-wo) - 2.0f * wh * dot(wh, -wo));
+//     float3 wi = normalize(lightSample.position - surface.pos);
 
-//     constexpr float eta1 = 1.4f;
-//     constexpr float eta2 = 1.0f;
-//     constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-//     float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-//     float R = FresnelShlick(F0, cosThetaWoWh);
+//     if (dot(wi, surface.geoNormal) <= 0)
+//         return 0;
 
-//     if (u.z < R)
-//     {
-//         float pdf;
-//         float3 h = SampleCosHemisphere(rand.yz, pdf);
-//         dir = tangentToWorld(surface, h);
-//     }
-//     else
-//     {
-//         float3 Ve = normalize(worldToTangent(surface, surface.viewDir));
-//         float3 h = ImportanceSampleGGX_VNDF(rand.yz, max(surface.roughness, kMinRoughness), Ve, 1.0);
-//         h = normalize(h);
-//         dir = reflect(-surface.viewDir, tangentToWorld(surface, h));
-//     }
+//     Float3 f;
+//     float pdf;
 
-//     return dot(surface.normal, dir) > 0.f;
+//     FresnelBlendReflectionBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
+
+//     float3 reflectedRadiance = lightSample.radiance * f;
+
+//     return luminance(reflectedRadiance) / lightSample.solidAnglePdf;
 // }
 
 // // Heuristic to determine a max visibility ray length from a PDF wrt. solid angle.
@@ -851,9 +828,9 @@ struct TriangleLight
 //         float2 randXY = float2(0, 0);
 //         LightSample candidateSample = LightSample{};
 
-//         if (RAB_GetSurfaceBrdfSample(surface, rng, sampleDir))
+//         float brdfPdf;
+//         if (RAB_GetSurfaceBrdfSample(surface, rng, sampleDir, brdfPdf))
 //         {
-//             float brdfPdf = RAB_GetSurfaceBrdfPdf(surface, sampleDir);
 //             float maxDistance = RTXDI_BrdfMaxDistanceFromPdf(sampleParams.brdfCutoff, brdfPdf);
 
 //             bool hitAnything = RAB_TraceRayForLocalLight(RAB_GetSurfaceWorldPos(surface), sampleDir,
@@ -872,7 +849,7 @@ struct TriangleLight
 //                     float lightDistance;
 //                     RAB_GetLightDirDistance(surface, candidateSample, lightDir, lightDistance);
 
-//                     float brdfPdf = RAB_GetSurfaceBrdfPdf(surface, lightDir);
+//                     brdfPdf = RAB_GetSurfaceBrdfPdf(surface, lightDir);
 //                     float maxDistance = RTXDI_BrdfMaxDistanceFromPdf(sampleParams.brdfCutoff, brdfPdf);
 //                     if (lightDistance > maxDistance)
 //                         lightIndex = RTXDI_InvalidLightIndex;

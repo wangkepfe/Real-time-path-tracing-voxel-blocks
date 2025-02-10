@@ -77,7 +77,7 @@ inline bool IsBlockEmissive(int blockType)
 inline Float3 GetEmissiveRadiance(int blockType)
 {
     static const std::unordered_map<int, Float3> emissiveBlockRadiance = {
-        {BlockTypeTestLight, Float3(255.0f, 61.0f, 4.0f) / 255.0f * 10000.0f / (683.0f * 108.0f)}, // 1500 Kelvin color temperature, 10000 Lux
+        {BlockTypeTestLight, Float3(255.0f, 182.0f, 78.0f) / 255.0f * 10000.0f / (683.0f * 108.0f)}, // 1500 Kelvin color temperature, 10000 Lux
     };
     return emissiveBlockRadiance.at(blockType);
 }

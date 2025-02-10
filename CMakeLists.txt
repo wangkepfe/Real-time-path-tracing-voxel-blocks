@@ -71,6 +71,7 @@ set( HEADERS
     renderer/shaders/SystemParameter.h
     renderer/shaders/RandGen.h
     renderer/shaders/AliasTable.h
+    renderer/shaders/Bsdf.h
     renderer/sky/Sky.h
     renderer/sky/SkyData.h
     voxelengine/VoxelEngine.h
@@ -123,6 +124,7 @@ set( SHADERS_HEADERS
     renderer/shaders/RandGen.h
     renderer/shaders/SelfHit.h
     renderer/shaders/AliasTable.h
+    renderer/shaders/Bsdf.h
 )
 
 message("PTX_DIR = " "${PTX_DIR}")

@@ -291,6 +291,10 @@ static void *optixLoadWindowsDll(void)
 void OptixRenderer::update()
 {
     auto &scene = Scene::Get();
+
+    constexpr int numTypesOfRays = 2;
+    const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
+
     if (!scene.needSceneUpdate)
     {
         return;
@@ -322,11 +326,13 @@ void OptixRenderer::update()
             instance.traversableHandle = blasHandle;
 
             // Shader binding table record hit group geometry
-            m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+            m_sbtRecordGeometryInstanceData[objectId * 2].data.indices = (Int3 *)m_geometries[objectId].indices;
+            m_sbtRecordGeometryInstanceData[objectId * 2].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+            m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.indices = (Int3 *)m_geometries[objectId].indices;
+            m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
         }
         // Upload SBT
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * scene.uninstancedGeometryCount, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
         // Instanced
         for (int objectId = scene.uninstancedGeometryCount; objectId < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++objectId)
@@ -373,8 +379,10 @@ void OptixRenderer::update()
                 instance.traversableHandle = blasHandle;
 
                 // Shader binding table record hit group geometry
-                m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
-                m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                m_sbtRecordGeometryInstanceData[objectId * 2].data.indices = (Int3 *)m_geometries[objectId].indices;
+                m_sbtRecordGeometryInstanceData[objectId * 2].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.indices = (Int3 *)m_geometries[objectId].indices;
+                m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
             }
             // Instanced
             else if (blockId > BlockTypeWater)
@@ -412,6 +420,8 @@ void OptixRenderer::update()
                 }
             }
         }
+        // Upload SBT
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Rebuild BVH
@@ -815,6 +825,8 @@ void OptixRenderer::init()
     std::vector<OptixModule> moduleList;
     std::vector<OptixProgramGroup> programGroups;
     std::vector<OptixProgramGroup> programGroupCallables;
+    constexpr int numTypesOfRays = 2;
+    const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
 
     // Raygen
     {
@@ -831,6 +843,7 @@ void OptixRenderer::init()
         OptixProgramGroup programGroupRaygeneration;
         OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescRaygeneration, 1, &programGroupOptions, nullptr, nullptr, &programGroupRaygeneration));
         programGroups.push_back(programGroupRaygeneration);
+
         moduleList.push_back(moduleRaygeneration);
     }
 
@@ -844,13 +857,22 @@ void OptixRenderer::init()
         programGroupDescMissRadiance.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
         programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
         programGroupDescMissRadiance.miss.module = moduleMiss;
-
-        // Spherical HDR environment light.
-        programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_sphere";
+        programGroupDescMissRadiance.miss.entryFunctionName = "__miss__radiance";
 
         OptixProgramGroup programGroupMissRadiance;
         OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissRadiance));
         programGroups.push_back(programGroupMissRadiance);
+
+        OptixProgramGroupDesc programGroupDescMissShadow = {};
+        programGroupDescMissShadow.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+        programGroupDescMissShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+        programGroupDescMissShadow.miss.module = moduleMiss;
+        programGroupDescMissShadow.miss.entryFunctionName = "__miss__shadow";
+
+        OptixProgramGroup programGroupMissShadow;
+        OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow));
+        programGroups.push_back(programGroupMissShadow);
+
         moduleList.push_back(moduleMiss);
     }
 
@@ -869,6 +891,17 @@ void OptixRenderer::init()
         OptixProgramGroup programGroupHitRadiance;
         OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadiance));
         programGroups.push_back(programGroupHitRadiance);
+
+        OptixProgramGroupDesc programGroupDescHitShadow = {};
+        programGroupDescHitShadow.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+        programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+        programGroupDescHitShadow.hitgroup.moduleCH = moduleClosesthit;
+        programGroupDescHitShadow.hitgroup.entryFunctionNameCH = "__closesthit__shadow";
+
+        OptixProgramGroup programGroupHitShadow;
+        OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadow));
+        programGroups.push_back(programGroupHitShadow);
+
         moduleList.push_back(moduleClosesthit);
     }
 
@@ -910,10 +943,7 @@ void OptixRenderer::init()
 
         programGroupCallables.resize(programGroupDescCallables.size());
         OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
-        for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
-        {
-            programGroups.push_back(programGroupCallables[i]);
-        }
+        programGroups.insert(programGroups.end(), programGroupCallables.begin(), programGroupCallables.end());
         moduleList.push_back(moduleBsdf);
     }
 
@@ -965,29 +995,41 @@ void OptixRenderer::init()
 
     // Miss group
     {
-        SbtRecordHeader sbtRecordMiss;
-        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[1], &sbtRecordMiss));
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader)));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, &sbtRecordMiss, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        std::vector<SbtRecordHeader> sbtRecordMiss(numTypesOfRays);
+
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[1], &sbtRecordMiss[0]));
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[2], &sbtRecordMiss[1]));
+
+        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader) * numTypesOfRays));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * numTypesOfRays, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Hit group
     {
-        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[2], &m_sbtRecordHitRadiance));
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[3], &m_sbtRecordHitRadiance));
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[4], &m_sbtRecordHitShadow));
 
-        int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
-        m_sbtRecordGeometryInstanceData.resize(numObjects);
+        m_sbtRecordGeometryInstanceData.resize(numObjects * numTypesOfRays);
 
         for (int objectId = 0; objectId < numObjects; ++objectId)
         {
-            memcpy(m_sbtRecordGeometryInstanceData[objectId].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-            m_sbtRecordGeometryInstanceData[objectId].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[objectId].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-            m_sbtRecordGeometryInstanceData[objectId].data.materialIndex = objectId;
+            int idx = objectId * numTypesOfRays;
+
+            memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+
+            m_sbtRecordGeometryInstanceData[idx].data.indices = (Int3 *)m_geometries[objectId].indices;
+            m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+            m_sbtRecordGeometryInstanceData[idx].data.materialIndex = objectId;
+
+            memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+
+            m_sbtRecordGeometryInstanceData[idx + 1].data.indices = (Int3 *)m_geometries[objectId].indices;
+            m_sbtRecordGeometryInstanceData[idx + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+            m_sbtRecordGeometryInstanceData[idx + 1].data.materialIndex = objectId;
         }
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numObjects));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Direct callables
@@ -1010,12 +1052,11 @@ void OptixRenderer::init()
 
         m_sbt.missRecordBase = m_d_sbtRecordMiss;
         m_sbt.missRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
-        m_sbt.missRecordCount = 1;
+        m_sbt.missRecordCount = numTypesOfRays;
 
         m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
         m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
-        int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
-        m_sbt.hitgroupRecordCount = numObjects;
+        m_sbt.hitgroupRecordCount = numObjects * numTypesOfRays;
 
         m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
         m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);

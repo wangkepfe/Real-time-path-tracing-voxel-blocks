@@ -83,6 +83,20 @@ struct GeometryInstanceData
     int materialIndex;
 };
 
+struct SbtRecordHeader
+{
+    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+};
+
+template <typename T>
+struct SbtRecordData
+{
+    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+    T data;
+};
+
+typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
+
 #ifdef __CUDA_ARCH__
 INL_DEVICE float rand(const SystemParameter &sysParam, int &randIdx)
 {
@@ -93,5 +107,10 @@ INL_DEVICE float rand(const SystemParameter &sysParam, int &randIdx)
 INL_DEVICE Float2 rand2(const SystemParameter &sysParam, int &randIdx)
 {
     return Float2(rand(sysParam, randIdx), rand(sysParam, randIdx));
+}
+
+INL_DEVICE Float3 rand3(const SystemParameter &sysParam, int &randIdx)
+{
+    return Float3(rand(sysParam, randIdx), rand(sysParam, randIdx), rand(sysParam, randIdx));
 }
 #endif // __CUDA_ARCH__

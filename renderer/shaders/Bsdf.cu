@@ -1,320 +1,114 @@
 #include "SystemParameter.h"
 #include "OptixShaderCommon.h"
 #include "ShaderDebugUtils.h"
+#include "Bsdf.h"
 
 extern "C" __constant__ SystemParameter sysParam;
 
-__forceinline__ __device__ void unitSquareToCosineHemisphere(const Float2 sample, Float3 const &axis, Float3 &w, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
-    // Choose a point on the local hemisphere coordinates about +z.
-    const float theta = 2.0f * M_PIf * sample.x;
-    const float r = sqrtf(sample.y);
-    w.x = r * cosf(theta);
-    w.y = r * sinf(theta);
-    w.z = 1.0f - w.x * w.x - w.y * w.y;
-    w.z = (0.0f < w.z) ? sqrtf(w.z) : 0.0f;
+    LambertianReflectionBSDFSample(rand2(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.albedo, wi, bsdfOverPdf, pdf);
 
-    pdf = w.z * M_1_PIf;
-
-    // Align with axis.
-    alignVector(axis, w);
-}
-
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
-{
-    unitSquareToCosineHemisphere(rand2(sysParam, rayData->randIdx), state.normal, wi, pdf);
-
-    if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
+    if (pdf <= 0.0f)
     {
         rayData->shouldTerminate = true;
-        return;
     }
-
-    f_over_pdf = Float3(1.0f); // f=albedo/pi; pdf=cos_wi/pi; this term = f/pdf*cos_wi = albedo
 }
 
-// The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction rayData.wi (indirect lighting).
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
 {
-    const Float3 f = Float3(1.0f) * M_1_PIf;                         // albedo/pi
-    const float pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf); // cos_wi/pi
+    Float3 f;
+    float pdf;
+
+    LambertianReflectionBSDFEvaluate(state.normal, state.geometricNormal, wi, state.albedo, f, pdf);
 
     return Float4(f, pdf);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &brdfOverPdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
-    Float2 r = rand2(sysParam, rayData->randIdx);
+    float alpha2 = fmaxf(state.roughness, 0.01f); // roughness = alpha.x * alpha.y , in case of isotropic surface, roughness = alpha^2
 
-    // Roughness to alpha
-    float roughness = state.roughness;
-    float alpha = max1f(sqrtf(roughness), 0.001f);
-
-    // pre-calculate alpha2
-    float alpha2 = alpha * alpha;
-
-    // sample normal
-    Float3 sampledNormal;
-    float cosTheta = 1.0f / sqrtf(1.0f + alpha2 * r[0] / (1.0f - r[0]));
-    float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
-    float phi = TWO_PI * r[1];
-    sampledNormal = Float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-
-    // local to world space
-    alignVector(state.normal, sampledNormal);
-
-    // reflect
-    wi = normalize(reflect3f(-state.wo, sampledNormal));
-
-    if (dot(wi, state.geometricNormal) < 0)
-    {
-        Float2 r2 = rand2(sysParam, rayData->randIdx);
-
-        // Try again
-        cosTheta = 1.0f / sqrt(1.0f + alpha2 * r2[0] / (1.0f - r2[0]));
-        sinTheta = sqrt(1.0f - cosTheta * cosTheta);
-        phi = TWO_PI * r2[1];
-        sampledNormal = Float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-        alignVector(state.normal, sampledNormal);
-        wi = normalize(reflect3f(-state.wo, sampledNormal));
-
-        if (dot(wi, state.geometricNormal) < 0)
-        {
-            wi = normalize(reflect3f(-state.wo, state.geometricNormal));
-        }
-    }
-
-    Float3 wh = sampledNormal;
-    Float3 wn = state.normal;
-    Float3 wo = state.wo;
-
-    // Fresnel (dieletric or metal)
     constexpr float eta1 = 1.4f;
     constexpr float eta2 = 1.0f;
     constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-    float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-    float R = FresnelShlick(F0, cosThetaWoWh); // Can be Float3
-    float T = 1.0f - R;
 
-    if (rand(sysParam, rayData->randIdx) < R)
+    FresnelBlendReflectionBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, state.albedo, Float3(F0), alpha2, wi, bsdfOverPdf, pdf);
+
+    if (pdf <= 0.0f)
     {
-        // Smith's Mask-shadowing function G
-        float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-        float cosThetaWi = max(SAFE_COSINE_EPSI, dot(wi, wn));
-        float tanThetaWo = sqrt(1.0f - cosThetaWo * cosThetaWo) / cosThetaWo;
-        float G = 1.0f / (1.0f + (sqrtf(1.0f + alpha2 * tanThetaWo * tanThetaWo) - 1.0f) / 2.0f);
-
-        // Trowbridge Reitz Distribution D
-        float cosThetaWh = max(SAFE_COSINE_EPSI, dot(wh, wn));
-        float cosTheta2Wh = cosThetaWh * cosThetaWh;
-        float tanTheta2Wh = (1.0f - cosTheta2Wh) / cosTheta2Wh;
-        float e = tanTheta2Wh / alpha2 + 1.0f;
-        float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
-
-        // brdf
-        Float3 brdf = Float3(R) * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
-
-        // pdf
-        pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh) * R;
-
-        // beta
-        brdfOverPdf = Float3(R) * (G * cosThetaWoWh) / (cosThetaWh * cosThetaWo) * (1.0f / R); // brdf / pdf * cosThetaWi
-    }
-    else
-    {
-        unitSquareToCosineHemisphere(rand2(sysParam, rayData->randIdx), state.normal, wi, pdf);
-
-        if (pdf <= 0.0f || dot(wi, state.normal) <= 0.0f || dot(wi, state.geometricNormal) <= 0.0f)
-        {
-            rayData->shouldTerminate = true;
-            return;
-        }
-
-        pdf *= T;
-
-        brdfOverPdf = Float3(1.0f) * (1.0f / T);
+        rayData->shouldTerminate = true;
     }
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
 {
-    Float3 wo = state.wo;
-    Float3 wn = state.normal;
-    Float3 wi = wiL;
+    float alpha2 = fmaxf(state.roughness, 0.01f); // roughness = alpha.x * alpha.y , in case of isotropic surface, roughness = alpha^2
 
-    Float3 brdf = Float3(0.0f);
-    float pdf = 0.0f;
-
-    if (dot(wo, wn) <= 0 || dot(wi, wn) <= 0)
-    {
-        return Float4(brdf, pdf);
-    }
-
-    // Roughness to alpha
-    float roughness = state.roughness;
-    float alpha = max1f(sqrtf(roughness), 0.001f);
-    float alpha2 = alpha * alpha;
-
-    Float3 wh = normalize(wi + wo);
-
-    // Fresnel (dieletric or metal)
     constexpr float eta1 = 1.4f;
     constexpr float eta2 = 1.0f;
     constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-    float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-    float R = FresnelShlick(F0, cosThetaWoWh); // Can be Float3
-    float T = 1.0f - R;
 
-    // Smith's Mask-shadowing function G
-    float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-    float cosThetaWi = max(SAFE_COSINE_EPSI, dot(wi, wn));
-    float tanThetaWo = sqrtf(1.0f - cosThetaWo * cosThetaWo) / cosThetaWo;
-    float G = 1.0f / (1.0f + (sqrtf(1.0f + alpha2 * tanThetaWo * tanThetaWo) - 1.0f) / 2.0f);
+    Float3 f;
+    float pdf;
 
-    // Trowbridge Reitz Distribution D
-    float cosThetaWh = max(SAFE_COSINE_EPSI, dot(wh, wn));
-    float cosTheta2Wh = cosThetaWh * cosThetaWh;
-    float tanTheta2Wh = (1.0f - cosTheta2Wh) / cosTheta2Wh;
-    float e = tanTheta2Wh / alpha2 + 1.0f;
-    float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
+    FresnelBlendReflectionBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, state.albedo, Float3(F0), alpha2, f, pdf);
 
-    brdf = Float3(R) * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
-    pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh);
-
-    // Blend in diffuse
-    const Float3 diffuse_f = Float3(1.0f) * M_1_PIf;
-    const float diffuse_pdf = cosThetaWi * M_1_PIf;
-    brdf = brdf * R + diffuse_f * T;
-    pdf = pdf * R + diffuse_pdf * T;
-
-    return Float4(brdf, pdf);
-}
-
-extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &brdfOverPdf, float &pdf)
-{
-    float roughness = state.roughness;
-    roughness *= 0.1f;
-
-    Float2 r = rand2(sysParam, rayData->randIdx);
-    float alpha = max1f(sqrtf(roughness), 0.001f);
-
-    // pre-calculate alpha2
-    float alpha2 = alpha * alpha;
-
-    // sample normal
-    Float3 sampledNormal;
-    float cosTheta = 1.0f / sqrtf(1.0f + alpha2 * r[0] / (1.0f - r[0]));
-    float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
-    float phi = TWO_PI * r[1];
-    sampledNormal = Float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-
-    // local to world space
-    alignVector(state.normal, sampledNormal);
-
-    // reflect
-    wi = normalize(reflect3f(-state.wo, sampledNormal));
-
-    if (dot(wi, state.geometricNormal) < 0)
+    if (pdf <= 0.0f)
     {
-        Float2 r2 = rand2(sysParam, rayData->randIdx);
-
-        // Try again
-        cosTheta = 1.0f / sqrt(1.0f + alpha2 * r2[0] / (1.0f - r2[0]));
-        sinTheta = sqrt(1.0f - cosTheta * cosTheta);
-        phi = TWO_PI * r2[1];
-        sampledNormal = Float3(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
-        alignVector(state.normal, sampledNormal);
-        wi = normalize(reflect3f(-state.wo, sampledNormal));
-
-        if (dot(wi, state.geometricNormal) < 0)
-        {
-            wi = normalize(reflect3f(-state.wo, state.geometricNormal));
-        }
+        rayData->shouldTerminate = true;
     }
 
-    Float3 wh = sampledNormal;
-    Float3 wn = state.normal;
-    Float3 wo = state.wo;
-
-    // Fresnel
-    constexpr float eta1 = 1.4f;
-    constexpr float eta2 = 1.0f;
-    constexpr float F00 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-    Float3 F0 = lerp3f(Float3(F00), state.albedo, state.metallic);
-    float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-    Float3 R = FresnelShlick(F0, cosThetaWoWh);
-
-    // Smith's Mask-shadowing function G
-    float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-    float cosThetaWi = max(SAFE_COSINE_EPSI, dot(wi, wn));
-    float tanThetaWo = sqrt(1.0f - cosThetaWo * cosThetaWo) / cosThetaWo;
-    float G = 1.0f / (1.0f + (sqrtf(1.0f + alpha2 * tanThetaWo * tanThetaWo) - 1.0f) / 2.0f);
-
-    // Trowbridge Reitz Distribution D
-    float cosThetaWh = max(SAFE_COSINE_EPSI, dot(wh, wn));
-    float cosTheta2Wh = cosThetaWh * cosThetaWh;
-    float tanTheta2Wh = (1.0f - cosTheta2Wh) / cosTheta2Wh;
-    float e = tanTheta2Wh / alpha2 + 1.0f;
-    float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
-
-    // brdf
-    Float3 brdf = R * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
-
-    // pdf
-    pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh);
-
-    // beta
-    brdfOverPdf = R * (G * cosThetaWoWh) / (cosThetaWh * cosThetaWo); // brdf / pdf * cosThetaWi
+    return Float4(f, pdf);
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
+extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
-    float roughness = state.roughness;
-    roughness *= 0.1f;
+    float roughness = state.roughness * 0.1f; // Fudge factor
 
-    Float3 wo = state.wo;
-    Float3 wn = state.normal;
-    Float3 wi = wiL;
+    float alpha2 = fmaxf(roughness, 0.0001f); // roughness = alpha.x * alpha.y , in case of isotropic surface, roughness = alpha^2
 
-    Float3 brdf = Float3(0.0f);
-    float pdf = 0.0f;
-
-    if (dot(wo, wn) <= 0 || dot(wi, wn) <= 0)
-    {
-        return Float4(brdf, pdf);
-    }
-
-    // Roughness to alpha
-    float alpha = max1f(sqrtf(roughness), 0.001f);
-    float alpha2 = alpha * alpha;
-
-    Float3 wh = normalize(wi + wo);
-
-    // Fresnel
     constexpr float eta1 = 1.4f;
     constexpr float eta2 = 1.0f;
-    constexpr float F00 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-    Float3 F0 = lerp3f(Float3(F00), state.albedo, state.metallic);
-    float cosThetaWoWh = max(SAFE_COSINE_EPSI, dot(wh, wo));
-    Float3 R = FresnelShlick(F0, cosThetaWoWh);
+    constexpr float F0Dielectric = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
+    Float3 F0Metallic = state.albedo;
+    Float3 F0 = lerp3f(Float3(F0Dielectric), F0Metallic, state.metallic);
 
-    // Smith's Mask-shadowing function G
-    float cosThetaWo = clampf(dot(wo, wn), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-    float cosThetaWi = max(SAFE_COSINE_EPSI, dot(wi, wn));
-    float tanThetaWo = sqrtf(1.0f - cosThetaWo * cosThetaWo) / cosThetaWo;
-    float G = 1.0f / (1.0f + (sqrtf(1.0f + alpha2 * tanThetaWo * tanThetaWo) - 1.0f) / 2.0f);
+    Float3 diffuseAlbedo = lerp3f(state.albedo, Float3(0.0f), state.metallic);
 
-    // Trowbridge Reitz Distribution D
-    float cosThetaWh = max(SAFE_COSINE_EPSI, dot(wh, wn));
-    float cosTheta2Wh = cosThetaWh * cosThetaWh;
-    float tanTheta2Wh = (1.0f - cosTheta2Wh) / cosTheta2Wh;
-    float e = tanTheta2Wh / alpha2 + 1.0f;
-    float D = 1.0f / (M_PI * (alpha2 * cosTheta2Wh * cosTheta2Wh) * (e * e));
+    FresnelBlendReflectionBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, diffuseAlbedo, F0, alpha2, wi, bsdfOverPdf, pdf);
 
-    brdf = R * (D * G) / (4.0f * cosThetaWo * cosThetaWi);
-    pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh);
+    if (pdf <= 0.0f)
+    {
+        rayData->shouldTerminate = true;
+    }
+}
 
-    return Float4(brdf, pdf);
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
+{
+    float roughness = state.roughness * 0.1f; // Fudge factor
+
+    float alpha2 = fmaxf(roughness, 0.0001f); // roughness = alpha.x * alpha.y , in case of isotropic surface, roughness = alpha^2
+
+    constexpr float eta1 = 1.4f;
+    constexpr float eta2 = 1.0f;
+    constexpr float F0Dielectric = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
+    Float3 F0Metallic = state.albedo;
+    Float3 F0 = lerp3f(Float3(F0Dielectric), F0Metallic, state.metallic);
+
+    Float3 diffuseAlbedo = lerp3f(state.albedo, Float3(0.0f), state.metallic);
+
+    Float3 f;
+    float pdf;
+
+    FresnelBlendReflectionBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, diffuseAlbedo, F0, alpha2, f, pdf);
+
+    if (pdf <= 0.0f)
+    {
+        rayData->shouldTerminate = true;
+    }
+
+    return Float4(f, pdf);
 }
 
 extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
@@ -421,7 +215,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
 
 extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
 {
-    unitSquareToCosineHemisphere(rand2(sysParam, rayData->randIdx), state.normal, wi, pdf);
+    UnitSquareToCosineHemisphere(rand2(sysParam, rayData->randIdx), state.normal, wi, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -443,21 +237,21 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_tra
     f_over_pdf = Float3(1.0f); // f=albedo/2pi; pdf=cos_wi/2pi; this term = f/pdf*cos_wi = albedo
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wiL)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
 {
-    bool isTransmission = dot(wiL, state.normal) < 0.0f;
+    bool isTransmission = dot(wi, state.normal) < 0.0f;
 
     if (isTransmission)
     {
         const Float3 f = Float3(1.0f) / M_PI / 0.75f;
-        const float pdf = abs(dot(wiL, state.normal)) / M_PI / 0.75f;
+        const float pdf = abs(dot(wi, state.normal)) / M_PI / 0.75f;
 
         return Float4(f, pdf);
     }
     else
     {
         const Float3 f = Float3(1.0f) / M_PI / 0.25f;
-        const float pdf = abs(dot(wiL, state.normal)) / M_PI / 0.25f;
+        const float pdf = abs(dot(wi, state.normal)) / M_PI / 0.25f;
 
         return Float4(f, pdf);
     }

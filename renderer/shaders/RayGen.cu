@@ -37,18 +37,13 @@ __device__ __inline__ bool TraceNextPath(
         extinction = absorptionIor.xyz;
     }
 
-    // if (OPTIX_CENTER_PIXEL())
-    // {
-    //     OPTIX_DEBUG_PRINT(rayData->depth);
-    // }
-
     UInt2 payload = splitPointer(rayData);
 
     optixTrace(sysParam.topObject,
                (float3)rayData->pos, (float3)rayData->wi, // origin, direction
                sysParam.sceneEpsilon, RayMax, 0.0f,       // tmin, tmax, time
                OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-               0, 1, 0,
+               0, 2, 0, // SBToffset, SBTstride, missSBTIndex
                payload.x, payload.y);
 
     if (rayData->isInsideVolume)

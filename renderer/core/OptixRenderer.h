@@ -18,20 +18,6 @@
 #include "util/RandGenHost.h"
 #include "shaders/RandGen.h"
 
-struct SbtRecordHeader
-{
-    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-};
-
-template <typename T>
-struct SbtRecordData
-{
-    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-    T data;
-};
-
-typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
-
 class OptixRenderer
 {
 public:
@@ -87,8 +73,6 @@ private:
 
     SbtRecordGeometryInstanceData m_sbtRecordHitRadiance;
     SbtRecordGeometryInstanceData m_sbtRecordHitShadow;
-    SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
-    SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
 
     SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
 
