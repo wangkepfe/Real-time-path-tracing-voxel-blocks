@@ -7,7 +7,7 @@ extern "C" __constant__ SystemParameter sysParam;
 
 extern "C" __global__ void __miss__radiance()
 {
-    PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+    RayData *rayData = (RayData *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
     if (rayData->isShadowRay)
     {

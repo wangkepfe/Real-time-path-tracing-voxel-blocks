@@ -63,6 +63,9 @@ public:
     AliasTable lightAliasTable;
     AliasTable *d_lightAliasTable = nullptr;
 
+    std::vector<InstanceLightMapping> instanceLightMapping;
+    InstanceLightMapping *d_instanceLightMapping;
+
     static OptixTraversableHandle CreateGeometry(
         OptixFunctionTable &api,
         OptixDeviceContext &context,

@@ -5,7 +5,7 @@
 
 extern "C" __constant__ SystemParameter sysParam;
 
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
     LambertianReflectionBSDFSample(rand2(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.albedo, wi, bsdfOverPdf, pdf);
 
@@ -15,7 +15,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(Mat
     }
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const &parameters, MaterialState const &state, RayData *const rayData, const Float3 wi)
 {
     Float3 f;
     float pdf;
@@ -25,7 +25,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection(Mat
     return Float4(f, pdf);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
     float alpha2 = fmaxf(state.roughness, 0.01f); // roughness = alpha.x * alpha.y , in case of isotropic surface, roughness = alpha^2
 
@@ -41,7 +41,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(
     }
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(MaterialParameter const &parameters, MaterialState const &state, RayData *const rayData, const Float3 wi)
 {
     float alpha2 = fmaxf(state.roughness, 0.01f); // roughness = alpha.x * alpha.y , in case of isotropic surface, roughness = alpha^2
 
@@ -62,7 +62,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(
     return Float4(f, pdf);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
     float roughness = state.roughness * 0.1f; // Fudge factor
 
@@ -84,7 +84,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_
     }
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_metal(MaterialParameter const &parameters, MaterialState const &state, RayData *const rayData, const Float3 wi)
 {
     float roughness = state.roughness * 0.1f; // Fudge factor
 
@@ -111,7 +111,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_
     return Float4(f, pdf);
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
 {
     wi = reflect3f(-rayData->wo, state.normal);
 
@@ -158,7 +158,7 @@ __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const
     return (result <= 1.0f) ? result : 1.0f;
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
 {
     rayData->absorption_ior = Float4(parameters.absorption, parameters.ior);
 
@@ -213,7 +213,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
     }
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
 {
     UnitSquareToCosineHemisphere(rand2(sysParam, rayData->randIdx), state.normal, wi, pdf);
 
@@ -237,7 +237,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_tra
     f_over_pdf = Float3(1.0f); // f=albedo/2pi; pdf=cos_wi/2pi; this term = f/pdf*cos_wi = albedo
 }
 
-extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, PerRayData *const rayData, const Float3 wi)
+extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, RayData *const rayData, const Float3 wi)
 {
     bool isTransmission = dot(wi, state.normal) < 0.0f;
 

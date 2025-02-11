@@ -6,7 +6,7 @@
 extern "C" __constant__ SystemParameter sysParam;
 
 __device__ __inline__ bool TraceNextPath(
-    PerRayData *rayData,
+    RayData *rayData,
     Float4 &absorptionIor,
     int &volumnIdx,
     Float3 &radiance,
@@ -78,8 +78,8 @@ __device__ __inline__ bool TraceNextPath(
 
 extern "C" __global__ void __raygen__pathtracer()
 {
-    PerRayData perRayData;
-    PerRayData *rayData = &perRayData;
+    RayData perRayData;
+    RayData *rayData = &perRayData;
 
     const Int2 imgSize = Int2(optixGetLaunchDimensions());
     const Int2 idx = Int2(optixGetLaunchIndex());

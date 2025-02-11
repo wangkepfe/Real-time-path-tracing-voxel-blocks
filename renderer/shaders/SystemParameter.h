@@ -27,6 +27,13 @@ struct __align__(16) MaterialParameter
     float uvScale = 1.0f;
 };
 
+struct InstanceLightMapping
+{
+    unsigned int instanceId;
+    unsigned int lightOffset;
+    unsigned int lightCount;
+};
+
 struct SystemParameter
 {
     Camera camera;
@@ -42,6 +49,7 @@ struct SystemParameter
     SurfObj outUiBuffer;
 
     MaterialParameter *materialParameters;
+    InstanceLightMapping *instanceLightMapping;
 
     SurfObj skyBuffer;
     SurfObj sunBuffer;

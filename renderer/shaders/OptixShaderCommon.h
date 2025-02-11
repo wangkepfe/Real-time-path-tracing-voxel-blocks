@@ -17,7 +17,7 @@ struct MaterialState
 };
 
 // Note that the fields are ordered by CUDA alignment restrictions.
-struct __align__(16) PerRayData
+struct __align__(16) RayData
 {
     Float4 absorption_ior; // The absorption coefficient and IOR of the currently hit material.
 
@@ -60,22 +60,27 @@ struct __align__(16) PerRayData
     bool isHitThinfilmTransmission;
 };
 
+struct __align__(16) ShadowRayData
+{
+    
+};
+
 union Payload
 {
-    INL_DEVICE Payload(PerRayData *ptrIn) : ptr{ptrIn} {}
+    INL_DEVICE Payload(void *ptrIn) : ptr{ptrIn} {}
     INL_DEVICE Payload(const UInt2 &datIn) : dat{datIn} {}
 
-    PerRayData *ptr;
+    void *ptr;
     UInt2 dat;
 };
 
-INL_DEVICE UInt2 splitPointer(PerRayData *ptr)
+INL_DEVICE UInt2 splitPointer(void *ptr)
 {
     Payload payload{ptr};
     return payload.dat;
 }
 
-INL_DEVICE PerRayData *mergePointer(unsigned int p0, unsigned int p1)
+INL_DEVICE void *mergePointer(unsigned int p0, unsigned int p1)
 {
     Payload payload{UInt2(p0, p1)};
     return payload.ptr;

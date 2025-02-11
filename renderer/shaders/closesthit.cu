@@ -8,7 +8,7 @@ extern "C" __constant__ SystemParameter sysParam;
 
 extern "C" __global__ void __closesthit__radiance()
 {
-    PerRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+    RayData *rayData = (RayData *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
     // Ray travel distance/time t
     rayData->distance = optixGetRayTmax();
@@ -276,7 +276,7 @@ extern "C" __global__ void __closesthit__radiance()
     Float3 surfBsdfOverPdf;
     float surfSampleSurfPdf;
 
-    optixDirectCall<void, MaterialParameter const &, MaterialState const &, PerRayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
+    optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
 
     if (isThinfilm)
     {
@@ -484,7 +484,7 @@ extern "C" __global__ void __closesthit__radiance()
         if (0.0f < lightSampleLightDistPdf && isLightGeometricallyVisible)
         {
             const int indexBsdfEval = indexBsdfSample + 1;
-            const Float4 lightSampleSurfDistBsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, PerRayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, lightSampleDirection);
+            const Float4 lightSampleSurfDistBsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, lightSampleDirection);
             Float3 lightSampleSurfDistBsdf = lightSampleSurfDistBsdfPdf.xyz;
             float lightSampleSurfDistPdf = lightSampleSurfDistBsdfPdf.w;
 
@@ -607,4 +607,5 @@ extern "C" __global__ void __closesthit__radiance()
 
 extern "C" __global__ void __closesthit__shadow()
 {
+    // ShadowRayData *rayData = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 }
