@@ -12,6 +12,7 @@
 #include <array>
 #include <functional>
 #include <unordered_set>
+#include <set>
 
 #include "shaders/SystemParameter.h"
 
@@ -53,18 +54,16 @@ public:
     int uninstancedGeometryCount;
     int instancedGeometryCount;
 
-    std::unordered_map<int, std::unordered_set<int>> geometryInstanceIdMap;
+    std::unordered_map<int, std::set<int>> geometryInstanceIdMap;
     std::unordered_map<int, std::array<float, 12>> instanceTransformMatrices;
 
-    std::vector<LightInfo *> m_lights;
-    std::vector<unsigned int> m_numTriLights;
-
-    LightInfo *d_mergedLights = nullptr;
+    LightInfo *m_lights = nullptr;
     AliasTable lightAliasTable;
     AliasTable *d_lightAliasTable = nullptr;
 
     std::vector<InstanceLightMapping> instanceLightMapping;
     InstanceLightMapping *d_instanceLightMapping;
+    unsigned int numInstancedLightMesh;
 
     static OptixTraversableHandle CreateGeometry(
         OptixFunctionTable &api,

@@ -4,6 +4,12 @@
 #include "LinearMath.h"
 #include "SystemParameter.h"
 
+static const unsigned int DIReservoir_LightValidBit = 0x80000000;
+static const unsigned int DIReservoir_LightIndexMask = 0x7FFFFFFF;
+static const unsigned int InvalidLightIndex = 0x7FFFFFFF;
+static const unsigned int SkyLightIndex = 0x7FFFFFFE;
+static const unsigned int SunLightIndex = 0x7FFFFFFD;
+
 // Currently only containing some vertex attributes in world coordinates.
 struct MaterialState
 {
@@ -44,6 +50,7 @@ struct __align__(16) RayData
 
     float rayConeSpread;
     float rayConeWidth;
+    unsigned int shadowRayLightIdx;
 
     bool hitFirstDiffuseSurface;
     bool shouldTerminate;
@@ -62,7 +69,8 @@ struct __align__(16) RayData
 
 struct __align__(16) ShadowRayData
 {
-    
+    unsigned int lightIdx;
+    Float2 bary;
 };
 
 union Payload

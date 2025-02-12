@@ -41,7 +41,7 @@ __device__ __inline__ bool TraceNextPath(
 
     optixTrace(sysParam.topObject,
                (float3)rayData->pos, (float3)rayData->wi, // origin, direction
-               sysParam.sceneEpsilon, RayMax, 0.0f,       // tmin, tmax, time
+               0.0f, RayMax, 0.0f,                        // tmin, tmax, time
                OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
                0, 2, 0, // SBToffset, SBTstride, missSBTIndex
                payload.x, payload.y);

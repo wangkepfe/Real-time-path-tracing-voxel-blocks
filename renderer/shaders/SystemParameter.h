@@ -4,7 +4,7 @@
 #include "AliasTable.h"
 #include "Camera.h"
 #include "RandGen.h"
-#include "Restir.h"
+#include "Light.h"
 #include <optix.h>
 
 // Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
@@ -27,13 +27,6 @@ struct __align__(16) MaterialParameter
     float uvScale = 1.0f;
 };
 
-struct InstanceLightMapping
-{
-    unsigned int instanceId;
-    unsigned int lightOffset;
-    unsigned int lightCount;
-};
-
 struct SystemParameter
 {
     Camera camera;
@@ -50,6 +43,7 @@ struct SystemParameter
 
     MaterialParameter *materialParameters;
     InstanceLightMapping *instanceLightMapping;
+    unsigned int numInstancedLightMesh;
 
     SurfObj skyBuffer;
     SurfObj sunBuffer;
@@ -69,7 +63,6 @@ struct SystemParameter
     int iterationIndex;
     int samplePerIteration;
     int sampleIndex;
-    float sceneEpsilon;
 
     BlueNoiseRandGenerator randGen;
     int accumulationCounter;

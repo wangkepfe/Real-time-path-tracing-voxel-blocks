@@ -146,8 +146,10 @@ void OptixRenderer::render()
     m_systemParameter.accumulatedSkyLuminance = skyModel.getAccumulatedSkyLuminance();
     m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
 
-    m_systemParameter.lights = scene.d_mergedLights;
+    m_systemParameter.lights = scene.m_lights;
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;
+    m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
+    m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
 
     auto &bufferManager = BufferManager::Get();
     BufferSetFloat4(bufferManager.GetBufferDim(UiBuffer), bufferManager.GetBuffer2D(UiBuffer), Float4(0.0f));
@@ -512,7 +514,6 @@ void OptixRenderer::init()
         m_systemParameter.edgeToHighlight = Scene::Get().edgeToHighlight;
 
         m_systemParameter.iterationIndex = 0;
-        m_systemParameter.sceneEpsilon = 0; // 500.0f * 1.0e-7f;
 
         m_d_ias = 0;
 
@@ -863,15 +864,25 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissRadiance));
         programGroups.push_back(programGroupMissRadiance);
 
-        OptixProgramGroupDesc programGroupDescMissShadow = {};
-        programGroupDescMissShadow.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
-        programGroupDescMissShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-        programGroupDescMissShadow.miss.module = moduleMiss;
-        programGroupDescMissShadow.miss.entryFunctionName = "__miss__shadow";
+        OptixProgramGroupDesc programGroupDescMissBsdf = {};
+        programGroupDescMissBsdf.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+        programGroupDescMissBsdf.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+        programGroupDescMissBsdf.miss.module = moduleMiss;
+        programGroupDescMissBsdf.miss.entryFunctionName = "__miss__bsdf_light";
 
-        OptixProgramGroup programGroupMissShadow;
-        OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow));
-        programGroups.push_back(programGroupMissShadow);
+        OptixProgramGroup programGroupMissBsdf;
+        OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissBsdf, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissBsdf));
+        programGroups.push_back(programGroupMissBsdf);
+
+        OptixProgramGroupDesc programGroupDescMissVisibility = {};
+        programGroupDescMissVisibility.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+        programGroupDescMissVisibility.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+        programGroupDescMissVisibility.miss.module = moduleMiss;
+        programGroupDescMissVisibility.miss.entryFunctionName = "__miss__visibility";
+
+        OptixProgramGroup programGroupMissVisibility;
+        OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescMissVisibility, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissVisibility));
+        programGroups.push_back(programGroupMissVisibility);
 
         moduleList.push_back(moduleMiss);
     }
@@ -896,7 +907,7 @@ void OptixRenderer::init()
         programGroupDescHitShadow.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
         programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
         programGroupDescHitShadow.hitgroup.moduleCH = moduleClosesthit;
-        programGroupDescHitShadow.hitgroup.entryFunctionNameCH = "__closesthit__shadow";
+        programGroupDescHitShadow.hitgroup.entryFunctionNameCH = "__closesthit__bsdf_light";
 
         OptixProgramGroup programGroupHitShadow;
         OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadow));
@@ -995,19 +1006,21 @@ void OptixRenderer::init()
 
     // Miss group
     {
-        std::vector<SbtRecordHeader> sbtRecordMiss(numTypesOfRays);
+        constexpr unsigned int numMissShaders = 3;
+        std::vector<SbtRecordHeader> sbtRecordMiss(numMissShaders);
 
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[1], &sbtRecordMiss[0]));
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[2], &sbtRecordMiss[1]));
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[3], &sbtRecordMiss[2]));
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader) * numTypesOfRays));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * numTypesOfRays, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader) * numMissShaders));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * numMissShaders, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Hit group
     {
-        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[3], &m_sbtRecordHitRadiance));
-        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[4], &m_sbtRecordHitShadow));
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[4], &m_sbtRecordHitRadiance));
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[5], &m_sbtRecordHitShadow));
 
         m_sbtRecordGeometryInstanceData.resize(numObjects * numTypesOfRays);
 

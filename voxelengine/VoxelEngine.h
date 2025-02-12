@@ -39,6 +39,10 @@ public:
     std::vector<std::vector<unsigned int>> faceLocation;
 
 private:
+    void initInstanceGeometry();
+    void updateInstances();
+    void updateUninstancedMeshes(Voxel *d_data);
+
     VoxelEngine()
     {
     }

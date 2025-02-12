@@ -22,7 +22,9 @@ struct __align__(16) Camera
     Mat3 uvToView;
     Mat3 viewToUv;
 
-    void init(int width, int height)
+    INL_HOST_DEVICE Camera() {}
+
+    INL_HOST_DEVICE void init(int width, int height)
     {
         pos = Float3(16.0f, 17.0f, 16.0f);
         dir = normalize(Float3(-1.0f, -1.0f, -1.0f)); // Example default direction
@@ -35,7 +37,7 @@ struct __align__(16) Camera
         tanHalfFov = Float2(tanf(fovX * 0.5f), tanf(fovY * 0.5f));
     }
 
-    void update()
+    INL_HOST_DEVICE void update()
     {
         dir = YawPitchToDir(yaw, pitch);
 
@@ -78,38 +80,38 @@ struct __align__(16) Camera
         viewToUv = viewToNdc * worldToView;
     }
 
-    __device__ Float3 uvToWorldDirection(const Float2 &uv) const
+    INL_DEVICE Float3 uvToWorldDirection(const Float2 &uv) const
     {
         Float3 uv_h(uv.x, uv.y, 1.0f);
         Float3 worldDir = uvToWorld * uv_h;
         return normalize(worldDir);
     }
 
-    __device__ Float2 worldDirectionToUV(const Float3 &worldDir) const
+    INL_DEVICE Float2 worldDirectionToUV(const Float3 &worldDir) const
     {
         Float3 ndc_h = worldToUv * worldDir;
         return Float2(ndc_h.x, ndc_h.y) / ndc_h.z;
     }
 
-    __device__ Float3 uvToViewDirection(const Float2 &uv) const
+    INL_DEVICE Float3 uvToViewDirection(const Float2 &uv) const
     {
         Float3 uv_h(uv.x, uv.y, 1.0f);
         Float3 viewDir = uvToView * uv_h;
         return normalize(viewDir);
     }
 
-    __device__ Float2 viewDirectionToUV(const Float3 &viewDir) const
+    INL_DEVICE Float2 viewDirectionToUV(const Float3 &viewDir) const
     {
         Float3 ndc_h = viewToUv * viewDir;
         return Float2(ndc_h.x, ndc_h.y) / ndc_h.z;
     }
 
-    __device__ float getPixelWorldSizeScaleToDepth() const
+    INL_DEVICE float getPixelWorldSizeScaleToDepth() const
     {
         return tanHalfFov.x / (resolution.x / 2);
     }
 
-    __device__ float getRayConeWidth(Int2 idx) const
+    INL_DEVICE float getRayConeWidth(Int2 idx) const
     {
         Float2 pixelCenter = (Float2(idx.x, idx.y) + 0.5f) - Float2(resolution.x, resolution.y) / 2;
         Float2 pixelOffset = copysignf2(Float2(0.5f), pixelCenter);

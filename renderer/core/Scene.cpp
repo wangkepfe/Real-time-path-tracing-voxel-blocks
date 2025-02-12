@@ -12,11 +12,9 @@ Scene::~Scene()
     CUDA_CHECK(cudaFree(edgeToHighlight));
     CUDA_CHECK(cudaFree(d_lightAliasTable));
 
-    for (LightInfo *light : m_lights)
-    {
-        CUDA_CHECK(cudaFree(light));
-    }
-    CUDA_CHECK(cudaFree(d_mergedLights));
+    CUDA_CHECK(cudaFree(m_lights));
+
+    CUDA_CHECK(cudaFree(d_instanceLightMapping));
 }
 
 OptixTraversableHandle Scene::CreateGeometry(
