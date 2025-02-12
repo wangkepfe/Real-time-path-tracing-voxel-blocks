@@ -26,7 +26,7 @@ extern "C" __global__ void __miss__radiance()
     const float totalSunLum = accumulatedSunLuminance * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
 
     // Sample sky or sun pdf
-    const float sampleSkyVsSun = totalSkyLum / (totalSkyLum + totalSunLum);
+    // const float sampleSkyVsSun = totalSkyLum / (totalSkyLum + totalSunLum);
 
     // Map the ray diretcion to uv
     Float2 uv;

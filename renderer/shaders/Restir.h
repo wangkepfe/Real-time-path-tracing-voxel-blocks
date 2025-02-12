@@ -96,10 +96,10 @@ static const float kMinRoughness = 0.05f;
 
 struct ReSTIRDIParameters
 {
-    unsigned int numPrimaryLocalLightSamples;
-    unsigned int numPrimaryInfiniteLightSamples;
-    unsigned int numPrimaryEnvironmentSamples;
-    unsigned int numPrimaryBrdfSamples;
+    unsigned int numLocalLightSamples;
+    unsigned int numSunLightSamples;
+    unsigned int numSkyLightSamples;
+    unsigned int numBrdfSamples;
 
     float brdfCutoff;
     unsigned int enableInitialVisibility;
@@ -132,14 +132,14 @@ struct ReSTIRDIParameters
     unsigned int enableDenoiserInputPacking;
 };
 
-constexpr ReSTIRDIParameters GetDefaultReSTIRDIParams()
+INL_DEVICE ReSTIRDIParameters GetDefaultReSTIRDIParams()
 {
     ReSTIRDIParameters params = {};
 
-    params.numPrimaryBrdfSamples = 1;
-    params.numPrimaryEnvironmentSamples = 1;
-    params.numPrimaryInfiniteLightSamples = 1;
-    params.numPrimaryLocalLightSamples = 8;
+    params.numLocalLightSamples = 0;
+    params.numSunLightSamples = 1;
+    params.numSkyLightSamples = 0;
+    params.numBrdfSamples = 0;
 
     params.brdfCutoff = 0.0001f;
     params.enableInitialVisibility = true;
@@ -447,10 +447,10 @@ INL_DEVICE SampleParameters InitSampleParameters(ReSTIRDIParameters params)
 {
     SampleParameters result;
 
-    result.numLocalLightSamples = params.numPrimaryLocalLightSamples;
-    result.numSunLightSamples = params.numPrimaryInfiniteLightSamples;
-    result.numSkyLightSamples = params.numPrimaryEnvironmentSamples;
-    result.numBrdfSamples = params.numPrimaryBrdfSamples;
+    result.numLocalLightSamples = params.numLocalLightSamples;
+    result.numSunLightSamples = params.numSunLightSamples;
+    result.numSkyLightSamples = params.numSkyLightSamples;
+    result.numBrdfSamples = params.numBrdfSamples;
 
     result.numMisSamples = result.numLocalLightSamples + result.numSunLightSamples + result.numSkyLightSamples + result.numBrdfSamples;
 
@@ -591,7 +591,7 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
         float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
         float risRnd = rand(sysParam, randIdx);
 
-        if (blendedSourcePdf != 0)
+        if (blendedSourcePdf != 0.0f)
         {
             bool selected = StreamSample(localReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
             if (selected)
@@ -820,18 +820,26 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
     state.M = 1;
 
     if (selectBrdf)
-        outLightSample = brdfSample;
-    else if (selectSkyLight)
-        outLightSample = skyLightSample;
-    else if (selectSunLight)
-        outLightSample = sunLightSample;
-    else
-        outLightSample = localSample;
-
-    if (OPTIX_CENTER_PIXEL())
     {
-        OPTIX_DEBUG_PRINT(state.lightData);
+        outLightSample = brdfSample;
     }
+    else if (selectSkyLight)
+    {
+        outLightSample = skyLightSample;
+    }
+    else if (selectSunLight)
+    {
+        outLightSample = sunLightSample;
+    }
+    else
+    {
+        outLightSample = localSample;
+    }
+
+    // if (OPTIX_CENTER_PIXEL())
+    // {
+    //     OPTIX_DEBUG_PRINT(lightIndex);
+    // }
 
     return state;
 }

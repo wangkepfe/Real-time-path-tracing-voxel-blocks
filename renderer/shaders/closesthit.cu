@@ -625,13 +625,13 @@ extern "C" __global__ void __closesthit__radiance()
         surface.albedo = state.albedo;
         surface.roughness = state.roughness;
 
-        ReSTIRDIParameters params = {};
+        ReSTIRDIParameters params = GetDefaultReSTIRDIParams();
         SampleParameters sampleParams = InitSampleParameters(params);
 
         LightSample lightSample = {};
         DIReservoir reservoir = SampleLightsForSurface(sysParam, rayData->randIdx, surface, sampleParams, lightSample);
 
-        // if (lightSample.lightType != LightTypeInvalid)
+        if (lightSample.lightType != LightTypeInvalid)
         {
             Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
             float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - 1e-2f : RayMax;
