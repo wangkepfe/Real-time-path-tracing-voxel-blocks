@@ -11,19 +11,26 @@ extern "C" __global__ void __miss__radiance()
 
     Float3 emission = Float3(0);
 
+    if (rayData->isLastBounceDiffuse)
+    {
+        rayData->distance = RayMax;
+        rayData->shouldTerminate = true;
+        return;
+    }
+
     const Int2 &skyRes = sysParam.skyRes;
     const Int2 &sunRes = sysParam.sunRes;
     const int skySize = skyRes.x * skyRes.y;
-    const int sunSize = sunRes.x * sunRes.y;
+    // const int sunSize = sunRes.x * sunRes.y;
     const float &accumulatedSkyLuminance = sysParam.accumulatedSkyLuminance;
-    const float &accumulatedSunLuminance = sysParam.accumulatedSunLuminance;
+    // const float &accumulatedSunLuminance = sysParam.accumulatedSunLuminance;
     const float sunAngle = 0.51f; // angular diagram in degrees
     const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
 
     const Float3 &rayDir = rayData->wi;
 
-    const float totalSkyLum = accumulatedSkyLuminance * TWO_PI / skySize; // Jacobian of the hemisphere mapping
-    const float totalSunLum = accumulatedSunLuminance * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
+    // const float totalSkyLum = accumulatedSkyLuminance * TWO_PI / skySize; // Jacobian of the hemisphere mapping
+    // const float totalSunLum = accumulatedSunLuminance * TWO_PI * (1.0f - sunAngleCosThetaMax) / sunSize;
 
     // Sample sky or sun pdf
     // const float sampleSkyVsSun = totalSkyLum / (totalSkyLum + totalSunLum);

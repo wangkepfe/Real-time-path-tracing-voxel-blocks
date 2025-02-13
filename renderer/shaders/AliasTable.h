@@ -2,6 +2,8 @@
 
 #include <cuda_runtime.h>
 
+#include "ShaderDebugUtils.h"
+
 //-----------------------------------------------------------------------------
 // Data structure for a bin (alias table entry)
 struct AliasTableBin
@@ -32,8 +34,8 @@ public:
     __device__ unsigned int sample(float u, float &pmf) const
     {
         int offset = min(int(u * len), int(len - 1));
-        // Use a value slightly less than 1 to avoid floating–point issues.
         float up = min(u * len - offset, 0.999999f);
+
         if (up < bins[offset].q)
         {
             pmf = bins[offset].p;

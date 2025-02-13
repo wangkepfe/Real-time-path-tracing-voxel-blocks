@@ -88,7 +88,6 @@ extern "C" __global__ void __raygen__pathtracer()
     rayData->randIdx = 0;
 
     Float2 samplePixelJitterOffset = rand2(sysParam, rayData->randIdx);
-    samplePixelJitterOffset = Float2(0.5f);
 
     const Float2 sampleUv = (pixelIdx + samplePixelJitterOffset) * sysParam.camera.inversedResolution;
     const Float2 centerUv = (pixelIdx + 0.5f) * sysParam.camera.inversedResolution;

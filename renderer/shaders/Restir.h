@@ -136,10 +136,10 @@ INL_DEVICE ReSTIRDIParameters GetDefaultReSTIRDIParams()
 {
     ReSTIRDIParameters params = {};
 
-    params.numLocalLightSamples = 0;
+    params.numLocalLightSamples = 8;
     params.numSunLightSamples = 1;
-    params.numSkyLightSamples = 0;
-    params.numBrdfSamples = 0;
+    params.numSkyLightSamples = 1;
+    params.numBrdfSamples = 1;
 
     params.brdfCutoff = 0.0001f;
     params.enableInitialVisibility = true;
@@ -464,21 +464,6 @@ INL_DEVICE SampleParameters InitSampleParameters(ReSTIRDIParameters params)
     return result;
 }
 
-INL_DEVICE void GetLightDirDistance(Surface surface, LightSample lightSample, Float3 &o_lightDir, float &o_lightDistance)
-{
-    if (lightSample.lightType == LightTypeSky || lightSample.lightType == LightTypeSun)
-    {
-        o_lightDir = lightSample.position;
-        o_lightDistance = 1e20f;
-    }
-    else
-    {
-        Float3 toLight = lightSample.position - surface.pos;
-        o_lightDistance = length(toLight);
-        o_lightDir = toLight / o_lightDistance;
-    }
-}
-
 INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
 {
     Float3 f;
@@ -506,13 +491,12 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, Float3 u, Float3 &wi, floa
 // between all lights and surfaces.
 INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surface surface)
 {
-    if (lightSample.solidAnglePdf <= 0)
-        return 0;
+    if (lightSample.solidAnglePdf <= 0 || lightSample.lightType == LightTypeInvalid)
+    {
+        return 0.0f;
+    }
 
-    Float3 wi = normalize(lightSample.position - surface.pos);
-
-    if (dot(wi, surface.geoNormal) <= 0)
-        return 0;
+    Float3 wi = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
 
     Float3 f;
     float pdf;
@@ -538,7 +522,7 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
 {
     float lightSolidAnglePdf = lightSample.solidAnglePdf;
 
-    if (sampleParams.brdfMisWeight == 0 || lightSolidAnglePdf <= 0 || isinf(lightSolidAnglePdf) || isnan(lightSolidAnglePdf))
+    if (sampleParams.brdfMisWeight == 0.0f || lightSolidAnglePdf <= 0.0f || isinf(lightSolidAnglePdf) || isnan(lightSolidAnglePdf))
     {
         // BRDF samples disabled or we can't trace BRDF rays MIS with analytical lights
         return lightMisWeight * lightSelectionPdf;
@@ -546,13 +530,25 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
 
     Float3 lightDir;
     float lightDistance;
-    GetLightDirDistance(surface, lightSample, lightDir, lightDistance);
+    if (lightSample.lightType == LightTypeSky || lightSample.lightType == LightTypeSun)
+    {
+        lightDir = lightSample.position;
+        lightDistance = RayMax;
+    }
+    else
+    {
+        Float3 toLight = lightSample.position - surface.pos;
+        lightDistance = length(toLight);
+        lightDir = toLight / lightDistance;
+    }
 
     // Compensate for ray shortening due to brdf cutoff, does not apply to environment map sampling
     float brdfPdf = GetSurfaceBrdfPdf(surface, lightDir);
     float maxDistance = BrdfMaxDistanceFromPdf(sampleParams.brdfCutoff, brdfPdf);
     if (!isEnvironmentMap && lightDistance > maxDistance)
+    {
         brdfPdf = 0.0f;
+    }
 
     // Convert light selection pdf (unitless) to a solid angle measurement
     float sourcePdfWrtSolidAngle = lightSelectionPdf * lightSolidAnglePdf;
@@ -610,23 +606,14 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
     {
         float sourcePdf;
         int sampledSunIdx = sysParam.sunAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-        Float2 uv = Float2(((sampledSunIdx % sysParam.sunRes.x) + 0.5f) / sysParam.sunRes.x, ((sampledSunIdx / sysParam.sunRes.x) + 0.5f) / sysParam.sunRes.y);
+        Int2 sunIdx(sampledSunIdx % sysParam.sunRes.x, sampledSunIdx / sysParam.sunRes.x);
+        Float2 uv = Float2((sunIdx.x + 0.5f) / sysParam.sunRes.x, (sunIdx.y + 0.5f) / sysParam.sunRes.y);
 
         const float sunAngle = 0.51f; // angular diagram in degrees
         const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
         float solidAnglePdf = (sysParam.sunRes.x * sysParam.sunRes.y) / (TWO_PI * (1.0f - sunAngleCosThetaMax));
 
         Float3 rayDir = EqualAreaMapCone(sysParam.sunDir, uv.x, uv.y, sunAngleCosThetaMax);
-        Int2 sunIdx((int)(uv.x * sysParam.sunRes.x), (int)(uv.y * sysParam.sunRes.y));
-        // Wrapping around on X dimension
-        if (sunIdx.x >= sysParam.sunRes.x)
-        {
-            sunIdx.x %= sysParam.sunRes.x;
-        }
-        if (sunIdx.x < 0)
-        {
-            sunIdx.x = sysParam.sunRes.x - (-sunIdx.x) % sysParam.sunRes.x;
-        }
         Float3 sunEmission = Load2DFloat4(sysParam.sunBuffer, sunIdx).xyz;
 
         LightSample candidateSample;
@@ -654,13 +641,14 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
     for (unsigned int i = 0; i < sampleParams.numSkyLightSamples; i++)
     {
         float sourcePdf;
-        int sampledSkyIdx = sysParam.skyAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-        Float2 uv = Float2(((sampledSkyIdx % sysParam.skyRes.x) + 0.5f) / sysParam.skyRes.x, ((sampledSkyIdx / sysParam.skyRes.x) + 0.5f) / sysParam.skyRes.y);
+        int sampledSkyIdx = sysParam.skyAliasTable->sample(rand16bits(sysParam, randIdx), sourcePdf);
+        Int2 skyIdx(sampledSkyIdx % sysParam.skyRes.x, sampledSkyIdx / sysParam.skyRes.x);
+        Float2 uv = Float2((skyIdx.x + 0.5f) / (float)sysParam.skyRes.x, (skyIdx.y + 0.5f) / (float)sysParam.skyRes.y);
 
         float solidAnglePdf = (sysParam.skyRes.x * sysParam.skyRes.y) / TWO_PI;
 
         Float3 rayDir = EqualAreaMap(uv.x, uv.y);
-        Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, sysParam.skyRes);
+        Float3 skyEmission = Load2DFloat4(sysParam.skyBuffer, skyIdx).xyz;
 
         LightSample candidateSample;
         candidateSample.position = rayDir;
@@ -673,6 +661,21 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
         float risRnd = rand(sysParam, randIdx);
 
         bool selected = StreamSample(skyLightReservoir, SkyLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
+
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(sampledSkyIdx);
+        //     OPTIX_DEBUG_PRINT(skyIdx);
+        //     OPTIX_DEBUG_PRINT(uv);
+        //     OPTIX_DEBUG_PRINT(solidAnglePdf);
+        //     OPTIX_DEBUG_PRINT(rayDir);
+        //     OPTIX_DEBUG_PRINT(skyEmission);
+        //     OPTIX_DEBUG_PRINT(blendedSourcePdf);
+        //     OPTIX_DEBUG_PRINT(targetPdf);
+        //     OPTIX_DEBUG_PRINT(risRnd);
+        //     OPTIX_DEBUG_PRINT(selected);
+        // }
+
         if (selected)
         {
             skyLightSample = candidateSample;
@@ -705,8 +708,13 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
                        (float3)surface.pos, (float3)sampleDir,
                        0.0f, maxDistance, 0.0f, // tmin, tmax, time
                        OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                       0, 2, 0,
+                       1, 2, 1,
                        payload.x, payload.y);
+
+            // if (OPTIX_CENTER_PIXEL())
+            // {
+            //     OPTIX_DEBUG_PRINT(rayData.lightIdx);
+            // }
 
             if (rayData.lightIdx == InvalidLightIndex)
             {
@@ -721,8 +729,8 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
                 {
                     lightIndex = SunLightIndex;
 
-                    Int2 sunIdx((int)(uv.x * sysParam.sunRes.x), (int)(uv.y * sysParam.sunRes.y));
-                    // Wrapping around on X dimension
+                    Int2 sunIdx((int)(uv.x * sysParam.sunRes.x - 0.5f), (int)(uv.y * sysParam.sunRes.y - 0.5f));
+                    // Wrapping around on X dimension, clamp on Y dimension
                     if (sunIdx.x >= sysParam.sunRes.x)
                     {
                         sunIdx.x %= sysParam.sunRes.x;
@@ -731,6 +739,7 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
                     {
                         sunIdx.x = sysParam.sunRes.x - (-sunIdx.x) % sysParam.sunRes.x;
                     }
+                    sunIdx.y = clampi(sunIdx.y, 0, sysParam.sunRes.y - 1);
                     Float3 sunEmission = Load2DFloat4(sysParam.sunBuffer, sunIdx).xyz;
 
                     float solidAnglePdf = (sysParam.sunRes.x * sysParam.sunRes.y) / (TWO_PI * (1.0f - sunAngleCosThetaMax));
@@ -739,12 +748,16 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
                     candidateSample.radiance = sunEmission;
                     candidateSample.solidAnglePdf = solidAnglePdf;
                     candidateSample.lightType = LightTypeSun;
+
+                    lightSourcePdf = sysParam.sunAliasTable->PMF(sunIdx.y * sysParam.sunRes.x + sunIdx.x);
                 }
                 else
                 {
                     lightIndex = SkyLightIndex;
 
                     uv = EqualAreaMap(sampleDir);
+                    Int2 skyIdx((int)(uv.x * sysParam.skyRes.x - 0.5f), (int)(uv.y * sysParam.skyRes.y - 0.5f));
+                    clamp2i(skyIdx, Int2(0), sysParam.skyRes - 1);
                     Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, sysParam.skyRes);
 
                     float solidAnglePdf = (sysParam.skyRes.x * sysParam.skyRes.y) / TWO_PI;
@@ -753,6 +766,8 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
                     candidateSample.radiance = skyEmission;
                     candidateSample.solidAnglePdf = solidAnglePdf;
                     candidateSample.lightType = LightTypeSky;
+
+                    lightSourcePdf = sysParam.sunAliasTable->PMF(skyIdx.y * sysParam.skyRes.x + skyIdx.x);
                 }
             }
             else
@@ -784,7 +799,7 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
             }
         }
 
-        if (lightSourcePdf == 0)
+        if (lightSourcePdf == 0.0f)
         {
             continue;
         }
@@ -794,10 +809,7 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
         bool isEnvMapSample = lightIndex == SkyLightIndex || lightIndex == SunLightIndex;
         float misWeight = (lightIndex == SkyLightIndex) ? sampleParams.skyLightMisWeight : ((lightIndex == SunLightIndex) ? sampleParams.sunLightMisWeight : sampleParams.localLightMisWeight);
 
-        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, lightSourcePdf,
-                                                    misWeight,
-                                                    isEnvMapSample,
-                                                    sampleParams);
+        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, lightSourcePdf, misWeight, isEnvMapSample, sampleParams);
         float risRnd = rand(sysParam, randIdx);
 
         bool selected = StreamSample(brdfReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);

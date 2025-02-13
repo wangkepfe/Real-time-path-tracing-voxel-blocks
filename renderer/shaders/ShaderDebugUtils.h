@@ -1,7 +1,9 @@
 #pragma once
 
-#include "OptixShaderCommon.h"
-#include "stdio.h"
+#include <optix.h>
+#include "LinearMath.h"
+
+#ifdef __CUDA_ARCH__
 
 #define COMMA ,
 
@@ -27,7 +29,7 @@
         printf("%s:%d:%s:(%d,%d):" __PRINT_STR__ "\n", file, line, valueName, blockIdx.x *blockDim.x + threadIdx.x, blockIdx.y * blockDim.y + threadIdx.y, __PRINT_ARG__); \
     }
 
-OPTIX_DEBUG_PRINT_IMPL(float v, "%f", v)
+OPTIX_DEBUG_PRINT_IMPL(float v, "%e", v)
 OPTIX_DEBUG_PRINT_IMPL(const Float2 &v, "(%f,%f)", v.x COMMA v.y)
 OPTIX_DEBUG_PRINT_IMPL(const Float3 &v, "(%f,%f,%f)", v.x COMMA v.y COMMA v.z)
 OPTIX_DEBUG_PRINT_IMPL(const Float4 &v, "(%f,%f,%f,%f)", v.x COMMA v.y COMMA v.z COMMA v.w)
@@ -38,3 +40,12 @@ OPTIX_DEBUG_PRINT_IMPL(const Int4 &v, "(%d,%d,%d,%d)", v.x COMMA v.y COMMA v.z C
 OPTIX_DEBUG_PRINT_IMPL(unsigned int v, "%d", v)
 OPTIX_DEBUG_PRINT_IMPL(const UInt2 &v, "(%d,%d)", v.x COMMA v.y)
 OPTIX_DEBUG_PRINT_IMPL(const UInt3 &v, "(%d,%d,%d)", v.x COMMA v.y COMMA v.z)
+
+#else
+
+#define OPTIX_CENTER_PIXEL() false
+#define OPTIX_DEBUG_PRINT(__VALUE__) ;
+#define CUDA_CENTER_PIXEL() false
+#define DEBUG_PRINT(__VALUE__) ;
+
+#endif

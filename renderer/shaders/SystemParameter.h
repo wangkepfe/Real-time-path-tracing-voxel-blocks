@@ -114,4 +114,10 @@ INL_DEVICE Float3 rand3(const SystemParameter &sysParam, int &randIdx)
 {
     return Float3(rand(sysParam, randIdx), rand(sysParam, randIdx), rand(sysParam, randIdx));
 }
+
+INL_DEVICE float rand16bits(const SystemParameter& sysParam, int& randIdx)
+{
+    Float2 u = rand2(sysParam, randIdx);
+    return u.x + u.y / 256.0f;
+}
 #endif // __CUDA_ARCH__

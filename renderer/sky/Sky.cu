@@ -135,7 +135,7 @@ INL_DEVICE Float3 GetSkyRadiance(const Float3 &raydir, const Float3 &sunDir,
 
     unsigned int channel;
 
-    //float spectrum[10];
+    // float spectrum[10];
     Float3 xyzColor = Float3(0);
 
 #pragma unroll
@@ -159,7 +159,7 @@ INL_DEVICE Float3 GetSkyRadiance(const Float3 &raydir, const Float3 &sunDir,
 
         float radiance = radianceInternal * cSkyRadiances[channel];
 
-        //spectrum[channel] = radiance;
+        // spectrum[channel] = radiance;
 
         xyzColor += radiance * SpectrumToXyz(channel);
     }
@@ -272,7 +272,7 @@ __global__ void Sky(SurfObj skyBuffer, float *skyPdf, Int2 size, Float3 sunDir,
 
     // sky cdf
     int i = size.x * y + x;
-    skyPdf[i] = dot(color, Float3(0.3f, 0.6f, 0.1f));
+    skyPdf[i] = luminance(color);
 }
 
 __global__ void SkySun(SurfObj sunBuffer, float *sunPdf, Int2 size,
@@ -296,7 +296,7 @@ __global__ void SkySun(SurfObj sunBuffer, float *sunPdf, Int2 size,
 
     // sky cdf
     int i = size.x * y + x;
-    sunPdf[i] = dot(color, Float3(0.3f, 0.6f, 0.1f));
+    sunPdf[i] = luminance(color);
 }
 
 void SkyModel::init()
