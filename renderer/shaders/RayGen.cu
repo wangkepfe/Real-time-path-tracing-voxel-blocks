@@ -124,7 +124,7 @@ extern "C" __global__ void __raygen__pathtracer()
 
     rayData->hitFirstDiffuseSurface = false;
 
-    static constexpr int BounceLimit = 3;
+    static constexpr int BounceLimit = 2;
 
     while (!pathTerminated)
     {

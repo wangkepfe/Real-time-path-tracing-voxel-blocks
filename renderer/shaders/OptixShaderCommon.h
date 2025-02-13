@@ -70,15 +70,6 @@ struct __align__(16) ShadowRayData
 {
     unsigned int lightIdx;
     Float2 bary;
-
-    Float3 pos;
-    Float3 absorption;
-    float distance;
-
-    bool hitTransmissiveSurface;
-    bool hitThinfilmSurface;
-
-    bool insideVolume;
 };
 
 union Payload

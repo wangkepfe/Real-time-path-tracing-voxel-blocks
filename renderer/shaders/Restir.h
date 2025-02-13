@@ -469,7 +469,7 @@ INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
     Float3 f;
     float pdf;
 
-    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), surface.bilambertian, f, pdf);
+    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
 
     return pdf;
 }
@@ -478,7 +478,7 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, Float3 u, Float3 &wi, floa
 {
     Float3 bsdfOverPdf;
 
-    UberBSDFSample(u, surface.normal, surface.geoNormal, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), surface.bilambertian, wi, bsdfOverPdf, pdf);
+    UberBSDFSample(u, surface.normal, surface.geoNormal, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), wi, bsdfOverPdf, pdf);
 
     return pdf > 0.0f;
 }
@@ -501,7 +501,7 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
     Float3 f;
     float pdf;
 
-    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), surface.bilambertian, f, pdf);
+    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
 
     Float3 reflectedRadiance = lightSample.radiance * f;
 
@@ -557,7 +557,20 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
     float blendedPdfWrtSolidangle = lightMisWeight * sourcePdfWrtSolidAngle + sampleParams.brdfMisWeight * brdfPdf;
 
     // Convert back, RTXDI divides shading again by this term later
-    return blendedPdfWrtSolidangle / lightSolidAnglePdf;
+    float blendedSourcePdf = blendedPdfWrtSolidangle / lightSolidAnglePdf;
+
+    // if (OPTIX_CENTER_PIXEL())
+    // {
+    //     OPTIX_DEBUG_PRINT(lightDir);
+    //     OPTIX_DEBUG_PRINT(lightSelectionPdf);
+    //     OPTIX_DEBUG_PRINT(sourcePdfWrtSolidAngle);
+    //     OPTIX_DEBUG_PRINT(brdfPdf);
+    //     OPTIX_DEBUG_PRINT(blendedPdfWrtSolidangle);
+    //     OPTIX_DEBUG_PRINT(lightSolidAnglePdf);
+    //     OPTIX_DEBUG_PRINT(blendedSourcePdf);
+    // }
+
+    return blendedSourcePdf;
 }
 
 INL_DEVICE DIReservoir SampleLightsForSurface(
@@ -662,20 +675,6 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
 
         bool selected = StreamSample(skyLightReservoir, SkyLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
 
-        // if (OPTIX_CENTER_PIXEL())
-        // {
-        //     OPTIX_DEBUG_PRINT(sampledSkyIdx);
-        //     OPTIX_DEBUG_PRINT(skyIdx);
-        //     OPTIX_DEBUG_PRINT(uv);
-        //     OPTIX_DEBUG_PRINT(solidAnglePdf);
-        //     OPTIX_DEBUG_PRINT(rayDir);
-        //     OPTIX_DEBUG_PRINT(skyEmission);
-        //     OPTIX_DEBUG_PRINT(blendedSourcePdf);
-        //     OPTIX_DEBUG_PRINT(targetPdf);
-        //     OPTIX_DEBUG_PRINT(risRnd);
-        //     OPTIX_DEBUG_PRINT(selected);
-        // }
-
         if (selected)
         {
             skyLightSample = candidateSample;
@@ -704,18 +703,13 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
             rayData.lightIdx = InvalidLightIndex;
             UInt2 payload = splitPointer(&rayData);
 
-            Float3 shadowRayOrig = surface.bilambertian ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
+            Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
             optixTrace(sysParam.topObject,
                        (float3)shadowRayOrig, (float3)sampleDir,
                        0.0f, maxDistance, 0.0f, // tmin, tmax, time
                        OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
                        1, 2, 1,
                        payload.x, payload.y);
-
-            // if (OPTIX_CENTER_PIXEL())
-            // {
-            //     OPTIX_DEBUG_PRINT(rayData.lightIdx);
-            // }
 
             if (rayData.lightIdx == InvalidLightIndex)
             {
@@ -768,7 +762,20 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
                     candidateSample.solidAnglePdf = solidAnglePdf;
                     candidateSample.lightType = LightTypeSky;
 
-                    lightSourcePdf = sysParam.sunAliasTable->PMF(skyIdx.y * sysParam.skyRes.x + skyIdx.x);
+                    lightSourcePdf = sysParam.skyAliasTable->PMF(skyIdx.y * sysParam.skyRes.x + skyIdx.x);
+
+                    // if (OPTIX_CENTER_PIXEL())
+                    // {
+                    //     OPTIX_DEBUG_PRINT(lightIndex);
+                    //     OPTIX_DEBUG_PRINT(surface.wo);
+                    //     OPTIX_DEBUG_PRINT(surface.normal);
+                    //     OPTIX_DEBUG_PRINT(sampleDir);
+                    //     OPTIX_DEBUG_PRINT(uv);
+                    //     OPTIX_DEBUG_PRINT(skyIdx);
+                    //     OPTIX_DEBUG_PRINT(skyEmission);
+                    //     OPTIX_DEBUG_PRINT(solidAnglePdf);
+                    //     OPTIX_DEBUG_PRINT(lightSourcePdf);
+                    // }
                 }
             }
             else
@@ -818,6 +825,16 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
         {
             brdfSample = candidateSample;
         }
+
+        // if (OPTIX_CENTER_PIXEL())
+        // {
+        //     OPTIX_DEBUG_PRINT(targetPdf);
+        //     OPTIX_DEBUG_PRINT(isEnvMapSample);
+        //     OPTIX_DEBUG_PRINT(misWeight);
+        //     OPTIX_DEBUG_PRINT(blendedSourcePdf);
+        //     OPTIX_DEBUG_PRINT(risRnd);
+        //     OPTIX_DEBUG_PRINT(selected);
+        // }
     }
     FinalizeResampling(brdfReservoir, 1.0f, sampleParams.numMisSamples);
     brdfReservoir.M = 1;

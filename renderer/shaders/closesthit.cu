@@ -81,7 +81,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
     bool isEmissive = materialId == INDEX_BSDF_EMISSIVE;
-    bool isTransmissive = materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
+    // bool isTransmissive = materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
     bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
 
     if (isEmissive)
@@ -290,7 +290,7 @@ extern "C" __global__ void __closesthit__radiance()
         surface.geoNormal = state.geometricNormal;
         surface.albedo = state.albedo;
         surface.roughness = state.roughness;
-        surface.bilambertian = isThinfilm;
+        surface.thinfilm = isThinfilm;
 
         ReSTIRDIParameters params = GetDefaultReSTIRDIParams();
         SampleParameters sampleParams = InitSampleParameters(params);
@@ -302,56 +302,17 @@ extern "C" __global__ void __closesthit__radiance()
         if (lightSample.lightType != LightTypeInvalid)
         {
             Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-
-            ShadowRayData shadowRayData;
-            shadowRayData.lightIdx = InvalidLightIndex;
-            shadowRayData.pos = surface.bilambertian ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
-            shadowRayData.insideVolume = rayData->isInsideVolume;
-            shadowRayData.distance = 0.0f;
-            UInt2 payload = splitPointer(&shadowRayData);
+            float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - 1e-2f : RayMax;
 
             bool isLightVisible = false;
-            Float3 shadowRayAbsorption = Float3(1.0f);
-            constexpr int maxShadowRayIter = 3;
-            for (int shadowRayIter = 0; shadowRayIter < maxShadowRayIter; ++shadowRayIter)
-            {
-                shadowRayData.hitTransmissiveSurface = false;
-                shadowRayData.hitThinfilmSurface = false;
-
-                optixTrace(sysParam.topObject,
-                           (float3)shadowRayData.pos, (float3)sampleDir,
-                           0.0f, RayMax, 0.0f, // tmin, tmax, time
-                           OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                           1, 2, 1,
-                           payload.x, payload.y);
-
-                if (shadowRayData.hitThinfilmSurface)
-                {
-                    const float cosTheta = abs(dot(sampleDir, surface.normal));
-                    shadowRayAbsorption *= shadowRayData.absorption * cosTheta / TWO_PI;
-                }
-                else if (shadowRayData.hitTransmissiveSurface)
-                {
-                    if (shadowRayData.insideVolume)
-                    {
-                        shadowRayData.insideVolume = false;
-                        shadowRayAbsorption *= exp3f(-shadowRayData.distance * shadowRayData.absorption);
-                    }
-                    else
-                    {
-                        shadowRayData.insideVolume = true;
-                    }
-                }
-                else if (shadowRayData.lightIdx == sampledLightIdx || (shadowRayData.lightIdx == SkyLightIndex && sampledLightIdx == SunLightIndex))
-                {
-                    isLightVisible = true;
-                    break;
-                }
-                else
-                {
-                    break;
-                }
-            }
+            UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
+            Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
+            optixTrace(sysParam.topObject,
+                       (float3)shadowRayOrig, (float3)sampleDir,
+                       0.0f, maxDistance, 0.0f, // tmin, tmax, time
+                       OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
+                       0, 2, 2,
+                       visibilityRayPayload.x, visibilityRayPayload.y);
 
             if (isLightVisible)
             {
@@ -361,11 +322,22 @@ extern "C" __global__ void __closesthit__radiance()
                 float pdf = bsdfPdf.w;
 
                 float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
-                Float3 bsdfOverPdf = bsdf * cosTheta / pdf;
+                Float3 bsdfOverPdf = bsdf * cosTheta;
 
                 lightSample.radiance *= GetDIReservoirInvPdf(reservoir) / lightSample.solidAnglePdf;
 
-                Float3 shadowRayRadiance = bsdfOverPdf * lightSample.radiance * shadowRayAbsorption;
+                Float3 shadowRayRadiance = bsdfOverPdf * lightSample.radiance;
+
+                // if (OPTIX_CENTER_PIXEL())
+                // {
+                //     OPTIX_DEBUG_PRINT(bsdf);
+                //     OPTIX_DEBUG_PRINT(cosTheta);
+                //     OPTIX_DEBUG_PRINT(pdf);
+                //     OPTIX_DEBUG_PRINT(GetDIReservoirInvPdf(reservoir));
+                //     OPTIX_DEBUG_PRINT(lightSample.radiance);
+                //     OPTIX_DEBUG_PRINT(bsdfOverPdf);
+                //     OPTIX_DEBUG_PRINT(shadowRayRadiance);
+                // }
 
                 rayData->radiance += shadowRayRadiance;
             }
@@ -381,69 +353,19 @@ extern "C" __global__ void __closesthit__bsdf_light()
 {
     ShadowRayData *rayData = (ShadowRayData *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
-    rayData->distance = optixGetRayTmax();
-
     const GeometryInstanceData *instanceData = reinterpret_cast<const GeometryInstanceData *>(optixGetSbtDataPointer());
 
     const unsigned int instanceId = optixGetInstanceId();
     const unsigned int meshTriangleIndex = optixGetPrimitiveIndex();
 
-    const Int3 tri = instanceData->indices[meshTriangleIndex];
-
-    const VertexAttributes &va0 = instanceData->attributes[tri.x];
-    const VertexAttributes &va1 = instanceData->attributes[tri.y];
-    const VertexAttributes &va2 = instanceData->attributes[tri.z];
-
-    const Float3 v0 = va0.vertex;
-    const Float3 v1 = va1.vertex;
-    const Float3 v2 = va2.vertex;
-
     float2 bary = optixGetTriangleBarycentrics();
 
     rayData->bary = Float2(bary);
-
-    Float3 frontPos;
-    Float3 backPos;
-    Float3 geometricNormal;
-    {
-        float3 objPos, objNorm;
-        float objOffset;
-        SelfIntersectionAvoidance::getSafeTriangleSpawnOffset(
-            /*out*/ objPos,
-            /*out*/ objNorm,
-            /*out*/ objOffset,
-            v0.to_float3(), v1.to_float3(), v2.to_float3(), // v0, v1, v2
-            bary);
-
-        float3 safePos, safeNorm;
-        float safeOffset;
-        SelfIntersectionAvoidance::transformSafeSpawnOffset(
-            /*out*/ safePos,
-            /*out*/ safeNorm,
-            /*out*/ safeOffset,
-            objPos, // from step 4
-            objNorm,
-            objOffset);
-
-        float3 tmpFrontPos, tmpBackPos;
-        SelfIntersectionAvoidance::offsetSpawnPoint(
-            /*out*/ tmpFrontPos,
-            /*out*/ tmpBackPos,
-            /*position =*/safePos,
-            /*direction=*/safeNorm,
-            /*offset   =*/safeOffset);
-
-        frontPos = Float3(tmpFrontPos);
-        backPos = Float3(tmpBackPos);
-        geometricNormal = Float3(safeNorm);
-    }
 
     const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
     int materialId = parameters.indexBSDF;
 
     bool isEmissive = materialId == INDEX_BSDF_EMISSIVE;
-    bool isTransmissive = materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-    bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
 
     if (isEmissive)
     {
@@ -476,26 +398,5 @@ extern "C" __global__ void __closesthit__bsdf_light()
         {
             rayData->lightIdx = sysParam.instanceLightMapping[idx].lightOffset + meshTriangleIndex;
         }
-    }
-    else if (isTransmissive)
-    {
-        rayData->hitTransmissiveSurface = true;
-        rayData->absorption = parameters.absorption;
-
-        if (rayData->insideVolume)
-        {
-            rayData->pos = frontPos;
-        }
-        else
-        {
-            rayData->pos = backPos;
-        }
-    }
-    else if (isThinfilm)
-    {
-        rayData->hitThinfilmSurface = true;
-        rayData->absorption = parameters.absorption;
-
-        rayData->pos = backPos;
     }
 }

@@ -153,60 +153,46 @@ INL_DEVICE void MicrofacetReflectionBSDFEvaluate(Float3 n, Float3 ng, Float3 wi,
     pdf = (D * cosThetaWh) / (4.0f * cosThetaWoWh);
 }
 
-INL_DEVICE void UberBSDFSample(Float3 u, Float3 n, Float3 ng, Float3 wo, Float3 albedo, Float3 F0, float alpha2, bool bilambertian, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
+INL_DEVICE void UberBSDFSample(Float3 u, Float3 n, Float3 ng, Float3 wo, Float3 albedo, Float3 F0, float alpha2, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
-    if (bilambertian)
+    float cosThetaWo = fmaxf(SAFE_COSINE_EPSI, dot(n, wo));
+    constexpr float eta1 = 1.4f;
+    constexpr float eta2 = 1.0f;
+    constexpr float F0Dielectric = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
+    float reflectionProbability = clampf(F0Dielectric + (1.0f - F0Dielectric) * pow5(1.0f - cosThetaWo), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
+    float diffuseProbability = 1.0f - reflectionProbability;
+
+    if (u.z < reflectionProbability)
     {
-        BiLambertianBSDFSample(u, n, ng, albedo, wi, bsdfOverPdf, pdf);
+        MicrofacetReflectionBSDFSample(u.xy, n, ng, wo, F0, alpha2, wi, bsdfOverPdf, pdf);
+        pdf *= reflectionProbability;
     }
     else
     {
-        float cosThetaWo = fmaxf(SAFE_COSINE_EPSI, dot(n, wo));
-        constexpr float eta1 = 1.4f;
-        constexpr float eta2 = 1.0f;
-        constexpr float F0Dielectric = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-        float reflectionProbability = clampf(F0Dielectric + (1.0f - F0Dielectric) * pow5(1.0f - cosThetaWo), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-        float diffuseProbability = 1.0f - reflectionProbability;
-
-        if (u.z < reflectionProbability)
-        {
-            MicrofacetReflectionBSDFSample(u.xy, n, ng, wo, F0, alpha2, wi, bsdfOverPdf, pdf);
-            pdf *= reflectionProbability;
-        }
-        else
-        {
-            LambertianReflectionBSDFSample(u.xy, n, ng, albedo, wi, bsdfOverPdf, pdf);
-            pdf *= diffuseProbability;
-        }
+        LambertianReflectionBSDFSample(u.xy, n, ng, albedo, wi, bsdfOverPdf, pdf);
+        pdf *= diffuseProbability;
     }
 }
 
-INL_DEVICE void UberBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Float3 albedo, Float3 F0, float alpha2, bool bilambertian, Float3 &bsdf, float &pdf)
+INL_DEVICE void UberBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Float3 albedo, Float3 F0, float alpha2, Float3 &bsdf, float &pdf)
 {
-    if (bilambertian)
-    {
-        BiLambertianBSDFEvaluate(n, ng, wi, albedo, bsdf, pdf);
-    }
-    else
-    {
-        float cosThetaWo = fmaxf(SAFE_COSINE_EPSI, dot(n, wo));
-        constexpr float eta1 = 1.4f;
-        constexpr float eta2 = 1.0f;
-        constexpr float F0Dielectric = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
-        float reflectionProbability = clampf(F0Dielectric + (1.0f - F0Dielectric) * pow5(1.0f - cosThetaWo), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
-        float diffuseProbability = 1.0f - reflectionProbability;
+    float cosThetaWo = fmaxf(SAFE_COSINE_EPSI, dot(n, wo));
+    constexpr float eta1 = 1.4f;
+    constexpr float eta2 = 1.0f;
+    constexpr float F0Dielectric = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
+    float reflectionProbability = clampf(F0Dielectric + (1.0f - F0Dielectric) * pow5(1.0f - cosThetaWo), SAFE_COSINE_EPSI, 1.0f - SAFE_COSINE_EPSI);
+    float diffuseProbability = 1.0f - reflectionProbability;
 
-        Float3 bsdfReflection;
-        float pdfReflection;
+    Float3 bsdfReflection;
+    float pdfReflection;
 
-        MicrofacetReflectionBSDFEvaluate(n, ng, wi, wo, F0, alpha2, bsdfReflection, pdfReflection);
+    MicrofacetReflectionBSDFEvaluate(n, ng, wi, wo, F0, alpha2, bsdfReflection, pdfReflection);
 
-        Float3 bsdfDiffuse;
-        float pdfDiffuse;
+    Float3 bsdfDiffuse;
+    float pdfDiffuse;
 
-        LambertianReflectionBSDFEvaluate(n, ng, wi, albedo, bsdfDiffuse, pdfDiffuse);
+    LambertianReflectionBSDFEvaluate(n, ng, wi, albedo, bsdfDiffuse, pdfDiffuse);
 
-        bsdf = bsdfDiffuse * diffuseProbability + bsdfReflection * reflectionProbability;
-        pdf = pdfDiffuse * diffuseProbability + pdfReflection * reflectionProbability;
-    }
+    bsdf = bsdfDiffuse * diffuseProbability + bsdfReflection * reflectionProbability;
+    pdf = pdfDiffuse * diffuseProbability + pdfReflection * reflectionProbability;
 }

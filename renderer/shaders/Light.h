@@ -19,7 +19,7 @@ struct Surface
     Float3 geoNormal;
     Float3 albedo;
     float roughness;
-    bool bilambertian;
+    bool thinfilm;
 };
 
 struct LightInfo

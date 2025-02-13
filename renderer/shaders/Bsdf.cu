@@ -33,7 +33,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(
     constexpr float eta2 = 1.0f;
     constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
 
-    UberBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, state.albedo, Float3(F0), alpha2, false, wi, bsdfOverPdf, pdf);
+    UberBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, state.albedo, Float3(F0), alpha2, wi, bsdfOverPdf, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -52,7 +52,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(
     Float3 f;
     float pdf;
 
-    UberBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, state.albedo, Float3(F0), alpha2, false, f, pdf);
+    UberBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, state.albedo, Float3(F0), alpha2, f, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -76,7 +76,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_
 
     Float3 diffuseAlbedo = lerp3f(state.albedo, Float3(0.0f), state.metallic);
 
-    UberBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, diffuseAlbedo, F0, alpha2, false, wi, bsdfOverPdf, pdf);
+    UberBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, diffuseAlbedo, F0, alpha2, wi, bsdfOverPdf, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -101,7 +101,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_
     Float3 f;
     float pdf;
 
-    UberBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, diffuseAlbedo, F0, alpha2, false, f, pdf);
+    UberBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, diffuseAlbedo, F0, alpha2, f, pdf);
 
     if (pdf <= 0.0f)
     {
