@@ -25,7 +25,7 @@ struct MaterialState
 // Note that the fields are ordered by CUDA alignment restrictions.
 struct __align__(16) RayData
 {
-    Float4 absorption_ior; // The absorption coefficient and IOR of the currently hit material.
+    Float4 absorptionIor; // The absorption coefficient and IOR of the currently hit material.
 
     Float3 pos;     // Current surface hit point or volume sample point, in world space
     float distance; // Distance from the ray origin to the current position, in world space. Needed for absorption of nested materials.
@@ -62,15 +62,23 @@ struct __align__(16) RayData
     bool isCurrentBounceDiffuse;
     bool isLastBounceDiffuse;
     bool hitFrontFace;
-    bool isHitTransmission;
+    bool transmissionEvent;
     bool isInsideVolume;
-    bool isHitThinfilmTransmission;
 };
 
 struct __align__(16) ShadowRayData
 {
     unsigned int lightIdx;
     Float2 bary;
+
+    Float3 pos;
+    Float3 absorption;
+    float distance;
+
+    bool hitTransmissiveSurface;
+    bool hitThinfilmSurface;
+
+    bool insideVolume;
 };
 
 union Payload

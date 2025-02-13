@@ -25,10 +25,8 @@ __device__ __inline__ bool TraceNextPath(
     rayData->isCurrentBounceDiffuse = false;
 
     rayData->hitFrontFace = false;
-    rayData->isHitTransmission = false;
+    rayData->transmissionEvent = false;
     rayData->isInsideVolume = false;
-
-    rayData->isHitThinfilmTransmission = false;
 
     Float3 extinction;
     if (volumnIdx > 0)
@@ -60,12 +58,12 @@ __device__ __inline__ bool TraceNextPath(
 
     throughput *= rayData->f_over_pdf;
 
-    if (rayData->isHitTransmission)
+    if (rayData->transmissionEvent)
     {
         if (rayData->hitFrontFace) // Enter
         {
             volumnIdx = 1;
-            absorptionIor = rayData->absorption_ior;
+            absorptionIor = rayData->absorptionIor;
         }
         else // Exit
         {
@@ -104,7 +102,7 @@ extern "C" __global__ void __raygen__pathtracer()
     Float3 radiance = Float3(0.0f);
     Float3 throughput = Float3(1.0f);
 
-    rayData->absorption_ior = Float4(0.0f, 0.0f, 0.0f, 1.0f);
+    rayData->absorptionIor = Float4(0.0f, 0.0f, 0.0f, 1.0f);
     rayData->albedo = Float3(1.0f);
     rayData->normal = Float3(0.0f, 1.0f, 0.0f);
     rayData->roughness = 0.0f;

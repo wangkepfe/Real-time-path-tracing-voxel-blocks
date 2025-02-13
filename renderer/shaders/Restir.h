@@ -469,7 +469,7 @@ INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
     Float3 f;
     float pdf;
 
-    FresnelBlendReflectionBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
+    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), surface.bilambertian, f, pdf);
 
     return pdf;
 }
@@ -478,7 +478,7 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, Float3 u, Float3 &wi, floa
 {
     Float3 bsdfOverPdf;
 
-    FresnelBlendReflectionBSDFSample(u, surface.normal, surface.geoNormal, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), wi, bsdfOverPdf, pdf);
+    UberBSDFSample(u, surface.normal, surface.geoNormal, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), surface.bilambertian, wi, bsdfOverPdf, pdf);
 
     return pdf > 0.0f;
 }
@@ -501,7 +501,7 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
     Float3 f;
     float pdf;
 
-    FresnelBlendReflectionBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
+    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), surface.bilambertian, f, pdf);
 
     Float3 reflectedRadiance = lightSample.radiance * f;
 
@@ -704,8 +704,9 @@ INL_DEVICE DIReservoir SampleLightsForSurface(
             rayData.lightIdx = InvalidLightIndex;
             UInt2 payload = splitPointer(&rayData);
 
+            Float3 shadowRayOrig = surface.bilambertian ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
             optixTrace(sysParam.topObject,
-                       (float3)surface.pos, (float3)sampleDir,
+                       (float3)shadowRayOrig, (float3)sampleDir,
                        0.0f, maxDistance, 0.0f, // tmin, tmax, time
                        OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
                        1, 2, 1,

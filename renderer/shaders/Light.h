@@ -12,12 +12,14 @@ struct InstanceLightMapping
 struct Surface
 {
     Float3 pos;
+    Float3 backfacePos;
     Float3 wo;
     float depth;
     Float3 normal;
     Float3 geoNormal;
     Float3 albedo;
     float roughness;
+    bool bilambertian;
 };
 
 struct LightInfo

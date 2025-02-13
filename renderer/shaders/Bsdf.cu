@@ -33,7 +33,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection(
     constexpr float eta2 = 1.0f;
     constexpr float F0 = ((eta1 - eta2) / (eta1 + eta2)) * ((eta1 - eta2) / (eta1 + eta2));
 
-    FresnelBlendReflectionBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, state.albedo, Float3(F0), alpha2, wi, bsdfOverPdf, pdf);
+    UberBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, state.albedo, Float3(F0), alpha2, false, wi, bsdfOverPdf, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -52,7 +52,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection(
     Float3 f;
     float pdf;
 
-    FresnelBlendReflectionBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, state.albedo, Float3(F0), alpha2, f, pdf);
+    UberBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, state.albedo, Float3(F0), alpha2, false, f, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -76,7 +76,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_microfacet_reflection_
 
     Float3 diffuseAlbedo = lerp3f(state.albedo, Float3(0.0f), state.metallic);
 
-    FresnelBlendReflectionBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, diffuseAlbedo, F0, alpha2, wi, bsdfOverPdf, pdf);
+    UberBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.wo, diffuseAlbedo, F0, alpha2, false, wi, bsdfOverPdf, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -101,7 +101,7 @@ extern "C" __device__ Float4 __direct_callable__eval_bsdf_microfacet_reflection_
     Float3 f;
     float pdf;
 
-    FresnelBlendReflectionBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, diffuseAlbedo, F0, alpha2, f, pdf);
+    UberBSDFEvaluate(state.normal, state.geometricNormal, wi, state.wo, diffuseAlbedo, F0, alpha2, false, f, pdf);
 
     if (pdf <= 0.0f)
     {
@@ -160,10 +160,10 @@ __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const
 
 extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_transmission(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
 {
-    rayData->absorption_ior = Float4(parameters.absorption, parameters.ior);
+    rayData->absorptionIor = Float4(parameters.absorption, parameters.ior);
 
     const bool hitFrontFace = rayData->hitFrontFace;
-    const float eta = hitFrontFace ? rayData->absorption_ior.w / 1.0f : 1.0f / rayData->absorption_ior.w;
+    const float eta = hitFrontFace ? rayData->absorptionIor.w / 1.0f : 1.0f / rayData->absorptionIor.w;
 
     Float3 wReflection = reflect3f(-rayData->wo, state.normal);
     Float3 wRefraction;
@@ -191,7 +191,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
             else
             {
                 wi = wRefraction;
-                rayData->isHitTransmission = true;
+                rayData->transmissionEvent = true;
             }
         }
         f_over_pdf = Float3(1.0f);
@@ -205,7 +205,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
         else
         {
             wi = wRefraction;
-            rayData->isHitTransmission = true;
+            rayData->transmissionEvent = true;
         }
         f_over_pdf = Float3(1.0f);
 
@@ -213,46 +213,15 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
     }
 }
 
-extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &f_over_pdf, float &pdf)
+extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, RayData *rayData, Float3 &wi, Float3 &bsdfOverPdf, float &pdf)
 {
-    UnitSquareToCosineHemisphere(rand2(sysParam, rayData->randIdx), state.normal, wi, pdf);
-
-    if (pdf <= 0.0f)
-    {
-        rayData->shouldTerminate = true;
-        return;
-    }
-
-    if (rand(sysParam, rayData->randIdx) < 0.75f)
-    {
-        wi = -wi;
-        rayData->isHitThinfilmTransmission = true;
-        pdf *= 0.75f;
-    }
-    else
-    {
-        pdf *= 0.25f;
-    }
-
-    f_over_pdf = Float3(1.0f); // f=albedo/2pi; pdf=cos_wi/2pi; this term = f/pdf*cos_wi = albedo
+    BiLambertianBSDFSample(rand3(sysParam, rayData->randIdx), state.normal, state.geometricNormal, state.albedo, wi, bsdfOverPdf, pdf);
 }
 
 extern "C" __device__ Float4 __direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm(MaterialParameter const &parameters, MaterialState const &state, RayData *const rayData, const Float3 wi)
 {
-    bool isTransmission = dot(wi, state.normal) < 0.0f;
-
-    if (isTransmission)
-    {
-        const Float3 f = Float3(1.0f) / M_PI / 0.75f;
-        const float pdf = abs(dot(wi, state.normal)) / M_PI / 0.75f;
-
-        return Float4(f, pdf);
-    }
-    else
-    {
-        const Float3 f = Float3(1.0f) / M_PI / 0.25f;
-        const float pdf = abs(dot(wi, state.normal)) / M_PI / 0.25f;
-
-        return Float4(f, pdf);
-    }
+    Float3 f;
+    float pdf;
+    BiLambertianBSDFEvaluate(state.normal, state.geometricNormal, wi, state.albedo, f, pdf);
+    return Float4(f, pdf);
 }
