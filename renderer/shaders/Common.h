@@ -47,4 +47,20 @@ enum FunctionIndexDiffuse
 enum FunctionIndexEmissive
 {
     INDEX_BSDF_EMISSIVE = 10,
+    INDEX_BSDF_MAX_LIMIT = 12,
 };
+
+// inline constexpr int NumberOfBits(unsigned int num)
+// {
+//     int bit = 0;
+
+//     while (num)
+//     {
+//         num &= ~(1u << bit);
+//         ++bit;
+//     }
+
+//     return bit;
+// }
+
+static constexpr int NumOfBitsMaxBsdfIndex = 4; // NumberOfBits(INDEX_BSDF_MAX_LIMIT);

@@ -310,7 +310,7 @@ extern "C" __global__ void __closesthit__radiance()
             optixTrace(sysParam.topObject,
                        (float3)shadowRayOrig, (float3)sampleDir,
                        0.0f, maxDistance, 0.0f, // tmin, tmax, time
-                       OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
+                       OptixVisibilityMask(0xFE), OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
                        0, 2, 2,
                        visibilityRayPayload.x, visibilityRayPayload.y);
 
@@ -322,11 +322,8 @@ extern "C" __global__ void __closesthit__radiance()
                 float pdf = bsdfPdf.w;
 
                 float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
-                Float3 bsdfOverPdf = bsdf * cosTheta;
 
-                lightSample.radiance *= GetDIReservoirInvPdf(reservoir) / lightSample.solidAnglePdf;
-
-                Float3 shadowRayRadiance = bsdfOverPdf * lightSample.radiance;
+                Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(reservoir) / lightSample.solidAnglePdf;
 
                 // if (OPTIX_CENTER_PIXEL())
                 // {

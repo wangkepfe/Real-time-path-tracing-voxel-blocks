@@ -310,6 +310,8 @@ void OptixRenderer::update()
         // Uninstanced
         for (int objectId = 0; objectId < scene.uninstancedGeometryCount; ++objectId)
         {
+            auto blockId = objectId + 1;
+
             GeometryData &geometry = m_geometries[objectId];
             CUDA_CHECK(cudaFree((void *)geometry.gas));
             OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
@@ -322,7 +324,7 @@ void OptixRenderer::update()
                     0.0f, 0.0f, 1.0f, 0.0f};
             memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
             instance.instanceId = objectId;
-            instance.visibilityMask = 255;
+            instance.visibilityMask = (blockId == BlockTypeWater) ? 1 : 255;
             instance.sbtOffset = objectId * numTypesOfRays;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = blasHandle;
@@ -720,11 +722,13 @@ void OptixRenderer::init()
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
     // Create uninstanced geometry BLAS and track instances
-    for (int i = 0; i < scene.uninstancedGeometryCount; ++i)
+    for (int objectId = 0; objectId < scene.uninstancedGeometryCount; ++objectId)
     {
+        int blockId = objectId + 1;
+
         // Create BLAS for the geometry
         GeometryData geometry = {};
-        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[i], scene.m_geometryIndices[i], scene.m_geometryAttibuteSize[i], scene.m_geometryIndicesSize[i]);
+        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
         m_geometries.push_back(geometry);
 
         // Create an instance for the geometry
@@ -735,30 +739,30 @@ void OptixRenderer::init()
                 0.0f, 1.0f, 0.0f, 0.0f,
                 0.0f, 0.0f, 1.0f, 0.0f};
         memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-        instance.instanceId = i;
-        instance.visibilityMask = 255;
-        instance.sbtOffset = i * numTypesOfRays;
+        instance.instanceId = objectId;
+        instance.visibilityMask = (blockId == BlockTypeWater) ? 1 : 255;
+        instance.sbtOffset = objectId * numTypesOfRays;
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = blasHandle;
         m_instances.push_back(instance);
     }
 
     // Create instanced geometry and track instances
-    for (int i = scene.uninstancedGeometryCount; i < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++i)
+    for (int objectId = scene.uninstancedGeometryCount; objectId < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++objectId)
     {
         // Create BLAS for the geometry
         GeometryData geometry = {};
-        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[i], scene.m_geometryIndices[i], scene.m_geometryAttibuteSize[i], scene.m_geometryIndicesSize[i]);
+        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
         m_geometries.push_back(geometry);
-        objectIdxToBlasHandleMap[i] = blasHandle;
+        objectIdxToBlasHandleMap[objectId] = blasHandle;
 
-        for (int instanceId : scene.geometryInstanceIdMap[i])
+        for (int instanceId : scene.geometryInstanceIdMap[objectId])
         {
             OptixInstance instance = {};
             memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
             instance.instanceId = instanceId;
             instance.visibilityMask = 255;
-            instance.sbtOffset = i * numTypesOfRays;
+            instance.sbtOffset = objectId * numTypesOfRays;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = blasHandle;
             m_instances.push_back(instance);

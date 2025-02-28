@@ -37,12 +37,33 @@ __device__ __inline__ bool TraceNextPath(
 
     UInt2 payload = splitPointer(rayData);
 
-    optixTrace(sysParam.topObject,
-               (float3)rayData->pos, (float3)rayData->wi, // origin, direction
-               0.0f, RayMax, 0.0f,                        // tmin, tmax, time
-               OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-               0, 2, 0, // SBToffset, SBTstride, missSBTIndex
-               payload.x, payload.y);
+    // {
+    //     optixTrace(sysParam.topObject,
+    //                (float3)rayData->pos, (float3)rayData->wi, // origin, direction
+    //                0.0f, RayMax, 0.0f,                        // tmin, tmax, time
+    //                OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+    //                0, 2, 0, // SBToffset, SBTstride, missSBTIndex
+    //                payload.x, payload.y);
+    // }
+
+    {
+        optixTraverse(sysParam.topObject,
+                      (float3)rayData->pos, (float3)rayData->wi, // origin, direction
+                      0.0f, RayMax, 0.0f,                        // tmin, tmax, time
+                      OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
+                      0, 2, 0, // SBToffset, SBTstride, missSBTIndex
+                      payload.x, payload.y);
+        unsigned int hint = 0;
+        if (optixHitObjectIsHit())
+        {
+            const GeometryInstanceData *instanceData = reinterpret_cast<const GeometryInstanceData *>(optixHitObjectGetSbtDataPointer());
+            const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
+            int materialId = parameters.indexBSDF;
+            hint = materialId;
+        }
+        optixReorder(hint, NumOfBitsMaxBsdfIndex);
+        optixInvoke(payload.x, payload.y);
+    }
 
     if (rayData->isInsideVolume)
     {
