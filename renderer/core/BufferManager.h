@@ -3,6 +3,7 @@
 #include <cuda_runtime.h>
 #include <vector>
 #include "shaders/LinearMath.h"
+#include "shaders/RestirCommon.h"
 
 enum Buffer2DName
 {
@@ -23,6 +24,9 @@ enum Buffer2DName
     PrevFastIlluminationBuffer,
     PrevHistoryLengthBuffer,
     PrevNormalRoughnessBuffer,
+    GeoNormalThinfilmBuffer,
+    PrevGeoNormalThinfilmBuffer,
+    PrevAlbedoBuffer,
     SkyBuffer,
     SunBuffer,
     DebugBuffer,
@@ -61,12 +65,18 @@ public:
     }
     BufferManager(BufferManager const &) = delete;
     void operator=(BufferManager const &) = delete;
+    ~BufferManager();
 
     void init();
 
     Int2 GetBufferDim(Buffer2DName name) const { return m_buffers[(unsigned int)name].bufferDim; }
     SurfObj GetBuffer2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].buffer; }
     TexObj GetTexture2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].tex; }
+
+    uint32_t reservoirBlockRowPitch;
+    uint32_t reservoirArrayPitch;
+    DIReservoir *reservoirBuffer;
+    uint8_t *neighborOffsetBuffer;
 
 private:
     std::vector<Buffer2D> m_buffers{};

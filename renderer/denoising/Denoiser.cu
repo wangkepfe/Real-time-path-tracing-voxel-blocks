@@ -77,7 +77,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             iterationIndex);
     }
 
-    if (1)
+    if (0)
     {
         if (frameNum > 0)
         {
@@ -137,12 +137,12 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         }
         else
         {
-            BufferCopyFloat4 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+            BufferCopyFloat4(
                 bufferDim,
                 bufferManager.GetBuffer2D(IlluminationBuffer),
                 bufferManager.GetBuffer2D(PrevIlluminationBuffer));
 
-            BufferCopyFloat4 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+            BufferCopyFloat4(
                 bufferDim,
                 bufferManager.GetBuffer2D(IlluminationBuffer),
                 bufferManager.GetBuffer2D(PrevFastIlluminationBuffer));
@@ -157,24 +157,9 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(PrevHistoryLengthBuffer),
                 0.0f);
         }
-
-        BufferCopyFloat4 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferDim,
-            bufferManager.GetBuffer2D(NormalRoughnessBuffer),
-            bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer));
-
-        BufferCopyFloat1 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferDim,
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(PrevDepthBuffer));
-
-        BufferCopyFloat1 KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferDim,
-            bufferManager.GetBuffer2D(MaterialBuffer),
-            bufferManager.GetBuffer2D(PrevMaterialBuffer));
     }
 
-    if (1)
+    if (0)
     {
         AtrousSmem<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
@@ -256,7 +241,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     BufferCopyNonSky KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
         bufferDim,
-        bufferManager.GetBuffer2D(IlluminationPongBuffer),
+        bufferManager.GetBuffer2D(IlluminationBuffer),
 
         // bufferManager.GetBuffer2D(IlluminationBuffer),
         // bufferManager.GetBuffer2D(DepthBuffer),
@@ -266,4 +251,19 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         bufferManager.GetBuffer2D(AlbedoBuffer),
         bufferManager.GetBuffer2D(UiBuffer),
         bufferManager.GetBuffer2D(IlluminationOutputBuffer));
+
+    BufferCopyFloat4(
+        bufferDim,
+        bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+        bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer));
+
+    BufferCopyFloat1(
+        bufferDim,
+        bufferManager.GetBuffer2D(DepthBuffer),
+        bufferManager.GetBuffer2D(PrevDepthBuffer));
+
+    BufferCopyFloat1(
+        bufferDim,
+        bufferManager.GetBuffer2D(MaterialBuffer),
+        bufferManager.GetBuffer2D(PrevMaterialBuffer));
 }

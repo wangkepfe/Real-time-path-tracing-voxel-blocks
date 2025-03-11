@@ -10,6 +10,7 @@
 // For Optix
 #define OPTIX_LEFT_HALF_SCREEN() (optixGetLaunchIndex().x < optixGetLaunchDimensions().x * 0.5f)
 #define OPTIX_CENTER_PIXEL() (optixGetLaunchIndex().x == optixGetLaunchDimensions().x * 0.5f) && (optixGetLaunchIndex().y == optixGetLaunchDimensions().y * 0.5f)
+#define OPTIX_CENTER_BLOCK() (optixGetLaunchIndex().x >= optixGetLaunchDimensions().x * 0.5f - 8) && (optixGetLaunchIndex().x < optixGetLaunchDimensions().x * 0.5f + 8) && (optixGetLaunchIndex().y >= optixGetLaunchDimensions().y * 0.5f - 8) && (optixGetLaunchIndex().y < optixGetLaunchDimensions().y * 0.5f + 8)
 #define OPTIX_DEBUG_PRINT(__VALUE__) OptixDebugPrint(__FILE__, __LINE__, #__VALUE__, __VALUE__);
 
 // For CUDA

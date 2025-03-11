@@ -143,7 +143,7 @@ struct SkyParams
     float timeOfDay = 0.25f;
     float sunAxisAngle = 45.0f;
     float sunAxisRotate = 0.0f;
-    float skyBrightness = 1.0f;
+    float skyBrightness = 1.0f; // 0.00001f;
 };
 
 class GlobalSettings

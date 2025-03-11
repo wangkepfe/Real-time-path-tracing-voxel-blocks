@@ -19,6 +19,8 @@
 #define SUN_SCAN_BLOCK_SIZE 32
 #define SUN_SCAN_BLOCK_COUNT (SUN_SIZE / SUN_SCAN_BLOCK_SIZE)
 
+#define RTXDI_RESERVOIR_BLOCK_SIZE 16
+
 void Buffer2D::init(int textureMode,
                     const cudaChannelFormatDesc *pFormat,
                     Int2 dim,
@@ -95,6 +97,11 @@ Buffer2D::~Buffer2D()
     }
 }
 
+BufferManager::~BufferManager()
+{
+    CUDA_CHECK(cudaFree(reservoirBuffer));
+}
+
 void BufferManager::init()
 {
     auto &backend = Backend::Get();
@@ -141,6 +148,10 @@ void BufferManager::init()
             {PrevFastIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
             {PrevHistoryLengthBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {PrevNormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {PrevNormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {GeoNormalThinfilmBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevGeoNormalThinfilmBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevAlbedoBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {SkyBuffer, {cudaCreateChannelDesc<float4>(), skySize, cudaArraySurfaceLoadStore, NoTexture}},
             {SunBuffer, {cudaCreateChannelDesc<float4>(), sunSize, cudaArraySurfaceLoadStore, NoTexture}},
             {DebugBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
@@ -155,4 +166,46 @@ void BufferManager::init()
         const Buffer2DDesc &desc = map[static_cast<Buffer2DName>(i)];
         m_buffers[i].init(static_cast<Buffer2DName>(i), &desc.format, desc.dim, desc.usageFlag);
     }
+
+    {
+        uint32_t renderWidthBlocks = (renderWidth + RTXDI_RESERVOIR_BLOCK_SIZE - 1) / RTXDI_RESERVOIR_BLOCK_SIZE;
+        uint32_t renderHeightBlocks = (renderHeight + RTXDI_RESERVOIR_BLOCK_SIZE - 1) / RTXDI_RESERVOIR_BLOCK_SIZE;
+        reservoirBlockRowPitch = renderWidthBlocks * (RTXDI_RESERVOIR_BLOCK_SIZE * RTXDI_RESERVOIR_BLOCK_SIZE);
+        reservoirArrayPitch = reservoirBlockRowPitch * renderHeightBlocks;
+
+        CUDA_CHECK(cudaMalloc(&reservoirBuffer, 2 * reservoirArrayPitch * sizeof(DIReservoir)));
+        CUDA_CHECK(cudaMemset(reservoirBuffer, 0, 2 * reservoirArrayPitch * sizeof(DIReservoir)));
+    }
+
+    const uint32_t neighborOffsetCount = 8192;
+    std::vector<uint8_t> offsets;
+    offsets.resize(neighborOffsetCount * 2);
+    {
+        uint8_t *buffer = offsets.data();
+        // Create a sequence of low-discrepancy samples within a unit radius around the origin
+        // for "randomly" sampling neighbors during spatial resampling
+        int R = 250;
+        const float phi2 = 1.0f / 1.3247179572447f;
+        uint32_t num = 0;
+        float u = 0.5f;
+        float v = 0.5f;
+        while (num < neighborOffsetCount * 2)
+        {
+            u += phi2;
+            v += phi2 * phi2;
+            if (u >= 1.0f)
+                u -= 1.0f;
+            if (v >= 1.0f)
+                v -= 1.0f;
+
+            float rSq = (u - 0.5f) * (u - 0.5f) + (v - 0.5f) * (v - 0.5f);
+            if (rSq > 0.25f)
+                continue;
+
+            buffer[num++] = int8_t((u - 0.5f) * R);
+            buffer[num++] = int8_t((v - 0.5f) * R);
+        }
+    }
+    CUDA_CHECK(cudaMalloc(&neighborOffsetBuffer, 2 * neighborOffsetCount * sizeof(uint8_t)));
+    CUDA_CHECK(cudaMemcpy(neighborOffsetBuffer, offsets.data(), 2 * neighborOffsetCount * sizeof(uint8_t), cudaMemcpyHostToDevice));
 }

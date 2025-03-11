@@ -263,6 +263,7 @@ struct Int2
     INL_HOST_DEVICE Int2 operator-(int a) const { return Int2(x - a, y - a); }
     INL_HOST_DEVICE Int2 operator*(int a) const { return Int2(x * a, y * a); }
     INL_HOST_DEVICE Int2 operator/(int a) const { return Int2(x / a, y / a); }
+    INL_HOST_DEVICE Int2 operator%(int a) const { return Int2(x % a, y % a); }
 
     INL_HOST_DEVICE Int2 operator+=(int a)
     {
@@ -286,6 +287,12 @@ struct Int2
     {
         x /= a;
         y /= a;
+        return *this;
+    }
+    INL_HOST_DEVICE Int2 operator%=(int a)
+    {
+        x %= a;
+        y %= a;
         return *this;
     }
 

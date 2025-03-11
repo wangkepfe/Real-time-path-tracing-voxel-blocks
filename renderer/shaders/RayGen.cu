@@ -139,13 +139,15 @@ extern "C" __global__ void __raygen__pathtracer()
     bool pathTerminated = false;
 
     Float3 outNormal = Float3(0.0f, 0.0f, 0.0f);
+    Float3 outGeoNormal = Float3(0.0f, 0.0f, 0.0f);
+    float outThinfilm = 0.0f;
     float outRoughness = 0.0f;
     float outDepth = RayMax;
     float outMaterial = 100.0f;
 
     rayData->hitFirstDiffuseSurface = false;
 
-    static constexpr int BounceLimit = 2;
+    static constexpr int BounceLimit = 1;
 
     while (!pathTerminated)
     {
@@ -162,6 +164,8 @@ extern "C" __global__ void __raygen__pathtracer()
             outDepth = rayData->distance;
             outRoughness = rayData->roughness;
             outMaterial = rayData->material;
+            outGeoNormal = rayData->geoNormal;
+            outThinfilm = rayData->hitThinfilm ? 1.0f : 0.0f;
         }
 
         ++rayData->depth;
@@ -177,6 +181,8 @@ extern "C" __global__ void __raygen__pathtracer()
         Store2DFloat1(outMaterial, sysParam.outMaterial, idx);
         Store2DFloat4(Float4(outNormal, outRoughness), sysParam.outNormal, idx);
         Store2DFloat1(outDepth, sysParam.outDepth, idx);
+
+        Store2DFloat4(Float4(outGeoNormal, outThinfilm), sysParam.outGeoNormalThinfilmBuffer, idx);
     }
 
     if (sysParam.sampleIndex > 0)

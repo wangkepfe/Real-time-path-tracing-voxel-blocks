@@ -215,6 +215,7 @@ extern "C" __global__ void __closesthit__radiance()
     {
         state.normal = state.geometricNormal;
     }
+    state.normal = lerp3f(state.geometricNormal, state.normal, 0.5f);
 
     // Water
     if (parameters.flags == 1)
@@ -238,8 +239,10 @@ extern "C" __global__ void __closesthit__radiance()
     }
 
     rayData->normal = state.normal;
+    rayData->geoNormal = state.geometricNormal;
     rayData->roughness = state.roughness;
     rayData->isCurrentBounceDiffuse = isDiffuse;
+    rayData->hitThinfilm = isThinfilm;
 
     const int indexBsdfSample = materialId;
 
@@ -260,6 +263,7 @@ extern "C" __global__ void __closesthit__radiance()
     Float3 backfacePos = useFrontPos ? backPos : frontPos;
 
     // Demodulate albedo and save it in the albedo map
+    bool skipAlbedoInShadowRayContribution = false;
     if (!rayData->hitFirstDiffuseSurface && isDiffuse)
     {
         rayData->hitFirstDiffuseSurface = true;
@@ -276,7 +280,7 @@ extern "C" __global__ void __closesthit__radiance()
 
         // Demodulate the first ever albedo contribution
         surfBsdfOverPdf /= albedo;
-        state.albedo = Float3(1.0f); // This albedo is used for later shadow ray contribution
+        skipAlbedoInShadowRayContribution = true;
     }
 
     if (isDiffuse)
@@ -292,52 +296,71 @@ extern "C" __global__ void __closesthit__radiance()
         surface.roughness = state.roughness;
         surface.thinfilm = isThinfilm;
 
-        ReSTIRDIParameters params = GetDefaultReSTIRDIParams();
-        SampleParameters sampleParams = InitSampleParameters(params);
-
         LightSample lightSample = {};
-        DIReservoir reservoir = SampleLightsForSurface(sysParam, rayData->randIdx, surface, sampleParams, lightSample);
-        unsigned int sampledLightIdx = GetDIReservoirLightIndex(reservoir);
+        DIReservoir reservoir = SampleLightsForSurface(rayData->randIdx, surface, lightSample);
 
-        if (lightSample.lightType != LightTypeInvalid)
+        // Local RIS sample visibility
+        bool isLightVisible = false;
+        if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(reservoir))
         {
-            Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-            float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - 1e-2f : RayMax;
+            isLightVisible = TraceVisibilityShadowRay(lightSample, surface);
 
-            bool isLightVisible = false;
-            UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
-            Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
-            optixTrace(sysParam.topObject,
-                       (float3)shadowRayOrig, (float3)sampleDir,
-                       0.0f, maxDistance, 0.0f, // tmin, tmax, time
-                       OptixVisibilityMask(0xFE), OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-                       0, 2, 2,
-                       visibilityRayPayload.x, visibilityRayPayload.y);
+            if (!isLightVisible)
+            {
+                // Keep M for correct resampling, remove the actual sample
+                reservoir.lightData = 0;
+                reservoir.weightSum = 0;
+            }
+        }
+
+        constexpr bool enableReSTIR = true;
+
+        Int2 pixelPosition = Int2(optixGetLaunchIndex());
+        Int2 temporalSamplePixelPos; // out, unused for now
+        if (enableReSTIR && rayData->depth == 0)
+        {
+            reservoir = DISpatioTemporalResampling(pixelPosition, surface, reservoir, rayData->randIdx, temporalSamplePixelPos, lightSample);
+        }
+
+        // Shading
+        if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(reservoir))
+        {
+            if (enableReSTIR && rayData->depth == 0)
+            {
+                isLightVisible = TraceVisibilityShadowRay(lightSample, surface);
+
+                if (!isLightVisible)
+                {
+                    // Keep M for correct resampling, remove the actual sample
+                    reservoir.lightData = 0;
+                    reservoir.weightSum = 0;
+                }
+            }
 
             if (isLightVisible)
             {
+                Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
+
                 const int indexBsdfEval = indexBsdfSample + 1;
                 const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, sampleDir);
                 Float3 bsdf = bsdfPdf.xyz;
-                float pdf = bsdfPdf.w;
+
+                if (skipAlbedoInShadowRayContribution)
+                {
+                    bsdf /= state.albedo;
+                }
 
                 float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
 
                 Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(reservoir) / lightSample.solidAnglePdf;
 
-                // if (OPTIX_CENTER_PIXEL())
-                // {
-                //     OPTIX_DEBUG_PRINT(bsdf);
-                //     OPTIX_DEBUG_PRINT(cosTheta);
-                //     OPTIX_DEBUG_PRINT(pdf);
-                //     OPTIX_DEBUG_PRINT(GetDIReservoirInvPdf(reservoir));
-                //     OPTIX_DEBUG_PRINT(lightSample.radiance);
-                //     OPTIX_DEBUG_PRINT(bsdfOverPdf);
-                //     OPTIX_DEBUG_PRINT(shadowRayRadiance);
-                // }
-
                 rayData->radiance += shadowRayRadiance;
             }
+        }
+
+        if (enableReSTIR && rayData->depth == 0)
+        {
+            StoreDIReservoir(reservoir, pixelPosition);
         }
     }
 
@@ -345,6 +368,26 @@ extern "C" __global__ void __closesthit__radiance()
     rayData->f_over_pdf = surfBsdfOverPdf;
     rayData->pdf = surfSampleSurfPdf;
 }
+
+// Boiling filter
+// {
+//     float sum = reservoir.weightSum;
+//     float count = 1.0f;
+//     for (int offset = warpSize / 2; offset > 0; offset /= 2)
+//     {
+//         sum += __shfl_down_sync(__activemask(), sum, offset);
+//         count += __shfl_down_sync(__activemask(), count, offset);
+//     }
+//     float average = sum / count;
+
+//     float filterStrength = 0.2f;
+//     float boilingFilterMultiplier = 10.0f / filterStrength - 9.0f;
+
+//     if (reservoir.weightSum > average * boilingFilterMultiplier)
+//     {
+//         reservoir = EmptyDIReservoir();
+//     }
+// }
 
 extern "C" __global__ void __closesthit__bsdf_light()
 {

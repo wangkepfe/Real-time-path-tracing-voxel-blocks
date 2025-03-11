@@ -124,6 +124,7 @@ void OptixRenderer::render()
 {
     auto &backend = Backend::Get();
     auto &scene = Scene::Get();
+    auto &bufferManager = BufferManager::Get();
 
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
     m_systemParameter.iterationIndex = iterationIndex++;
@@ -137,6 +138,7 @@ void OptixRenderer::render()
     constexpr int samplePerIteration = 1;
 
     m_systemParameter.camera = camera;
+    m_systemParameter.prevCamera = RenderCamera::Get().historyCamera;
     m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
     m_systemParameter.samplePerIteration = samplePerIteration;
     m_systemParameter.timeInSecond = backend.getTimer().getTimeInSecond();
@@ -151,7 +153,6 @@ void OptixRenderer::render()
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
 
-    auto &bufferManager = BufferManager::Get();
     BufferSetFloat4(bufferManager.GetBufferDim(UiBuffer), bufferManager.GetBuffer2D(UiBuffer), Float4(0.0f));
 
     for (int sampleIndex = 0; sampleIndex < samplePerIteration; ++sampleIndex)
@@ -165,6 +166,9 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaPeekAtLastError());
+
+    BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
+    BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
 }
 
 #ifdef _WIN32
@@ -516,6 +520,19 @@ void OptixRenderer::init()
         m_systemParameter.edgeToHighlight = Scene::Get().edgeToHighlight;
 
         m_systemParameter.iterationIndex = 0;
+
+        m_systemParameter.reservoirBlockRowPitch = bufferManager.reservoirBlockRowPitch;
+        m_systemParameter.reservoirArrayPitch = bufferManager.reservoirArrayPitch;
+        m_systemParameter.reservoirBuffer = bufferManager.reservoirBuffer;
+
+        m_systemParameter.prevDepthBuffer = bufferManager.GetBuffer2D(PrevDepthBuffer);
+        m_systemParameter.prevNormalRoughnessBuffer = bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer);
+        m_systemParameter.prevGeoNormalThinfilmBuffer = bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer);
+        m_systemParameter.prevAlbedoBuffer = bufferManager.GetBuffer2D(PrevAlbedoBuffer);
+
+        m_systemParameter.outGeoNormalThinfilmBuffer = bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer);
+
+        m_systemParameter.neighborOffsetBuffer = bufferManager.neighborOffsetBuffer;
 
         m_d_ias = 0;
 
@@ -1084,8 +1101,6 @@ void OptixRenderer::init()
     {
         CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-
-        m_systemParameter.iterationIndex = 0;
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));

@@ -3,50 +3,6 @@
 #include "denoising/DenoiserCommon.h"
 #include "shaders/Sampler.h"
 
-__global__ void BufferCopyFloat1(
-    Int2 screenResolution,
-    SurfObj inBuffer,
-    SurfObj outBuffer)
-{
-    Int2 threadPos;
-    threadPos.x = threadIdx.x;
-    threadPos.y = threadIdx.y;
-
-    Int2 pixelPos;
-    pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
-    pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (pixelPos.x >= screenResolution.x || pixelPos.y >= screenResolution.y)
-    {
-        return;
-    }
-
-    float val = Load2DFloat1(inBuffer, pixelPos);
-    Store2DFloat1(val, outBuffer, pixelPos);
-}
-
-__global__ void BufferCopyFloat4(
-    Int2 screenResolution,
-    SurfObj inBuffer,
-    SurfObj outBuffer)
-{
-    Int2 threadPos;
-    threadPos.x = threadIdx.x;
-    threadPos.y = threadIdx.y;
-
-    Int2 pixelPos;
-    pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
-    pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (pixelPos.x >= screenResolution.x || pixelPos.y >= screenResolution.y)
-    {
-        return;
-    }
-
-    Float4 val = Load2DFloat4(inBuffer, pixelPos);
-    Store2DFloat4(val, outBuffer, pixelPos);
-}
-
 __global__ void BufferCopySky(
     Int2 screenResolution,
     SurfObj inBuffer,

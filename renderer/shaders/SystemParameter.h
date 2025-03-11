@@ -5,6 +5,7 @@
 #include "Camera.h"
 #include "RandGen.h"
 #include "Light.h"
+#include "RestirCommon.h"
 #include <optix.h>
 
 // Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
@@ -30,6 +31,7 @@ struct __align__(16) MaterialParameter
 struct SystemParameter
 {
     Camera camera;
+    Camera prevCamera;
 
     OptixTraversableHandle topObject;
 
@@ -40,6 +42,8 @@ struct SystemParameter
     SurfObj outMaterial;
     SurfObj outMotionVector;
     SurfObj outUiBuffer;
+
+    SurfObj outGeoNormalThinfilmBuffer;
 
     MaterialParameter *materialParameters;
     InstanceLightMapping *instanceLightMapping;
@@ -67,6 +71,16 @@ struct SystemParameter
     BlueNoiseRandGenerator randGen;
     int accumulationCounter;
     float timeInSecond;
+
+    uint32_t reservoirBlockRowPitch;
+    uint32_t reservoirArrayPitch;
+    DIReservoir *reservoirBuffer;
+    uint8_t *neighborOffsetBuffer;
+
+    SurfObj prevDepthBuffer;
+    SurfObj prevNormalRoughnessBuffer;
+    SurfObj prevGeoNormalThinfilmBuffer;
+    SurfObj prevAlbedoBuffer;
 };
 
 struct VertexAttributes
@@ -115,7 +129,7 @@ INL_DEVICE Float3 rand3(const SystemParameter &sysParam, int &randIdx)
     return Float3(rand(sysParam, randIdx), rand(sysParam, randIdx), rand(sysParam, randIdx));
 }
 
-INL_DEVICE float rand16bits(const SystemParameter& sysParam, int& randIdx)
+INL_DEVICE float rand16bits(const SystemParameter &sysParam, int &randIdx)
 {
     Float2 u = rand2(sysParam, randIdx);
     return u.x + u.y / 256.0f;

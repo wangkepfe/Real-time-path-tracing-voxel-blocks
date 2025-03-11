@@ -48,6 +48,8 @@ struct __align__(16) RayData
     Float3 albedo;
     unsigned int sampleIdx;
 
+    Float3 geoNormal;
+
     float rayConeSpread;
     float rayConeWidth;
     unsigned int shadowRayLightIdx;
@@ -64,6 +66,7 @@ struct __align__(16) RayData
     bool hitFrontFace;
     bool transmissionEvent;
     bool isInsideVolume;
+    bool hitThinfilm;
 };
 
 struct __align__(16) ShadowRayData
