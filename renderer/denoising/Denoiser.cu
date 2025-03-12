@@ -77,6 +77,29 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             iterationIndex);
     }
 
+    if (frameNum == 0)
+    {
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(IlluminationBuffer),
+            bufferManager.GetBuffer2D(PrevIlluminationBuffer));
+
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(IlluminationBuffer),
+            bufferManager.GetBuffer2D(PrevFastIlluminationBuffer));
+
+        BufferSetFloat1(
+            bufferDim,
+            bufferManager.GetBuffer2D(HistoryLengthBuffer),
+            0.0f);
+
+        BufferSetFloat1(
+            bufferDim,
+            bufferManager.GetBuffer2D(PrevHistoryLengthBuffer),
+            0.0f);
+    }
+
     if (0)
     {
         if (frameNum > 0)
@@ -135,28 +158,6 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(PrevFastIlluminationBuffer),
                 bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
         }
-        else
-        {
-            BufferCopyFloat4(
-                bufferDim,
-                bufferManager.GetBuffer2D(IlluminationBuffer),
-                bufferManager.GetBuffer2D(PrevIlluminationBuffer));
-
-            BufferCopyFloat4(
-                bufferDim,
-                bufferManager.GetBuffer2D(IlluminationBuffer),
-                bufferManager.GetBuffer2D(PrevFastIlluminationBuffer));
-
-            BufferSetFloat1(
-                bufferDim,
-                bufferManager.GetBuffer2D(HistoryLengthBuffer),
-                0.0f);
-
-            BufferSetFloat1(
-                bufferDim,
-                bufferManager.GetBuffer2D(PrevHistoryLengthBuffer),
-                0.0f);
-        }
     }
 
     if (0)
@@ -165,6 +166,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferDim,
             invBufferDim,
 
+            // bufferManager.GetBuffer2D(IlluminationBuffer),
             bufferManager.GetBuffer2D(PrevIlluminationBuffer),
 
             bufferManager.GetBuffer2D(NormalRoughnessBuffer),
@@ -241,11 +243,13 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     BufferCopyNonSky KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
         bufferDim,
+        // bufferManager.GetBuffer2D(IlluminationPongBuffer),
         bufferManager.GetBuffer2D(IlluminationBuffer),
 
-        // bufferManager.GetBuffer2D(IlluminationBuffer),
-        // bufferManager.GetBuffer2D(DepthBuffer),
-        // bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+        // bufferManager.GetBuffer2D(PrevAlbedoBuffer),
+        // bufferManager.GetBuffer2D(PrevDepthBuffer),
+        // bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer),
+        // bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer),
 
         bufferManager.GetBuffer2D(DepthBuffer),
         bufferManager.GetBuffer2D(AlbedoBuffer),

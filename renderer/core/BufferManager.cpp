@@ -173,8 +173,11 @@ void BufferManager::init()
         reservoirBlockRowPitch = renderWidthBlocks * (RTXDI_RESERVOIR_BLOCK_SIZE * RTXDI_RESERVOIR_BLOCK_SIZE);
         reservoirArrayPitch = reservoirBlockRowPitch * renderHeightBlocks;
 
-        CUDA_CHECK(cudaMalloc(&reservoirBuffer, 2 * reservoirArrayPitch * sizeof(DIReservoir)));
-        CUDA_CHECK(cudaMemset(reservoirBuffer, 0, 2 * reservoirArrayPitch * sizeof(DIReservoir)));
+        // CUDA_CHECK(cudaMalloc(&reservoirBuffer, 2 * reservoirArrayPitch * sizeof(DIReservoir)));
+        // CUDA_CHECK(cudaMemset(reservoirBuffer, 0, 2 * reservoirArrayPitch * sizeof(DIReservoir)));
+
+        CUDA_CHECK(cudaMalloc(&reservoirBuffer, 2 * bufferSize.x * bufferSize.y * sizeof(DIReservoir)));
+        CUDA_CHECK(cudaMemset(reservoirBuffer, 0, 2 * bufferSize.x * bufferSize.y * sizeof(DIReservoir)));
     }
 
     const uint32_t neighborOffsetCount = 8192;

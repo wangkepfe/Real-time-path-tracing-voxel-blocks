@@ -90,7 +90,7 @@ __global__ void BufferCopyNonSky(
         }
         float depth = debugVisualization;
         float depthMin = 0.0f;
-        float depthMax = 20.0f;
+        float depthMax = 10000.0f;
         float normalizedDepth = (depth > depthMin) ? logf(depth - depthMin + 1.0f) / logf(depthMax - depthMin + 1.0f) : 0.0f;
         normalizedDepth = fminf(fmaxf(normalizedDepth, 0.0f), 1.0f);
         Store2DFloat4(Float4(normalizedDepth), outBuffer, pixelPos);

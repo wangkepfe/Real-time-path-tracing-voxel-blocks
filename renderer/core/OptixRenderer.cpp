@@ -131,13 +131,11 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    auto &camera = RenderCamera::Get().camera;
-    RenderCamera::Get().historyCamera = camera;
-    camera.update();
+    RenderCamera::Get().camera.update();
 
     constexpr int samplePerIteration = 1;
 
-    m_systemParameter.camera = camera;
+    m_systemParameter.camera = RenderCamera::Get().camera;
     m_systemParameter.prevCamera = RenderCamera::Get().historyCamera;
     m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
     m_systemParameter.samplePerIteration = samplePerIteration;
@@ -169,6 +167,8 @@ void OptixRenderer::render()
 
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
+
+    RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
 }
 
 #ifdef _WIN32

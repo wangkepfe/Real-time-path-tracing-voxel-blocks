@@ -330,6 +330,8 @@ void InputHandler::update()
         {
             fallSpeed = 0.0f;
         }
+
+        backend.resetAccumulationCounter();
     }
 }
 

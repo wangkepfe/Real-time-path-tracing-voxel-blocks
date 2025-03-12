@@ -6,228 +6,18 @@
 
 extern "C" __constant__ SystemParameter sysParam;
 
-struct SampleParameters
-{
-    unsigned int numLocalLightSamples;
-    unsigned int numSunLightSamples;
-    unsigned int numSkyLightSamples;
-    unsigned int numBrdfSamples;
-
-    unsigned int numMisSamples;
-
-    float localLightMisWeight;
-    float sunLightMisWeight;
-    float skyLightMisWeight;
-    float brdfMisWeight;
-
-    float brdfCutoff;
-};
-
 static const unsigned int RESERVOIR_BLOCK_SIZE = 16;
-static const float kMinRoughness = 0.05f;
-
-struct ReSTIRDIParameters
-{
-    unsigned int numLocalLightSamples;
-    unsigned int numSunLightSamples;
-    unsigned int numSkyLightSamples;
-    unsigned int numBrdfSamples;
-
-    float brdfCutoff;
-    unsigned int enableInitialVisibility;
-    unsigned int environmentMapImportanceSampling;
-
-    float temporalDepthThreshold;
-    float temporalNormalThreshold;
-    unsigned int maxHistoryLength;
-
-    unsigned int enablePermutationSampling;
-    float permutationSamplingThreshold;
-
-    unsigned int enableBoilingFilter;
-    float boilingFilterStrength;
-
-    unsigned int discardInvisibleSamples;
-
-    float spatialDepthThreshold;
-    float spatialNormalThreshold;
-    unsigned int numSpatialSamples;
-
-    unsigned int numDisocclusionBoostSamples;
-    float spatialSamplingRadius;
-
-    unsigned int enableFinalVisibility;
-    unsigned int reuseFinalVisibility;
-    unsigned int finalVisibilityMaxAge;
-    float finalVisibilityMaxDistance;
-
-    unsigned int enableDenoiserInputPacking;
-};
-
-// A structure that groups the application-provided settings for spatio-temporal resampling.
-struct DISpatioTemporalResamplingParameters
-{
-    // Screen-space motion vector, computed as (previousPosition - currentPosition).
-    // The X and Y components are measured in pixels.
-    // The Z component is in linear depth units.
-    Float3 screenSpaceMotion;
-
-    // The index of the reservoir buffer to pull the temporal samples from.
-    unsigned int sourceBufferIndex;
-
-    // Maximum history length for temporal reuse, measured in frames.
-    // Higher values result in more stable and high quality sampling, at the cost of slow reaction to changes.
-    unsigned int maxHistoryLength;
-
-    // Controls the bias correction math for temporal reuse. Depending on the setting, it can add
-    // some shader cost and one approximate shadow ray per pixel (or per two pixels if checkerboard sampling is enabled).
-    // Ideally, these rays should be traced through the previous frame's BVH to get fully unbiased results.
-    unsigned int biasCorrectionMode;
-
-    // Surface depth similarity threshold for temporal reuse.
-    // If the previous frame surface's depth is within this threshold from the current frame surface's depth,
-    // the surfaces are considered similar. The threshold is relative, i.e. 0.1 means 10% of the current depth.
-    // Otherwise, the pixel is not reused, and the resampling shader will look for a different one.
-    float depthThreshold;
-
-    // Surface normal similarity threshold for temporal reuse.
-    // If the dot product of two surfaces' normals is higher than this threshold, the surfaces are considered similar.
-    // Otherwise, the pixel is not reused, and the resampling shader will look for a different one.
-    float normalThreshold;
-
-    // Number of neighbor pixels considered for resampling (1-32)
-    // Some of the may be skipped if they fail the surface similarity test.
-    unsigned int numSamples;
-
-    // Number of neighbor pixels considered when there is no temporal surface (1-32)
-    // Setting this parameter equal or lower than `numSpatialSamples` effectively
-    // disables the disocclusion boost.
-    unsigned int numDisocclusionBoostSamples;
-
-    // Screen-space radius for spatial resampling, measured in pixels.
-    float samplingRadius;
-
-    // Allows the temporal resampling logic to skip the bias correction ray trace for light samples
-    // reused from the previous frame. Only safe to use when invisible light samples are discarded
-    // on the previous frame, then any sample coming from the previous frame can be assumed visible.
-    bool enableVisibilityShortcut;
-
-    // Enables permuting the pixels sampled from the previous frame in order to add temporal
-    // variation to the output signal and make it more denoiser friendly.
-    bool enablePermutationSampling;
-
-    // Enables the comparison of surface materials before taking a surface into resampling.
-    bool enableMaterialSimilarityTest;
-
-    // Prevents samples which are from the current frame or have no reasonable temporal history merged being spread to neighbors
-    bool discountNaiveSamples;
-
-    // Random number for permutation sampling that is the same for all pixels in the frame
-    unsigned int uniformRandomNumber;
-};
-
-struct TemporalResamplingParameters
-{
-    float temporalDepthThreshold;
-    float temporalNormalThreshold;
-    uint32_t maxHistoryLength;
-
-    uint32_t enablePermutationSampling;
-    float permutationSamplingThreshold;
-    uint32_t enableBoilingFilter;
-    float boilingFilterStrength;
-
-    uint32_t discardInvisibleSamples;
-    uint32_t uniformRandomNumber;
-    uint32_t pad2;
-    uint32_t pad3;
-};
-
-struct SpatialResamplingParameters
-{
-    float spatialDepthThreshold;
-    float spatialNormalThreshold;
-    uint32_t numSpatialSamples;
-
-    uint32_t numDisocclusionBoostSamples;
-    float spatialSamplingRadius;
-    uint32_t neighborOffsetMask;
-    uint32_t discountNaiveSamples;
-};
-
-INL_DEVICE TemporalResamplingParameters getDefaultReSTIRDITemporalResamplingParams()
-{
-    TemporalResamplingParameters params = {};
-    params.boilingFilterStrength = 0.2f;
-    params.discardInvisibleSamples = false;
-    params.enableBoilingFilter = true;
-    params.enablePermutationSampling = true;
-    params.maxHistoryLength = 20;
-    params.permutationSamplingThreshold = 0.9f;
-    params.temporalDepthThreshold = 0.1f;
-    params.temporalNormalThreshold = 0.5f;
-    return params;
-}
-
-INL_DEVICE SpatialResamplingParameters getDefaultReSTIRDISpatialResamplingParams()
-{
-    SpatialResamplingParameters params = {};
-    params.numDisocclusionBoostSamples = 8;
-    params.numSpatialSamples = 1;
-    params.spatialDepthThreshold = 0.1f;
-    params.spatialNormalThreshold = 0.5f;
-    params.spatialSamplingRadius = 32.0f;
-    return params;
-}
-
-INL_DEVICE DISpatioTemporalResamplingParameters GetDefaultDISpatioTemporalResamplingParameters()
-{
-    TemporalResamplingParameters temporalResamplingParams = getDefaultReSTIRDITemporalResamplingParams();
-    SpatialResamplingParameters spatialResamplingParams = getDefaultReSTIRDISpatialResamplingParams();
-
-    DISpatioTemporalResamplingParameters stparams;
-    stparams.maxHistoryLength = 20;
-    stparams.depthThreshold = 0.1f;
-    stparams.normalThreshold = 0.5f;
-    stparams.numSamples = 2;
-    stparams.numDisocclusionBoostSamples = 8;
-    stparams.samplingRadius = 32.0f;
-    stparams.enableMaterialSimilarityTest = true;
-    return stparams;
-
-    // RTXDI_DISpatioTemporalResamplingParameters stparams;
-    // stparams.screenSpaceMotion = motionVector;
-    // stparams.sourceBufferIndex = g_Const.restirDI.bufferIndices.temporalResamplingInputBufferIndex;
-    // stparams.maxHistoryLength = g_Const.restirDI.temporalResamplingParams.maxHistoryLength;
-    // stparams.biasCorrectionMode = g_Const.restirDI.temporalResamplingParams.temporalBiasCorrection;
-    // stparams.depthThreshold = g_Const.restirDI.temporalResamplingParams.temporalDepthThreshold;
-    // stparams.normalThreshold = g_Const.restirDI.temporalResamplingParams.temporalNormalThreshold;
-    // stparams.numSamples = g_Const.restirDI.spatialResamplingParams.numSpatialSamples + 1;
-    // stparams.numDisocclusionBoostSamples = g_Const.restirDI.spatialResamplingParams.numDisocclusionBoostSamples;
-    // stparams.samplingRadius = g_Const.restirDI.spatialResamplingParams.spatialSamplingRadius;
-    // stparams.enableVisibilityShortcut = g_Const.restirDI.temporalResamplingParams.discardInvisibleSamples;
-    // stparams.enablePermutationSampling = usePermutationSampling;
-    // stparams.enableMaterialSimilarityTest = true;
-    // stparams.uniformRandomNumber = g_Const.restirDI.temporalResamplingParams.uniformRandomNumber;
-    // stparams.discountNaiveSamples = g_Const.discountNaiveSamples;
-}
-
-INL_DEVICE unsigned int ReservoirPositionToPointer(Int2 reservoirPosition)
-{
-    const unsigned int reservoirBlockRowPitch = sysParam.reservoirBlockRowPitch;
-    const unsigned int reservoirArrayPitch = sysParam.reservoirArrayPitch;
-    const unsigned int reservoirArrayIndex = sysParam.iterationIndex % 2;
-
-    Int2 blockIdx = reservoirPosition / RESERVOIR_BLOCK_SIZE;
-    Int2 positionInBlock = reservoirPosition % RESERVOIR_BLOCK_SIZE;
-
-    return reservoirArrayIndex * reservoirArrayPitch + blockIdx.y * reservoirBlockRowPitch + blockIdx.x * (RESERVOIR_BLOCK_SIZE * RESERVOIR_BLOCK_SIZE) + positionInBlock.y * RESERVOIR_BLOCK_SIZE + positionInBlock.x;
-}
 
 INL_DEVICE void StoreDIReservoir(const DIReservoir reservoir, Int2 reservoirPosition)
 {
-    unsigned int pointer = ReservoirPositionToPointer(reservoirPosition);
+    unsigned int pointer = (reservoirPosition.x + reservoirPosition.y * sysParam.camera.resolution.x) + (sysParam.iterationIndex % 2) * sysParam.camera.resolution.x * sysParam.camera.resolution.y;
     sysParam.reservoirBuffer[pointer] = reservoir;
+}
+
+INL_DEVICE DIReservoir LoadDIReservoir(Int2 reservoirPosition)
+{
+    unsigned int pointer = (reservoirPosition.x + reservoirPosition.y * sysParam.camera.resolution.x) + ((sysParam.iterationIndex + 1) % 2) * sysParam.camera.resolution.x * sysParam.camera.resolution.y;
+    return sysParam.reservoirBuffer[pointer];
 }
 
 INL_DEVICE DIReservoir EmptyDIReservoir()
@@ -240,27 +30,6 @@ INL_DEVICE DIReservoir EmptyDIReservoir()
     s.M = 0;
     return s;
 }
-
-INL_DEVICE DIReservoir LoadDIReservoir(Int2 reservoirPosition)
-{
-    unsigned int pointer = ReservoirPositionToPointer(reservoirPosition);
-    return sysParam.reservoirBuffer[pointer];
-}
-
-// // Structure that groups the parameters for GetReservoirVisibility(...)
-// // Reusing final visibility reduces the number of high-quality shadow rays needed to shade
-// // the scene, at the cost of somewhat softer or laggier shadows.
-// struct VisibilityReuseParameters
-// {
-//     // Controls the maximum age of the final visibility term, measured in frames, that can be reused from the
-//     // previous frame(s). Higher values result in better performance.
-//     unsigned int maxAge;
-
-//     // Controls the maximum distance in screen space between the current pixel and the pixel that has
-//     // produced the final visibility term. The distance does not include the motion vectors.
-//     // Higher values result in better performance and softer shadows.
-//     float maxDistance;
-// };
 
 INL_DEVICE bool IsValidDIReservoir(const DIReservoir reservoir)
 {
@@ -423,7 +192,6 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
 
     UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
 
-    // Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.normal));
     Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.normal)) / lightSample.solidAnglePdf;
 
     return luminance(reflectedRadiance);
@@ -501,14 +269,12 @@ INL_DEVICE LightSample createSkyLightSample(int sampledSkyIdx)
     return sample;
 }
 
-// Computes the multi importance sampling pdf for brdf and light sample.
-// For light and BRDF PDFs wrt solid angle, blend between the two.
-//      lightSelectionPdf is a dimensionless selection pdf
-INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, float lightSelectionPdf, float lightMisWeight, bool isEnvironmentMap, SampleParameters sampleParams)
+// Computes the multi importance sampling pdf for brdf and light sample. For light and BRDF PDFs wrt solid angle, blend between the two. lightSelectionPdf is a dimensionless selection pdf
+INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, float lightSelectionPdf, float lightMisWeight, bool isEnvironmentMap, float brdfMisWeight, float brdfCutoff)
 {
     float lightSolidAnglePdf = lightSample.solidAnglePdf;
 
-    if (sampleParams.brdfMisWeight == 0.0f || lightSolidAnglePdf <= 0.0f || isinf(lightSolidAnglePdf) || isnan(lightSolidAnglePdf))
+    if (brdfMisWeight == 0.0f || lightSolidAnglePdf <= 0.0f || isinf(lightSolidAnglePdf) || isnan(lightSolidAnglePdf))
     {
         // BRDF samples disabled or we can't trace BRDF rays MIS with analytical lights
         return lightMisWeight * lightSelectionPdf;
@@ -530,7 +296,7 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
 
     // Compensate for ray shortening due to brdf cutoff, does not apply to environment map sampling
     float brdfPdf = GetSurfaceBrdfPdf(surface, lightDir);
-    float maxDistance = BrdfMaxDistanceFromPdf(sampleParams.brdfCutoff, brdfPdf);
+    float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
     if (!isEnvironmentMap && lightDistance > maxDistance)
     {
         brdfPdf = 0.0f;
@@ -540,7 +306,7 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
     float sourcePdfWrtSolidAngle = lightSelectionPdf * lightSolidAnglePdf;
 
     // MIS blending against solid angle pdfs.
-    float blendedPdfWrtSolidangle = lightMisWeight * sourcePdfWrtSolidAngle + sampleParams.brdfMisWeight * brdfPdf;
+    float blendedPdfWrtSolidangle = lightMisWeight * sourcePdfWrtSolidAngle + brdfMisWeight * brdfPdf;
 
     // Convert back, RTXDI divides shading again by this term later
     float blendedSourcePdf = blendedPdfWrtSolidangle / lightSolidAnglePdf;
@@ -548,17 +314,17 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
     return blendedSourcePdf;
 }
 
-INL_DEVICE bool TraceVisibilityShadowRay(LightSample lightSample, Surface surface)
+INL_DEVICE bool TraceVisibilityShadowRay(LightSample lightSample, Surface surface, float rayOffset = 0.0f)
 {
     Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-    float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - 1e-2f : RayMax;
+    float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - 0.01f - rayOffset : RayMax;
 
     bool isLightVisible = false;
     UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
     Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
     optixTrace(sysParam.topObject,
                (float3)shadowRayOrig, (float3)sampleDir,
-               0.0f, maxDistance, 0.0f, // tmin, tmax, time
+               rayOffset, maxDistance, 0.0f, // tmin, tmax, time
                OptixVisibilityMask(0xFE), OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
                0, 2, 2,
                visibilityRayPayload.x, visibilityRayPayload.y);
@@ -566,17 +332,12 @@ INL_DEVICE bool TraceVisibilityShadowRay(LightSample lightSample, Surface surfac
     return isLightVisible;
 }
 
-// This function is called in the spatial resampling passes to make sure that
-// the samples actually land on the screen and not outside of its boundaries.
-// It can clamp the position or reflect it across the nearest screen edge.
-// The simplest implementation will just return the input pixelPosition.
 INL_DEVICE Int2 ClampSamplePositionIntoView(Int2 pixelPosition)
 {
     int width = int(sysParam.camera.resolution.x);
     int height = int(sysParam.camera.resolution.y);
 
-    // Reflect the position across the screen edges.
-    // Compared to simple clamping, this prevents the spread of colorful blobs from screen edges.
+    // Reflect the position across the screen edges. Compared to simple clamping, this prevents the spread of colorful blobs from screen edges.
     if (pixelPosition.x < 0)
         pixelPosition.x = -pixelPosition.x;
     if (pixelPosition.y < 0)
@@ -587,277 +348,6 @@ INL_DEVICE Int2 ClampSamplePositionIntoView(Int2 pixelPosition)
         pixelPosition.y = 2 * height - pixelPosition.y - 1;
 
     return pixelPosition;
-}
-
-INL_DEVICE DIReservoir SampleLightsForSurface(
-    int &randIdx,
-    const Surface &surface,
-    LightSample &outLightSample)
-{
-    SampleParameters sampleParams;
-
-    sampleParams.numLocalLightSamples = 8;
-    sampleParams.numSunLightSamples = 1;
-    sampleParams.numSkyLightSamples = 1;
-    sampleParams.numBrdfSamples = 1;
-
-    sampleParams.numMisSamples = sampleParams.numLocalLightSamples + sampleParams.numSunLightSamples + sampleParams.numSkyLightSamples + sampleParams.numBrdfSamples;
-
-    sampleParams.localLightMisWeight = float(sampleParams.numLocalLightSamples) / sampleParams.numMisSamples;
-    sampleParams.sunLightMisWeight = float(sampleParams.numSunLightSamples) / sampleParams.numMisSamples;
-    sampleParams.skyLightMisWeight = float(sampleParams.numSkyLightSamples) / sampleParams.numMisSamples;
-    sampleParams.brdfMisWeight = float(sampleParams.numBrdfSamples) / sampleParams.numMisSamples;
-
-    sampleParams.brdfCutoff = 0.0001f;
-
-    outLightSample = LightSample{};
-
-    // Local light
-    DIReservoir localReservoir = EmptyDIReservoir();
-    LightSample localSample = LightSample{};
-    for (unsigned int i = 0; i < sampleParams.numLocalLightSamples; i++)
-    {
-        float sourcePdf;
-        int lightIndex = sysParam.lightAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-        LightInfo lightInfo = sysParam.lights[lightIndex];
-
-        Float2 uv = rand2(sysParam, randIdx);
-
-        TriangleLight triLight = TriangleLight::Create(lightInfo);
-        LightSample candidateSample = triLight.calcSample(uv, surface.pos);
-
-        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, sampleParams.localLightMisWeight, false, sampleParams);
-        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-        float risRnd = rand(sysParam, randIdx);
-
-        if (blendedSourcePdf != 0.0f)
-        {
-            bool selected = StreamSample(localReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-            if (selected)
-            {
-                localSample = candidateSample;
-            }
-        }
-    }
-    FinalizeResampling(localReservoir, 1.0, sampleParams.numMisSamples);
-    localReservoir.M = 1;
-
-    // Sun
-    DIReservoir sunLightReservoir = EmptyDIReservoir();
-    LightSample sunLightSample = LightSample{};
-    for (unsigned int i = 0; i < sampleParams.numSunLightSamples; i++)
-    {
-        float sourcePdf;
-        int sampledSunIdx = sysParam.sunAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-
-        // Create candidate sample using the helper function.
-        LightSample candidateSample = createSunLightSample(sampledSunIdx);
-
-        // Recompute UV for stream sampling.
-        Int2 sunIdx(sampledSunIdx % sysParam.sunRes.x, sampledSunIdx / sysParam.sunRes.x);
-        Float2 uv((sunIdx.x + 0.5f) / float(sysParam.sunRes.x), (sunIdx.y + 0.5f) / float(sysParam.sunRes.y));
-
-        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, sampleParams.sunLightMisWeight, true, sampleParams);
-        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-        float risRnd = rand(sysParam, randIdx);
-
-        bool selected = StreamSample(sunLightReservoir, SunLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-        if (selected)
-        {
-            sunLightSample = candidateSample;
-        }
-    }
-    FinalizeResampling(sunLightReservoir, 1.0, sampleParams.numMisSamples);
-    sunLightReservoir.M = 1;
-
-    // Sky
-    DIReservoir skyLightReservoir = EmptyDIReservoir();
-    LightSample skyLightSample = LightSample{};
-    for (unsigned int i = 0; i < sampleParams.numSkyLightSamples; i++)
-    {
-        float sourcePdf;
-        int sampledSkyIdx = sysParam.skyAliasTable->sample(rand16bits(sysParam, randIdx), sourcePdf);
-
-        // Create candidate sample using the helper function.
-        LightSample candidateSample = createSkyLightSample(sampledSkyIdx);
-
-        // Recompute UV for stream sampling.
-        Int2 skyIdx(sampledSkyIdx % sysParam.skyRes.x, sampledSkyIdx / sysParam.skyRes.x);
-        Float2 uv((skyIdx.x + 0.5f) / float(sysParam.skyRes.x), (skyIdx.y + 0.5f) / float(sysParam.skyRes.y));
-
-        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, sampleParams.skyLightMisWeight, true, sampleParams);
-        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-        float risRnd = rand(sysParam, randIdx);
-
-        bool selected = StreamSample(skyLightReservoir, SkyLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-        if (selected)
-        {
-            skyLightSample = candidateSample;
-        }
-    }
-    FinalizeResampling(skyLightReservoir, 1.0, sampleParams.numMisSamples);
-    skyLightReservoir.M = 1;
-
-    // BSDF sample
-    DIReservoir brdfReservoir = EmptyDIReservoir();
-    LightSample brdfSample = LightSample{};
-    for (unsigned int i = 0; i < sampleParams.numBrdfSamples; ++i)
-    {
-        float lightSourcePdf = 0.0f;
-        Float3 sampleDir;
-        unsigned int lightIndex = InvalidLightIndex;
-        Float2 uv = Float2(0, 0);
-        LightSample candidateSample = LightSample{};
-
-        float brdfPdf;
-        if (GetSurfaceBrdfSample(surface, rand3(sysParam, randIdx), sampleDir, brdfPdf))
-        {
-            float maxDistance = BrdfMaxDistanceFromPdf(sampleParams.brdfCutoff, brdfPdf);
-
-            ShadowRayData rayData;
-            rayData.lightIdx = InvalidLightIndex;
-            UInt2 payload = splitPointer(&rayData);
-
-            Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
-            optixTrace(sysParam.topObject,
-                       (float3)shadowRayOrig, (float3)sampleDir,
-                       0.0f, maxDistance, 0.0f, // tmin, tmax, time
-                       OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                       1, 2, 1,
-                       payload.x, payload.y);
-
-            if (rayData.lightIdx == InvalidLightIndex)
-            {
-                lightIndex = InvalidLightIndex;
-            }
-            else if (rayData.lightIdx == SkyLightIndex)
-            {
-                const float sunAngle = 0.51f; // angular diagram in degrees
-                const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
-                bool hitDisk = EqualAreaMapCone(uv, sysParam.sunDir, sampleDir, sunAngleCosThetaMax);
-                if (hitDisk)
-                {
-                    lightIndex = SunLightIndex;
-
-                    // Compute UV from sampleDir for sun.
-                    Int2 sunIdx((int)(uv.x * sysParam.sunRes.x - 0.5f), (int)(uv.y * sysParam.sunRes.y - 0.5f));
-                    if (sunIdx.x >= sysParam.sunRes.x)
-                    {
-                        sunIdx.x %= sysParam.sunRes.x;
-                    }
-                    if (sunIdx.x < 0)
-                    {
-                        sunIdx.x = sysParam.sunRes.x - ((-sunIdx.x) % sysParam.sunRes.x);
-                    }
-
-                    sunIdx.y = clampi(sunIdx.y, 0, sysParam.sunRes.y - 1);
-                    int sampledSunIdx = sunIdx.y * sysParam.sunRes.x + sunIdx.x;
-
-                    candidateSample = createSunLightSample(sampledSunIdx);
-                    candidateSample.position = sampleDir; // override with the BSDF sample direction
-
-                    lightSourcePdf = sysParam.sunAliasTable->PMF(sampledSunIdx);
-                }
-                else
-                {
-                    lightIndex = SkyLightIndex;
-                    uv = EqualAreaMap(sampleDir);
-
-                    Int2 skyIdx((int)(uv.x * sysParam.skyRes.x - 0.5f), (int)(uv.y * sysParam.skyRes.y - 0.5f));
-                    clamp2i(skyIdx, Int2(0), sysParam.skyRes - 1);
-
-                    int sampledSkyIdx = skyIdx.y * sysParam.skyRes.x + skyIdx.x;
-
-                    candidateSample = createSkyLightSample(sampledSkyIdx);
-                    candidateSample.position = sampleDir; // override with the BSDF sample direction
-
-                    lightSourcePdf = sysParam.skyAliasTable->PMF(sampledSkyIdx);
-                }
-            }
-            else
-            {
-                lightIndex = rayData.lightIdx;
-
-                LightInfo lightInfo = sysParam.lights[lightIndex];
-
-                TriangleLight triLight = TriangleLight::Create(lightInfo);
-
-                uv = InverseTriangleSample(rayData.bary);
-                candidateSample = triLight.calcSample(uv, surface.pos);
-
-                if (sampleParams.brdfCutoff > 0.0f)
-                {
-                    float lightDistance = length(candidateSample.position - surface.pos);
-
-                    float maxDistance = BrdfMaxDistanceFromPdf(sampleParams.brdfCutoff, brdfPdf);
-                    if (lightDistance > maxDistance)
-                    {
-                        lightIndex = InvalidLightIndex;
-                    }
-                }
-
-                if (lightIndex != InvalidLightIndex)
-                {
-                    lightSourcePdf = sysParam.lightAliasTable->PMF(lightIndex);
-                }
-            }
-        }
-
-        if (lightSourcePdf == 0.0f)
-        {
-            continue;
-        }
-
-        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-
-        bool isEnvMapSample = lightIndex == SkyLightIndex || lightIndex == SunLightIndex;
-        float misWeight = (lightIndex == SkyLightIndex) ? sampleParams.skyLightMisWeight : ((lightIndex == SunLightIndex) ? sampleParams.sunLightMisWeight : sampleParams.localLightMisWeight);
-
-        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, lightSourcePdf, misWeight, isEnvMapSample, sampleParams);
-        float risRnd = rand(sysParam, randIdx);
-
-        bool selected = StreamSample(brdfReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-        if (selected)
-        {
-            brdfSample = candidateSample;
-        }
-    }
-    FinalizeResampling(brdfReservoir, 1.0f, sampleParams.numMisSamples);
-    brdfReservoir.M = 1;
-
-    // Merge samples
-    DIReservoir state = EmptyDIReservoir();
-    CombineDIReservoirs(state, localReservoir, 0.5f, localReservoir.targetPdf);
-    bool selectSunLight = CombineDIReservoirs(state, sunLightReservoir, rand(sysParam, randIdx), sunLightReservoir.targetPdf);
-    bool selectSkyLight = CombineDIReservoirs(state, skyLightReservoir, rand(sysParam, randIdx), skyLightReservoir.targetPdf);
-    bool selectBrdf = CombineDIReservoirs(state, brdfReservoir, rand(sysParam, randIdx), brdfReservoir.targetPdf);
-
-    FinalizeResampling(state, 1.0f, 1.0f);
-    state.M = 1;
-
-    if (selectBrdf)
-    {
-        outLightSample = brdfSample;
-    }
-    else if (selectSkyLight)
-    {
-        outLightSample = skyLightSample;
-    }
-    else if (selectSunLight)
-    {
-        outLightSample = sunLightSample;
-    }
-    else
-    {
-        outLightSample = localSample;
-    }
-
-    return state;
-}
-
-INL_DEVICE int TranslateLightIndex(int currentLightID)
-{
-    return currentLightID;
 }
 
 INL_DEVICE bool GetPrevSurface(Surface &surface, Int2 pixelPosition)
@@ -887,388 +377,34 @@ INL_DEVICE bool GetPrevSurface(Surface &surface, Int2 pixelPosition)
     return true;
 }
 
-// Compares two values and returns true if their relative difference is lower than the threshold.
-// Zero or negative threshold makes test always succeed, not fail.
-INL_DEVICE bool CompareRelativeDifference(float reference, float candidate, float threshold)
+INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir, const Surface &surface)
 {
-    return (threshold <= 0) || abs(reference - candidate) <= threshold * max(reference, candidate);
-}
-
-// See if we will reuse this neighbor or history sample using
-//    edge-stopping functions (e.g., per a bilateral filter).
-INL_DEVICE bool IsValidNeighbor(Float3 ourNorm, Float3 theirNorm, float ourDepth, float theirDepth, float normalThreshold, float depthThreshold)
-{
-    return (dot(theirNorm, ourNorm) >= normalThreshold) && CompareRelativeDifference(ourDepth, theirDepth, depthThreshold);
-}
-
-// Compares the materials of two surfaces, returns true if the surfaces
-// are similar enough that we can share the light reservoirs between them.
-// If unsure, just return true.
-INL_DEVICE bool AreMaterialsSimilar(Surface a, Surface b)
-{
-    const float roughnessThreshold = 0.5f;
-    // const float reflectivityThreshold = 0.25f;
-    const float albedoThreshold = 0.25f;
-
-    if (!CompareRelativeDifference(a.roughness, b.roughness, roughnessThreshold))
-        return false;
-
-    // if (abs(luminance(a.specularF0) - luminance(b.specularF0)) > reflectivityThreshold)
-    //     return false;
-
-    if (abs(luminance(a.albedo) - luminance(b.albedo)) > albedoThreshold)
-        return false;
-
-    return true;
-}
-
-INL_DEVICE DIReservoir DISpatioTemporalResampling(
-    Int2 pixelPosition,
-    Surface surface,
-    DIReservoir curSample,
-    int &randIdx,
-    Int2 &temporalSamplePixelPos,
-    LightSample &selectedLightSample)
-{
-    temporalSamplePixelPos = Int2(-1, -1);
-
-    DIReservoir state = EmptyDIReservoir();
-    CombineDIReservoirs(state, curSample, /* random = */ 0.5f, curSample.targetPdf);
-
-    Float3 currentWorldPos = surface.pos;
-    Float3 prevWorldPos = currentWorldPos; // TODO: movement of the world
-    Float2 prevUV = sysParam.prevCamera.worldDirectionToUV(normalize(prevWorldPos - sysParam.prevCamera.pos));
-    Int2 prevPixelPos = Int2(prevUV.x * sysParam.camera.resolution.x, prevUV.y * sysParam.camera.resolution.y);
-    float expectedPrevLinearDepth = distance(prevWorldPos, sysParam.prevCamera.pos);
-
-    unsigned int numTemporalSamples = 9;
-    unsigned int numSpatialSamples = 0;
-    unsigned int numSamples = numTemporalSamples + numSpatialSamples;
-    const float mCap = 20.0f;
-
-    const Int2 temporalOffsets[9] = {
-        Int2(0, 0), // distance 0
-
-        Int2(0, -1), // distance 1
-        Int2(0, 1),
-        Int2(-1, 0),
-        Int2(1, 0),
-
-        Int2(-1, -1), // distance 1.414
-        Int2(1, -1),
-        Int2(1, 1),
-        Int2(-1, 1),
-    };
-
-    unsigned int cachedResult = 0;
-
-    for (int i = 0; i < numSamples; ++i)
+    LightSample ls = {};
+    unsigned int lightIndex = GetDIReservoirLightIndex(reservoir);
+    Float2 uv = GetDIReservoirSampleUV(reservoir);
+    if (lightIndex == SkyLightIndex)
     {
-        Int2 offset;
-        if (i < numTemporalSamples)
-        {
-            offset = temporalOffsets[i];
-        }
-        else
-        {
-            offset = Int2(rand(sysParam, randIdx) * 16.0f - 8.0f, rand(sysParam, randIdx) * 16.0f - 8.0f);
-        }
-        Int2 idx = prevPixelPos + offset;
-        idx = ClampSamplePositionIntoView(idx);
-
-        Surface temporalSurface;
-        if (!GetPrevSurface(temporalSurface, idx))
-            continue;
-
-        bool isNormalValid = dot(surface.normal, temporalSurface.normal) >= 0.5f;
-        bool isDepthValid = abs(expectedPrevLinearDepth - temporalSurface.depth) <= 0.1f * max(expectedPrevLinearDepth, temporalSurface.depth);
-        bool isRoughValid = abs(surface.roughness - temporalSurface.roughness) <= 0.5f * max(surface.roughness, temporalSurface.roughness);
-        bool isAlbedoValid = abs(luminance(surface.albedo) - luminance(temporalSurface.albedo)) < 0.25f;
-
-        if (OPTIX_CENTER_PIXEL())
-        {
-            OPTIX_DEBUG_PRINT(Int4(isNormalValid, isDepthValid, isRoughValid, isAlbedoValid));
-        }
-
-        if (!(isNormalValid && isDepthValid && isRoughValid && isAlbedoValid))
-            continue;
-
-        cachedResult |= (1u << unsigned int(i));
-
-        DIReservoir prevReservoir = LoadDIReservoir(idx);
-        if (isnan(prevReservoir.weightSum) || isinf(prevReservoir.weightSum))
-        {
-            prevReservoir = EmptyDIReservoir();
-        }
-
-        if (prevReservoir.M > mCap)
-        {
-            prevReservoir.M = mCap;
-        }
-
-        unsigned int originalPrevLightID = GetDIReservoirLightIndex(prevReservoir);
-
-        float neighborWeight = 0;
-        LightSample candidateLightSample = {};
-        if (IsValidDIReservoir(prevReservoir))
-        {
-            auto lightIndex = GetDIReservoirLightIndex(prevReservoir);
-
-            if (lightIndex == SkyLightIndex)
-            {
-                Float2 uv = GetDIReservoirSampleUV(prevReservoir);
-                int x = int(uv.x * sysParam.skyRes.x);
-                int y = int(uv.y * sysParam.skyRes.y);
-                x = clampi(x, 0, sysParam.skyRes.x - 1);
-                y = clampi(y, 0, sysParam.skyRes.y - 1);
-                int sampledSkyIdx = y * sysParam.skyRes.x + x;
-                candidateLightSample = createSkyLightSample(sampledSkyIdx);
-            }
-            else if (lightIndex == SunLightIndex)
-            {
-                Float2 uv = GetDIReservoirSampleUV(prevReservoir);
-                int x = int(uv.x * sysParam.sunRes.x);
-                int y = int(uv.y * sysParam.sunRes.y);
-                x = clampi(x, 0, sysParam.sunRes.x - 1);
-                y = clampi(y, 0, sysParam.sunRes.y - 1);
-                int sampledSunIdx = y * sysParam.sunRes.x + x;
-                candidateLightSample = createSunLightSample(sampledSunIdx);
-            }
-            else
-            {
-                Float2 uv = GetDIReservoirSampleUV(prevReservoir);
-                LightInfo candidateLight = sysParam.lights[lightIndex];
-                TriangleLight triLight = TriangleLight::Create(candidateLight);
-                candidateLightSample = triLight.calcSample(uv, surface.pos);
-            }
-
-            neighborWeight = GetLightSampleTargetPdfForSurface(candidateLightSample, surface);
-        }
-
-        if (CombineDIReservoirs(state, prevReservoir, rand(sysParam, randIdx), neighborWeight))
-        {
-            selectedLightSample = candidateLightSample;
-        }
-
-        if (i < numTemporalSamples)
-        {
-            i = numTemporalSamples - 1;
-        }
+        int x = int(uv.x * sysParam.skyRes.x);
+        int y = int(uv.y * sysParam.skyRes.y);
+        x = clampi(x, 0, sysParam.skyRes.x - 1);
+        y = clampi(y, 0, sysParam.skyRes.y - 1);
+        int sampledSkyIdx = y * sysParam.skyRes.x + x;
+        ls = createSkyLightSample(sampledSkyIdx);
     }
-
-    if (!IsValidDIReservoir(state))
+    else if (lightIndex == SunLightIndex)
     {
-        return state;
+        int x = int(uv.x * sysParam.sunRes.x);
+        int y = int(uv.y * sysParam.sunRes.y);
+        x = clampi(x, 0, sysParam.sunRes.x - 1);
+        y = clampi(y, 0, sysParam.sunRes.y - 1);
+        int sampledSunIdx = y * sysParam.sunRes.x + x;
+        ls = createSunLightSample(sampledSunIdx);
     }
-
-    FinalizeResampling(state, 1.0, state.M);
-
-    return state;
+    else
+    {
+        LightInfo lightInfo = sysParam.lights[lightIndex];
+        TriangleLight triLight = TriangleLight::Create(lightInfo);
+        ls = triLight.calcSample(uv, surface.pos);
+    }
+    return ls;
 }
-
-// selected = i;
-// selectedLightPrevID = int(originalPrevLightID);
-
-// if (!TraceVisibilityShadowRay(candidateLightSample, surface))
-// {
-//     continue;
-// }
-
-// int selected = -1;
-
-// int selectedLightPrevID = -1;
-
-// if (IsValidDIReservoir(curSample))
-// {
-//     selectedLightPrevID = TranslateLightIndex(GetDIReservoirLightIndex(curSample));
-// }
-
-// unsigned int sampleIdx = (startIdx + i) & neighborOffsetMask;
-// Int2 spatialOffsetI = Int2(sysParam.neighborOffsetBuffer[sampleIdx * 2], sysParam.neighborOffsetBuffer[sampleIdx * 2 + 1]);
-// Float2 spatialOffsetF = Float2(spatialOffsetI.x, spatialOffsetI.y) / 255.0f * stparams.samplingRadius;
-// spatialOffset = Int2(spatialOffsetF.x, spatialOffsetF.y);
-
-// Map the light ID from the previous frame into the current frame, if it still exists
-// if (IsValidDIReservoir(prevReservoir))
-// {
-//     if (i == 0)
-//     {
-//         temporalSamplePixelPos = idx;
-//     }
-
-//     int mappedLightID = TranslateLightIndex(GetDIReservoirLightIndex(prevReservoir));
-
-//     if (mappedLightID < 0)
-//     {
-//         // Kill the reservoir
-//         prevReservoir.weightSum = 0;
-//         prevReservoir.lightData = 0;
-//     }
-//     else
-//     {
-//         // Sample is valid - modify the light ID stored
-//         prevReservoir.lightData = mappedLightID | DIReservoir_LightValidBit;
-//     }
-// }
-
-// unsigned int startIdx = unsigned int(rand(sysParam, randIdx) * neighborOffsetMask);
-
-// Backproject this pixel to last frame
-
-// Int2 prevPixelPos = pixelPosition;
-
-// bool foundTemporalSurface = true;
-// const float temporalSearchRadius = 4;
-// Int2 temporalSpatialOffset = Int2(0, 0);
-
-// Try to find a matching surface in the neighborhood of the reprojected pixel
-// for (i = 0; i < 9; i++)
-// {
-//     Int2 offset = Int2(0, 0);
-//     if (i > 0)
-//     {
-//         offset.x = int((rand(sysParam, randIdx) - 0.5f) * temporalSearchRadius);
-//         offset.y = int((rand(sysParam, randIdx) - 0.5f) * temporalSearchRadius);
-//     }
-
-//     Int2 idx = prevPixelPos + offset;
-
-//     // Grab shading / g-buffer data from last frame
-//     if (!GetPrevSurface(temporalSurface, idx))
-//         continue;
-
-//     // Test surface similarity, discard the sample if the surface is too different.
-//     if (!IsValidNeighbor(surface.normal, temporalSurface.normal, expectedPrevLinearDepth, temporalSurface.depth, stparams.normalThreshold, stparams.depthThreshold))
-//         continue;
-
-//     temporalSpatialOffset = offset;
-//     foundTemporalSurface = true;
-//     break;
-// }
-
-// foundTemporalSurface = false;
-
-// Clamp the sample count at 32 to make sure we can keep the neighbor mask in an unsigned int (cachedResult)
-
-// Apply disocclusion boost if there is no temporal surface
-// if (!foundTemporalSurface)
-//     numSamples = clampu(stparams.numDisocclusionBoostSamples, numSamples, 32u);
-
-// We loop through neighbors twice.  Cache the validity / edge-stopping function
-//   results for the 2nd time through.
-
-// Since we're using our bias correction scheme, we need to remember which light selection we made
-
-// if (OPTIX_CENTER_PIXEL())
-// {
-//     OPTIX_DEBUG_PRINT(prevPixelPos);
-// }
-
-// const float mCap = 20.0f;
-
-// Walk the specified number of neighbors, resampling using RIS
-
-// if (!IsValidDIReservoir(state))
-// {
-//     return state;
-// }
-
-// if (1)
-// {
-//     FinalizeResampling(state, 1.0, state.M);
-// }
-// else
-// {
-//     // Compute the unbiased normalization term (instead of using 1/M)
-//     float pi = state.targetPdf;
-//     float piSum = state.targetPdf * curSample.M;
-
-//     if (selectedLightPrevID >= 0)
-//     {
-//         // To do this, we need to walk our neighbors again
-//         for (i = 0; i < numSamples; ++i)
-//         {
-//             // If we skipped this neighbor above, do so again.
-//             if ((cachedResult & (1u << unsigned int(i))) == 0)
-//                 continue;
-
-//             Int2 spatialOffset;
-//             if (i < numTemporalSamples)
-//             {
-//                 spatialOffset = temporalOffsets[i];
-//             }
-//             else
-//             {
-//                 unsigned int sampleIdx = (startIdx + i) & neighborOffsetMask;
-//                 Int2 spatialOffsetI = Int2(sysParam.neighborOffsetBuffer[sampleIdx * 2], sysParam.neighborOffsetBuffer[sampleIdx * 2 + 1]);
-//                 Float2 spatialOffsetF = Float2(spatialOffsetI.x, spatialOffsetI.y) / 255.0f * stparams.samplingRadius;
-//                 spatialOffset = Int2(spatialOffsetF.x, spatialOffsetF.y);
-//             }
-//             Int2 idx = prevPixelPos + spatialOffset;
-//             idx = ClampSamplePositionIntoView(idx);
-
-//             // Load our neighbor's G-buffer
-//             Surface neighborSurface;
-//             GetPrevSurface(neighborSurface, idx);
-
-//             // Get the PDF of the sample RIS selected in the first loop, above, *at this neighbor*
-//             LightSample selectedSampleAtNeighbor;
-//             if (selectedLightPrevID == SkyLightIndex)
-//             {
-//                 Float2 uv = GetDIReservoirSampleUV(state);
-//                 int x = int(uv.x * sysParam.skyRes.x);
-//                 int y = int(uv.y * sysParam.skyRes.y);
-//                 x = clampi(x, 0, sysParam.skyRes.x - 1);
-//                 y = clampi(y, 0, sysParam.skyRes.y - 1);
-//                 int sampledSkyIdx = y * sysParam.skyRes.x + x;
-//                 selectedSampleAtNeighbor = createSkyLightSample(sampledSkyIdx);
-//             }
-//             else if (selectedLightPrevID == SunLightIndex)
-//             {
-//                 Float2 uv = GetDIReservoirSampleUV(state);
-//                 int x = int(uv.x * sysParam.sunRes.x);
-//                 int y = int(uv.y * sysParam.sunRes.y);
-//                 x = clampi(x, 0, sysParam.sunRes.x - 1);
-//                 y = clampi(y, 0, sysParam.sunRes.y - 1);
-//                 int sampledSunIdx = y * sysParam.sunRes.x + x;
-//                 selectedSampleAtNeighbor = createSunLightSample(sampledSunIdx);
-//             }
-//             else
-//             {
-//                 LightInfo selectedLightPrev = sysParam.lights[selectedLightPrevID];
-//                 TriangleLight triLight = TriangleLight::Create(selectedLightPrev);
-//                 selectedSampleAtNeighbor = triLight.calcSample(GetDIReservoirSampleUV(state), neighborSurface.pos);
-//             }
-
-//             float ps = 0.0f;
-//             if (TraceVisibilityShadowRay(selectedSampleAtNeighbor, neighborSurface))
-//             {
-//                 ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, neighborSurface);
-//             }
-
-//             Int2 neighborReservoirPos = idx;
-//             DIReservoir prevReservoir = LoadDIReservoir(neighborReservoirPos);
-
-//             if (isnan(prevReservoir.weightSum) || isinf(prevReservoir.weightSum))
-//             {
-//                 prevReservoir = EmptyDIReservoir();
-//             }
-
-//             if (prevReservoir.M > mCap)
-//             {
-//                 prevReservoir.M = mCap;
-//             }
-
-//             // Select this sample for the (normalization) numerator if this particular neighbor pixel
-//             //     was the one we selected via RIS in the first loop, above.
-//             pi = selected == i ? ps : pi;
-
-//             // Add to the sums of weights for the (normalization) denominator
-//             piSum += ps * prevReservoir.M;
-//         }
-//     }
-//     // Use "MIS-like" normalization
-//     FinalizeResampling(state, pi, piSum);
-// }
-
-// return state;

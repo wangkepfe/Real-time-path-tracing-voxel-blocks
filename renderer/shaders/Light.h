@@ -87,7 +87,7 @@ struct TriangleLight
         float Ldist = length(L);
         L /= Ldist;
 
-        const float areaPdf = 1.0 / surfaceArea;
+        const float areaPdf = 1.0f / surfaceArea;
         const float sampleCosTheta = saturate(dot(L, -lightSampleNormal));
 
         return PdfAtoW(areaPdf, Ldist, sampleCosTheta);
