@@ -536,13 +536,13 @@ namespace SelfIntersectionAvoidance
         }
     }
 
-    __forceinline__ __device__ void getSafeTriangleSpawnOffset(float3 &outPosition, // [out] surface position in object space
-                                                               float3 &outNormal,   // [out] unit length surface normal in object space
-                                                               float &outOffset,    // [out] safe offset along normal in object space
-                                                               const float3 &v0,    // triangle vertex 0 in object space
-                                                               const float3 &v1,    // triangle vertex 1 in object space
-                                                               const float3 &v2,    // triangle vertex 2 in object space
-                                                               const float2 &bary)  // barycentric coordinates
+    __forceinline__ __device__ void getSafeTriangleSpawnOffset(float3 &outPosition,           // [out] surface position in object space
+                                                               float3 &normalRoughnessBuffer, // [out] unit length surface normal in object space
+                                                               float &outOffset,              // [out] safe offset along normal in object space
+                                                               const float3 &v0,              // triangle vertex 0 in object space
+                                                               const float3 &v1,              // triangle vertex 1 in object space
+                                                               const float3 &v2,              // triangle vertex 2 in object space
+                                                               const float2 &bary)            // barycentric coordinates
     {
         // construct triangle edges
         const float3 e1 = make_float3(__fsub_rn(v1.x, v0.x), __fsub_rn(v1.y, v0.y), __fsub_rn(v1.z, v0.z));
@@ -554,20 +554,20 @@ namespace SelfIntersectionAvoidance
         float3 obj_n = SelfIntersectionAvoidance::normalize(SelfIntersectionAvoidance::cross(e1, e2));
 
         outPosition = obj_p;
-        outNormal = obj_n;
+        normalRoughnessBuffer = obj_n;
         outOffset = dot_abs_rn(tri_err, obj_n);
     }
 
     // generate safe world space spawn point offset for an object space hitpoint and offset transformed by a chain of instances
     template <typename TLIST>
-    __forceinline__ __device__ void safeInstancedSpawnOffsetImpl(float3 &outPosition,        // [out] surface position in world space
-                                                                 float3 &outNormal,          // [out] unit length surface normal in world space
-                                                                 float &outOffset,           // [out] safe offset along normal in world space
-                                                                 float3 obj_p,               // object space hit point
-                                                                 float3 obj_n,               // unit length object space normal
-                                                                 float obj_offset,           // object space offset
-                                                                 const float time,           // motion time
-                                                                 const TLIST &transformList) // abstract transform list
+    __forceinline__ __device__ void safeInstancedSpawnOffsetImpl(float3 &outPosition,           // [out] surface position in world space
+                                                                 float3 &normalRoughnessBuffer, // [out] unit length surface normal in world space
+                                                                 float &outOffset,              // [out] safe offset along normal in world space
+                                                                 float3 obj_p,                  // object space hit point
+                                                                 float3 obj_n,                  // unit length object space normal
+                                                                 float obj_offset,              // object space offset
+                                                                 const float time,              // motion time
+                                                                 const TLIST &transformList)    // abstract transform list
     {
         // number of instances in the chain
         const unsigned int numTransforms = transformList.getTransformListSize();
@@ -652,28 +652,28 @@ namespace SelfIntersectionAvoidance
         // set offset output
         outOffset = obj_offset;
         outPosition = obj_p;
-        outNormal = obj_n;
+        normalRoughnessBuffer = obj_n;
     }
 
     // generate safe world space spawn point offset on a triangle transformed by a chain of instances
     // WARNING: does not support motion transforms
     // WARNING: only supports hits of type triangle
     template <typename TLIST>
-    __forceinline__ __device__ void safeInstancedTriangleSpawnOffsetImpl(float3 &outPosition,        // [out] surface position in world space
-                                                                         float3 &outNormal,          // [out] surface normal in world space
-                                                                         float &outOffset,           // [out] safe offset along normal in world space
-                                                                         const float3 &v0,           // triangle vertex 0 in object space
-                                                                         const float3 &v1,           // triangle vertex 1 in object space
-                                                                         const float3 &v2,           // triangle vertex 2 in object space
-                                                                         const float2 &bary,         // barycentric coordinates
-                                                                         const float time,           // motion time
-                                                                         const TLIST &transformList) // abstract transform list
+    __forceinline__ __device__ void safeInstancedTriangleSpawnOffsetImpl(float3 &outPosition,           // [out] surface position in world space
+                                                                         float3 &normalRoughnessBuffer, // [out] surface normal in world space
+                                                                         float &outOffset,              // [out] safe offset along normal in world space
+                                                                         const float3 &v0,              // triangle vertex 0 in object space
+                                                                         const float3 &v1,              // triangle vertex 1 in object space
+                                                                         const float3 &v2,              // triangle vertex 2 in object space
+                                                                         const float2 &bary,            // barycentric coordinates
+                                                                         const float time,              // motion time
+                                                                         const TLIST &transformList)    // abstract transform list
     {
         float3 obj_p, obj_n;
         float obj_offset;
         getSafeTriangleSpawnOffset(obj_p, obj_n, obj_offset, v0, v1, v2, bary);
 
-        safeInstancedSpawnOffsetImpl<TLIST>(outPosition, outNormal, outOffset, obj_p, obj_n, obj_offset, time, transformList);
+        safeInstancedSpawnOffsetImpl<TLIST>(outPosition, normalRoughnessBuffer, outOffset, obj_p, obj_n, obj_offset, time, transformList);
     }
 
     class OptixTransform
@@ -749,7 +749,7 @@ namespace SelfIntersectionAvoidance
         const OptixTraversableHandle *__restrict m_handles;
     };
 
-    __forceinline__ __device__ void getSafeTriangleSpawnOffset(float3 &outPosition, float3 &outNormal, float &outOffset)
+    __forceinline__ __device__ void getSafeTriangleSpawnOffset(float3 &outPosition, float3 &normalRoughnessBuffer, float &outOffset)
     {
         assert(optixIsTriangleHit());
 
@@ -757,11 +757,11 @@ namespace SelfIntersectionAvoidance
         optixGetTriangleVertexData(optixGetGASTraversableHandle(), optixGetPrimitiveIndex(), optixGetSbtGASIndex(),
                                    optixGetRayTime(), data);
 
-        getSafeTriangleSpawnOffset(outPosition, outNormal, outOffset, data[0], data[1], data[2], optixGetTriangleBarycentrics());
+        getSafeTriangleSpawnOffset(outPosition, normalRoughnessBuffer, outOffset, data[0], data[1], data[2], optixGetTriangleBarycentrics());
     }
 
     __forceinline__ __device__ void transformSafeSpawnOffset(float3 &outPosition,
-                                                             float3 &outNormal,
+                                                             float3 &normalRoughnessBuffer,
                                                              float &outOffset,
                                                              const float3 &inPosition,
                                                              const float3 &inNormal,
@@ -770,18 +770,18 @@ namespace SelfIntersectionAvoidance
                                                              const unsigned int numTransforms,
                                                              const OptixTraversableHandle *const __restrict transformHandles)
     {
-        safeInstancedSpawnOffsetImpl<OptixTransformList>(outPosition, outNormal, outOffset, inPosition, inNormal, inOffset,
+        safeInstancedSpawnOffsetImpl<OptixTransformList>(outPosition, normalRoughnessBuffer, outOffset, inPosition, inNormal, inOffset,
                                                          time, OptixTransformList(numTransforms, transformHandles));
     }
 
     __forceinline__ __device__ void transformSafeSpawnOffset(float3 &outPosition,
-                                                             float3 &outNormal,
+                                                             float3 &normalRoughnessBuffer,
                                                              float &outOffset,
                                                              const float3 &inPosition,
                                                              const float3 &inNormal,
                                                              const float inOffset)
     {
-        safeInstancedSpawnOffsetImpl<OptixLocalTransformList>(outPosition, outNormal, outOffset, inPosition, inNormal,
+        safeInstancedSpawnOffsetImpl<OptixLocalTransformList>(outPosition, normalRoughnessBuffer, outOffset, inPosition, inNormal,
                                                               inOffset, optixGetRayTime(), OptixLocalTransformList());
     }
 

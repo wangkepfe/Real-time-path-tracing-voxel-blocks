@@ -24,8 +24,7 @@ enum BlockType
     BlockTypeBrick,
     BlockTypeWall,
     BlockTypePlank,
-
-    BlockTypeWater,
+    BlockTypePlank2,
 
     BlockTypeTest1,
     BlockTypeLeaves,
@@ -34,6 +33,24 @@ enum BlockType
 
     BlockTypeNum,
 };
+
+inline bool IsInstancedBlockType(unsigned int blockId) { return blockId >= BlockTypeTest1; }
+inline bool IsUninstancedBlockType(unsigned int blockId) { return blockId < BlockTypeTest1; }
+inline bool IsTransparentBlockType(unsigned int blockId) { return false; }
+inline bool IsBaseLightBlockType(unsigned int blockId) { return blockId == BlockTypeTestLightBase; }
+
+inline unsigned int GetNumInstancedBlockTypes() { return BlockTypeNum - BlockTypeTest1; }
+inline unsigned int GetNumUninstancedBlockTypes() { return BlockTypeTest1 - 1; }
+inline unsigned int GetNumBlockTypes() { return BlockTypeNum; }
+
+inline unsigned int GetUninstancedObjectIdBegin() { return 0; }
+inline unsigned int GetUninstancedObjectIdEnd() { return BlockTypeTest1 - 1; }
+
+inline unsigned int GetInstancedObjectIdBegin() { return BlockTypeTest1 - 1; }
+inline unsigned int GetInstancedObjectIdEnd() { return BlockTypeNum - 1; }
+
+inline unsigned int ObjectIdToBlockId(unsigned int i) { return i + 1; }
+inline unsigned int BlockIdToObjectId(unsigned int i) { return i - 1; }
 
 inline const std::vector<std::string> &GetTextureFiles()
 {
@@ -51,6 +68,7 @@ inline const std::vector<std::string> &GetTextureFiles()
         "seaworn_stone_tiles", // Brick
         "beige_wall_001",      // Wall
         "wood_planks",         // Plank
+        "wood_planks",         // Plank2
     };
     return textureFiles;
 }

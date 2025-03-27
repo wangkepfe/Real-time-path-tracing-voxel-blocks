@@ -246,14 +246,14 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         // bufferManager.GetBuffer2D(IlluminationPongBuffer),
         bufferManager.GetBuffer2D(IlluminationBuffer),
 
-        // bufferManager.GetBuffer2D(PrevAlbedoBuffer),
-        // bufferManager.GetBuffer2D(PrevDepthBuffer),
+        // bufferManager.GetBuffer2D(AlbedoBuffer),
+        // bufferManager.GetBuffer2D(DepthBuffer),
         // bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer),
         // bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer),
 
         bufferManager.GetBuffer2D(DepthBuffer),
         bufferManager.GetBuffer2D(AlbedoBuffer),
-        bufferManager.GetBuffer2D(UiBuffer),
+        bufferManager.GetBuffer2D(UIBuffer),
         bufferManager.GetBuffer2D(IlluminationOutputBuffer));
 
     BufferCopyFloat4(

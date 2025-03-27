@@ -48,10 +48,6 @@ struct VoxelChunk
 
     Voxel get(Float3 pos)
     {
-        if (pos.y <= 8)
-        {
-            return Voxel{BlockTypeWater};
-        }
         return data[GetLinearId((unsigned int)pos.x, (unsigned int)pos.y, (unsigned int)pos.z, width)];
     }
 

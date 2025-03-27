@@ -150,12 +150,14 @@ void BufferManager::init()
             {PrevNormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
             {PrevNormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
             {GeoNormalThinfilmBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {MaterialParameterBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevMaterialParameterBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {PrevGeoNormalThinfilmBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {PrevAlbedoBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {SkyBuffer, {cudaCreateChannelDesc<float4>(), skySize, cudaArraySurfaceLoadStore, NoTexture}},
             {SunBuffer, {cudaCreateChannelDesc<float4>(), sunSize, cudaArraySurfaceLoadStore, NoTexture}},
             {DebugBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
-            {UiBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {UIBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
         };
 
     assert(map.size() == Buffer2DCount);

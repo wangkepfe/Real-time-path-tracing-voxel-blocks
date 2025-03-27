@@ -121,11 +121,6 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
     // This makes sure all uninstanced material block has at least one block
     for (int i = 1; i < BlockTypeNum; ++i)
     {
-        if (i == BlockTypeWater)
-        {
-            continue;
-        }
-
         if (idx.x == 1 && idx.y == 1 && idx.z == i)
         {
             val.id = i;

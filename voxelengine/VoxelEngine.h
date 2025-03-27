@@ -25,7 +25,6 @@ public:
     void generateVoxels();
     void reload();
 
-    int totalNumBlockTypes;
     int totalNumUninstancedGeometries;
     int totalNumInstancedGeometries;
     int totalNumGeometries;

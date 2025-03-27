@@ -10,63 +10,27 @@ static const unsigned int InvalidLightIndex = 0x7FFFFFFF;
 static const unsigned int SkyLightIndex = 0x7FFFFFFE;
 static const unsigned int SunLightIndex = 0x7FFFFFFD;
 
-// Currently only containing some vertex attributes in world coordinates.
-struct MaterialState
-{
-    Float3 normal;
-    Float2 texcoord;
-    Float3 geometricNormal;
-    Float3 albedo;
-    float roughness;
-    float metallic;
-    Float3 wo;
-};
-
 // Note that the fields are ordered by CUDA alignment restrictions.
 struct __align__(16) RayData
 {
-    Float4 absorptionIor; // The absorption coefficient and IOR of the currently hit material.
-
     Float3 pos;     // Current surface hit point or volume sample point, in world space
     float distance; // Distance from the ray origin to the current position, in world space. Needed for absorption of nested materials.
-
-    Float3 wo; // Outgoing direction, point away from surface, to observer, in world space.
-    float roughness;
-
-    Float3 wi; // Incoming direction, point away from surface, to light, in world space.
+    Float3 wo;      // Outgoing direction, point away from surface, to observer, in world space.
+    Float3 wi;      // Incoming direction, point away from surface, to light, in world space.
     unsigned int depth;
-
-    Float3 radiance; // Radiance along the current path segment.
-    float material;
-
-    Float3 f_over_pdf; // The last BSDF sample's throughput, pre-multiplied f_over_pdf = bsdf.f * fabsf(dot(wi, ns) / bsdf.pdf;
-    float pdf;         // The last BSDF sample's pdf, tracked for multiple importance sampling.
-
-    Float3 normal;
+    Float3 radiance;    // Radiance along the current path segment.
+    Float3 bsdfOverPdf; // The last BSDF sample's throughput, pre-multiplied bsdfOverPdf = bsdf.f * fabsf(dot(wi, ns) / bsdf.pdf;
+    float pdf;          // The last BSDF sample's pdf, tracked for multiple importance sampling.
     int randIdx;
-
-    Float3 albedo;
-    unsigned int sampleIdx;
-
-    Float3 geoNormal;
-
     float rayConeSpread;
     float rayConeWidth;
-    unsigned int shadowRayLightIdx;
-
     bool hitFirstDiffuseSurface;
     bool shouldTerminate;
-    bool isShadowRay;
-    bool hasShadowRayHitAnything;
-    bool hasShadowRayHitTransmissiveSurface;
-    bool hasShadowRayHitThinfilmSurface;
-    bool hasShadowRayHitLocalLight;
     bool isCurrentBounceDiffuse;
     bool isLastBounceDiffuse;
     bool hitFrontFace;
     bool transmissionEvent;
     bool isInsideVolume;
-    bool hitThinfilm;
 };
 
 struct __align__(16) ShadowRayData

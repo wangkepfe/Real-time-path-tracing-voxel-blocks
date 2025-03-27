@@ -80,6 +80,13 @@ __global__ void BufferCopyNonSky(
         Store2DFloat4(Float4(illum * albedo, 0.0f), outBuffer, pixelPos);
     }
 
+    // Visualize albedo
+    if (0)
+    {
+        Float3 illum = Load2DFloat4(inBuffer, pixelPos).xyz;
+        Store2DFloat4(Float4(illum, 0.0f), outBuffer, pixelPos);
+    }
+
     // Visualize depth
     if (0)
     {

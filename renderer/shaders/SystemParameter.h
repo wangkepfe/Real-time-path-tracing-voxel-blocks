@@ -8,24 +8,33 @@
 #include "RestirCommon.h"
 #include <optix.h>
 
-// Just some hardcoded material parameter system which allows to show a few fundamental BSDFs.
-// Alignment of all data types used here is 4 bytes.
 struct __align__(16) MaterialParameter
 {
+    // If texture is not 0, use texture
     TexObj textureAlbedo = 0;
     TexObj textureNormal = 0;
     TexObj textureRoughness = 0;
     TexObj textureMetallic = 0;
 
-    Float3 albedo; // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
-    int indexBSDF; // BSDF index to use in the closest hit program
+    // Otherwise fall back to default parameter here
+    Float3 albedo = Float3(0.75f);
+    float roughness = 0.5f;
+    bool metallic = false;
+    float translucency = 0.0f;
 
-    Float3 absorption; // Absorption coefficient
-    float ior;         // Index of refraction
+    // Material ID for sorting rays
+    int materialId = -1;
 
+    // Texture scale
     Float2 texSize = Float2(1024.0f);
-    unsigned int flags = 0;
     float uvScale = 1.0f;
+
+    // Customized UV
+    bool useWorldGridUV = false;
+
+    //
+    bool isEmissive = false;
+    bool isThinfilm = false;
 };
 
 struct SystemParameter
@@ -34,16 +43,29 @@ struct SystemParameter
     Camera prevCamera;
 
     OptixTraversableHandle topObject;
+    OptixTraversableHandle prevTopObject;
 
-    SurfObj outputBuffer;
-    SurfObj outNormal;
-    SurfObj outDepth;
-    SurfObj outAlbedo;
-    SurfObj outMaterial;
-    SurfObj outMotionVector;
-    SurfObj outUiBuffer;
+    SurfObj illuminationBuffer;
 
-    SurfObj outGeoNormalThinfilmBuffer;
+    // G buffers
+    SurfObj normalRoughnessBuffer;
+    SurfObj depthBuffer;
+    SurfObj albedoBuffer;
+    SurfObj materialBuffer;
+    SurfObj geoNormalThinfilmBuffer;
+    SurfObj materialParameterBuffer;
+
+    // Previous frame G buffers
+    SurfObj prevNormalRoughnessBuffer;
+    SurfObj prevDepthBuffer;
+    SurfObj prevAlbedoBuffer;
+    SurfObj prevMaterialBuffer;
+    SurfObj prevGeoNormalThinfilmBuffer;
+    SurfObj prevMaterialParameterBuffer;
+
+    SurfObj motionVectorBuffer;
+
+    SurfObj UIBuffer;
 
     MaterialParameter *materialParameters;
     InstanceLightMapping *instanceLightMapping;
@@ -65,8 +87,6 @@ struct SystemParameter
     Float3 *edgeToHighlight;
 
     int iterationIndex;
-    int samplePerIteration;
-    int sampleIndex;
 
     BlueNoiseRandGenerator randGen;
     int accumulationCounter;
@@ -76,11 +96,6 @@ struct SystemParameter
     uint32_t reservoirArrayPitch;
     DIReservoir *reservoirBuffer;
     uint8_t *neighborOffsetBuffer;
-
-    SurfObj prevDepthBuffer;
-    SurfObj prevNormalRoughnessBuffer;
-    SurfObj prevGeoNormalThinfilmBuffer;
-    SurfObj prevAlbedoBuffer;
 };
 
 struct VertexAttributes
@@ -116,7 +131,13 @@ typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
 INL_DEVICE float rand(const SystemParameter &sysParam, int &randIdx)
 {
     UInt2 idx = UInt2(optixGetLaunchIndex());
-    return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex * sysParam.samplePerIteration + sysParam.sampleIndex, randIdx++);
+    return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex, randIdx++);
+}
+
+INL_DEVICE float randPrev(const SystemParameter &sysParam, int &randIdx)
+{
+    UInt2 idx = UInt2(optixGetLaunchIndex());
+    return sysParam.randGen.rand(idx.x, idx.y, sysParam.iterationIndex - 1, randIdx++);
 }
 
 INL_DEVICE Float2 rand2(const SystemParameter &sysParam, int &randIdx)
@@ -127,6 +148,11 @@ INL_DEVICE Float2 rand2(const SystemParameter &sysParam, int &randIdx)
 INL_DEVICE Float3 rand3(const SystemParameter &sysParam, int &randIdx)
 {
     return Float3(rand(sysParam, randIdx), rand(sysParam, randIdx), rand(sysParam, randIdx));
+}
+
+INL_DEVICE Float4 rand4(const SystemParameter &sysParam, int &randIdx)
+{
+    return Float4(rand(sysParam, randIdx), rand(sysParam, randIdx), rand(sysParam, randIdx), rand(sysParam, randIdx));
 }
 
 INL_DEVICE float rand16bits(const SystemParameter &sysParam, int &randIdx)

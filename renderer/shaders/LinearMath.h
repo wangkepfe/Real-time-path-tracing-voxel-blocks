@@ -258,6 +258,7 @@ struct Int2
     INL_HOST_DEVICE Int2(int x, int y) : x{x}, y{y} {}
     INL_HOST_DEVICE explicit Int2(const uint2 &v) : x{(int)v.x}, y{(int)v.y} {}
     INL_HOST_DEVICE explicit Int2(const uint3 &v) : x{(int)v.x}, y{(int)v.y} {}
+    INL_HOST_DEVICE explicit Int2(Float2 a) : x{(int)a.x}, y{(int)a.y} {}
 
     INL_HOST_DEVICE Int2 operator+(int a) const { return Int2(x + a, y + a); }
     INL_HOST_DEVICE Int2 operator-(int a) const { return Int2(x - a, y - a); }
@@ -1051,6 +1052,7 @@ struct Mat3
         for (int i = 0; i < 9; ++i)
             _v[i] = 0;
     }
+    INL_HOST_DEVICE Mat3(const Mat3 &rhs) : v0{rhs.v0}, v1{rhs.v1}, v2{rhs.v2} {}
     INL_HOST_DEVICE Mat3(const Float3 &v0, const Float3 &v1, const Float3 &v2) : v0{v0}, v1{v1}, v2{v2} {}
 
     // column-major matrix construction

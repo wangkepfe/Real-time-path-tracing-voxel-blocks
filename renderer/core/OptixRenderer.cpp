@@ -108,7 +108,8 @@ void OptixRenderer::clear()
         CUDA_CHECK(cudaFree((void *)m_geometries[i].attributes));
         CUDA_CHECK(cudaFree((void *)m_geometries[i].gas));
     }
-    CUDA_CHECK(cudaFree((void *)m_d_ias));
+    CUDA_CHECK(cudaFree((void *)m_d_ias[0]));
+    CUDA_CHECK(cudaFree((void *)m_d_ias[1]));
 
     CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
     CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
@@ -133,12 +134,9 @@ void OptixRenderer::render()
 
     RenderCamera::Get().camera.update();
 
-    constexpr int samplePerIteration = 1;
-
     m_systemParameter.camera = RenderCamera::Get().camera;
     m_systemParameter.prevCamera = RenderCamera::Get().historyCamera;
     m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
-    m_systemParameter.samplePerIteration = samplePerIteration;
     m_systemParameter.timeInSecond = backend.getTimer().getTimeInSecond();
 
     const auto &skyModel = SkyModel::Get();
@@ -151,14 +149,11 @@ void OptixRenderer::render()
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
 
-    BufferSetFloat4(bufferManager.GetBufferDim(UiBuffer), bufferManager.GetBuffer2D(UiBuffer), Float4(0.0f));
+    BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
-    for (int sampleIndex = 0; sampleIndex < samplePerIteration; ++sampleIndex)
-    {
-        m_systemParameter.sampleIndex = sampleIndex;
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
-        OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
-    }
+    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
+
+    OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
@@ -167,6 +162,7 @@ void OptixRenderer::render()
 
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
+    BufferCopyFloat4(bufferManager.GetBufferDim(MaterialParameterBuffer), bufferManager.GetBuffer2D(MaterialParameterBuffer), bufferManager.GetBuffer2D(PrevMaterialParameterBuffer));
 
     RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
 }
@@ -312,9 +308,9 @@ void OptixRenderer::update()
         instanceIds.clear();
 
         // Uninstanced
-        for (int objectId = 0; objectId < scene.uninstancedGeometryCount; ++objectId)
+        for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
         {
-            auto blockId = objectId + 1;
+            unsigned int blockId = ObjectIdToBlockId(objectId);
 
             GeometryData &geometry = m_geometries[objectId];
             CUDA_CHECK(cudaFree((void *)geometry.gas));
@@ -328,7 +324,7 @@ void OptixRenderer::update()
                     0.0f, 0.0f, 1.0f, 0.0f};
             memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
             instance.instanceId = objectId;
-            instance.visibilityMask = (blockId == BlockTypeWater) ? 1 : 255;
+            instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
             instance.sbtOffset = objectId * numTypesOfRays;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = blasHandle;
@@ -343,7 +339,7 @@ void OptixRenderer::update()
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
         // Instanced
-        for (int objectId = scene.uninstancedGeometryCount; objectId < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++objectId)
+        for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
         {
             for (int instanceId : scene.geometryInstanceIdMap[objectId])
             {
@@ -364,10 +360,10 @@ void OptixRenderer::update()
         for (int i = 0; i < scene.sceneUpdateObjectId.size(); ++i)
         {
             auto objectId = scene.sceneUpdateObjectId[i];
-            auto blockId = objectId + 1;
+            unsigned int blockId = ObjectIdToBlockId(objectId);
 
             // Uninstanced
-            if (blockId < BlockTypeWater)
+            if (IsUninstancedBlockType(blockId))
             {
                 GeometryData &geometry = m_geometries[objectId];
                 CUDA_CHECK(cudaFree((void *)geometry.gas));
@@ -393,7 +389,7 @@ void OptixRenderer::update()
                 m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
             }
             // Instanced
-            else if (blockId > BlockTypeWater)
+            else if (IsInstancedBlockType(blockId))
             {
                 auto instanceId = scene.sceneUpdateInstanceId[i];
                 bool hasInstance = instanceIds.count(instanceId);
@@ -434,48 +430,55 @@ void OptixRenderer::update()
 
     // Rebuild BVH
     {
-        CUDA_CHECK(cudaStreamSynchronize(Backend::Get().getCudaStream()));
-        CUDA_CHECK(cudaFree((void *)m_d_ias));
+        auto &backend = Backend::Get();
+        CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
+        m_systemParameter.prevTopObject = m_systemParameter.topObject;
+
+        int nextIndex = (m_currentIasIdx + 1) % 2;
+        if (m_d_ias[nextIndex] != 0)
+        {
+            CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
+        }
+
+        // Build the new BVH in the inactive slot.
         CUdeviceptr d_instances;
-
         const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-
         CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                                   cudaMemcpyHostToDevice, backend.getCudaStream()));
 
         OptixBuildInput instanceInput = {};
-
         instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
         instanceInput.instanceArray.instances = d_instances;
         instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
 
         OptixAccelBuildOptions accelBuildOptions = {};
-
         accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
         accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
         OptixAccelBufferSizes iasBufferSizes = {};
-
         OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
 
         CUdeviceptr d_tmp;
-
         CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
-        auto &backend = Backend::Get();
+        // Build the acceleration structure into the new buffer.
         OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
                                           &accelBuildOptions, &instanceInput, 1,
                                           d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias, iasBufferSizes.outputSizeInBytes,
+                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
                                           &m_systemParameter.topObject, nullptr, 0));
 
+        // Synchronize and clean up temporary allocations.
         CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
-
         CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
+        CUDA_CHECK(cudaFree((void *)d_instances));
+
+        // Swap the buffer index.
+        m_currentIasIdx = nextIndex;
     }
 
     scene.sceneUpdateObjectId.clear();
@@ -493,18 +496,33 @@ void OptixRenderer::init()
 
     {
         m_systemParameter.topObject = 0;
-        m_systemParameter.outputBuffer = 0;
+        m_systemParameter.prevTopObject = 0;
         m_systemParameter.materialParameters = nullptr;
 
         const auto &bufferManager = BufferManager::Get();
         const auto &skyModel = SkyModel::Get();
-        m_systemParameter.outputBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
-        m_systemParameter.outNormal = bufferManager.GetBuffer2D(NormalRoughnessBuffer);
-        m_systemParameter.outDepth = bufferManager.GetBuffer2D(DepthBuffer);
-        m_systemParameter.outAlbedo = bufferManager.GetBuffer2D(AlbedoBuffer);
-        m_systemParameter.outMaterial = bufferManager.GetBuffer2D(MaterialBuffer);
-        m_systemParameter.outMotionVector = bufferManager.GetBuffer2D(MotionVectorBuffer);
-        m_systemParameter.outUiBuffer = bufferManager.GetBuffer2D(UiBuffer);
+
+        m_systemParameter.illuminationBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
+
+        // Gbuffers
+        m_systemParameter.normalRoughnessBuffer = bufferManager.GetBuffer2D(NormalRoughnessBuffer);
+        m_systemParameter.depthBuffer = bufferManager.GetBuffer2D(DepthBuffer);
+        m_systemParameter.albedoBuffer = bufferManager.GetBuffer2D(AlbedoBuffer);
+        m_systemParameter.materialBuffer = bufferManager.GetBuffer2D(MaterialBuffer);
+        m_systemParameter.geoNormalThinfilmBuffer = bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer);
+        m_systemParameter.materialParameterBuffer = bufferManager.GetBuffer2D(MaterialParameterBuffer);
+
+        // Previous frame Gbuffers
+        m_systemParameter.prevNormalRoughnessBuffer = bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer);
+        m_systemParameter.prevDepthBuffer = bufferManager.GetBuffer2D(PrevDepthBuffer);
+        m_systemParameter.prevAlbedoBuffer = bufferManager.GetBuffer2D(PrevAlbedoBuffer);
+        m_systemParameter.prevMaterialBuffer = bufferManager.GetBuffer2D(PrevMaterialBuffer);
+        m_systemParameter.prevGeoNormalThinfilmBuffer = bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer);
+        m_systemParameter.prevMaterialParameterBuffer = bufferManager.GetBuffer2D(PrevMaterialParameterBuffer);
+
+        m_systemParameter.motionVectorBuffer = bufferManager.GetBuffer2D(MotionVectorBuffer);
+
+        m_systemParameter.UIBuffer = bufferManager.GetBuffer2D(UIBuffer);
 
         m_systemParameter.randGen = d_randGen;
 
@@ -525,16 +543,10 @@ void OptixRenderer::init()
         m_systemParameter.reservoirArrayPitch = bufferManager.reservoirArrayPitch;
         m_systemParameter.reservoirBuffer = bufferManager.reservoirBuffer;
 
-        m_systemParameter.prevDepthBuffer = bufferManager.GetBuffer2D(PrevDepthBuffer);
-        m_systemParameter.prevNormalRoughnessBuffer = bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer);
-        m_systemParameter.prevGeoNormalThinfilmBuffer = bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer);
-        m_systemParameter.prevAlbedoBuffer = bufferManager.GetBuffer2D(PrevAlbedoBuffer);
-
-        m_systemParameter.outGeoNormalThinfilmBuffer = bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer);
-
         m_systemParameter.neighborOffsetBuffer = bufferManager.neighborOffsetBuffer;
 
-        m_d_ias = 0;
+        m_d_ias[0] = 0;
+        m_d_ias[1] = 0;
 
         m_pipeline = nullptr;
 
@@ -590,158 +602,74 @@ void OptixRenderer::init()
 
     // Create materials
     {
-        // Setup GUI material parameters, one for each of the implemented BSDFs.
-        MaterialParameter parameters{};
+        // Setup GUI material parameter, one for each of the implemented BSDFs.
 
         TextureManager &textureManager = TextureManager::Get();
 
         // The order in this array matches the instance ID in the root IAS!
         for (const auto &textureFile : GetTextureFiles())
         {
-            parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION;
-            parameters.albedo = Float3(1.0f);
-            parameters.uvScale = 2.5f;
-            parameters.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
-            parameters.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
-            parameters.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
-            parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-            parameters.ior = 1.4f;
-            parameters.flags = 0;
-            m_materialParameters.push_back(parameters);
+            MaterialParameter parameter{};
+            parameter.uvScale = 2.5f;
+            parameter.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
+            parameter.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
+            parameter.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
+            parameter.useWorldGridUV = true;
+            m_materialParameters.push_back(parameter);
         }
 
-        // Water material
-        parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-        parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
-        parameters.uvScale = 4.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = textureManager.GetTexture("data/water1.jpg");
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(-logf(0.9f), -logf(0.95f), -logf(1.0f)) * 0.5f;
-        parameters.ior = 1.33f;
-        parameters.flags = 1;
-        m_materialParameters.push_back(parameters);
-
         // Test material
-        parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
-        parameters.albedo = Float3(1.0f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
-        parameters.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(122.0f / 255.0f, 138.0f / 255.0f, 109.0f / 255.0f);
-        parameters.ior = 1.33f;
-        parameters.flags = 2;
-        m_materialParameters.push_back(parameters);
+        {
+            MaterialParameter parameter{};
+            parameter.albedo = Float3(1.0f);
+            // parameter.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
+            // parameter.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
+            // parameter.textureRoughness = textureManager.GetTexture("data/GreenLeaf10_4K_back_rough.png");
+            parameter.roughness = 0.0f;
+            parameter.translucency = 0.0f;
+            // parameter.isThinfilm = true;
+            m_materialParameters.push_back(parameter);
+        }
 
         // Leaf material
-        parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
-        parameters.albedo = Float3(1.0f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
-        parameters.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(122.0f / 255.0f, 138.0f / 255.0f, 109.0f / 255.0f);
-        parameters.ior = 1.33f;
-        parameters.flags = 2;
-        m_materialParameters.push_back(parameters);
+        {
+            MaterialParameter parameter{};
+            parameter.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
+            parameter.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
+            parameter.textureRoughness = textureManager.GetTexture("data/GreenLeaf10_4K_back_rough.png");
+            parameter.translucency = 0.5f;
+            parameter.isThinfilm = true;
+            m_materialParameters.push_back(parameter);
+        }
 
         // Lantern base
-        parameters.indexBSDF = INDEX_BSDF_MICROFACET_REFLECTION_METAL;
-        parameters.albedo = Float3(1.0f);
-        parameters.uvScale = 1.0f;
-        std::string textureFile = "beaten-up-metal1";
-        parameters.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
-        parameters.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
-        parameters.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
-        parameters.textureMetallic = textureManager.GetTexture("data/" + textureFile + "_metal.png");
-        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior = 1.5f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
+        {
+            MaterialParameter parameter{};
+            std::string textureFile = "beaten-up-metal1";
+            parameter.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
+            parameter.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
+            parameter.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
+            parameter.textureMetallic = textureManager.GetTexture("data/" + textureFile + "_metal.png");
+            parameter.useWorldGridUV = true;
+            m_materialParameters.push_back(parameter);
+        }
 
         // Lantern light
-        parameters.indexBSDF = INDEX_BSDF_EMISSIVE;
-        parameters.albedo = GetEmissiveRadiance(BlockTypeTestLight);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = 0;
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior = 1.5f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
-
-        //------------------------ Testing below ------------------------
-
-        // Test thinwall material
-        parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
-        parameters.albedo = Float3(1.0f, 0.2f, 0.2f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = 0;
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(1.0f, 0.2f, 0.2f);
-        parameters.ior = 1.5f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
-
-        // Emissive material
-        parameters.indexBSDF = INDEX_BSDF_EMISSIVE;
-        parameters.albedo = Float3(0.2f, 1.0f, 0.2f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = 0;
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior = 1.5f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
-
-        // Lambert material
-        parameters.indexBSDF = INDEX_BSDF_DIFFUSE_REFLECTION;
-        parameters.albedo = Float3(1.0f, 0.2f, 0.2f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = 0;
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior = 1.5f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
-
-        // Mirror material
-        parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo = Float3(1.0f, 1.0f, 1.0f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = 0;
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior = 1.33f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
-
-        // Black BSDF for the light. This last material will not be shown inside the GUI!
-        parameters.indexBSDF = INDEX_BSDF_SPECULAR_REFLECTION;
-        parameters.albedo = Float3(0.0f, 1.0f, 1.0f);
-        parameters.uvScale = 1.0f;
-        parameters.textureAlbedo = 0;
-        parameters.textureNormal = 0;
-        parameters.textureRoughness = 0;
-        parameters.absorption = Float3(-logf(1.0f), -logf(1.0f), -logf(1.0f)) * 1.0f;
-        parameters.ior = 1.0f;
-        parameters.flags = 0;
-        m_materialParameters.push_back(parameters);
+        {
+            MaterialParameter parameter{};
+            parameter.albedo = GetEmissiveRadiance(BlockTypeTestLight);
+            parameter.isEmissive = true;
+            m_materialParameters.push_back(parameter);
+        }
     }
 
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
     // Create uninstanced geometry BLAS and track instances
-    for (int objectId = 0; objectId < scene.uninstancedGeometryCount; ++objectId)
+    for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
     {
-        int blockId = objectId + 1;
+        unsigned int blockId = ObjectIdToBlockId(objectId);
 
         // Create BLAS for the geometry
         GeometryData geometry = {};
@@ -757,7 +685,7 @@ void OptixRenderer::init()
                 0.0f, 0.0f, 1.0f, 0.0f};
         memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
         instance.instanceId = objectId;
-        instance.visibilityMask = (blockId == BlockTypeWater) ? 1 : 255;
+        instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
         instance.sbtOffset = objectId * numTypesOfRays;
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = blasHandle;
@@ -765,7 +693,7 @@ void OptixRenderer::init()
     }
 
     // Create instanced geometry and track instances
-    for (int objectId = scene.uninstancedGeometryCount; objectId < scene.uninstancedGeometryCount + scene.instancedGeometryCount; ++objectId)
+    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
         // Create BLAS for the geometry
         GeometryData geometry = {};
@@ -811,7 +739,7 @@ void OptixRenderer::init()
 
         OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias, iasBufferSizes.outputSizeInBytes));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[0], iasBufferSizes.outputSizeInBytes));
 
         CUdeviceptr d_tmp;
 
@@ -821,7 +749,7 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
                                           &accelBuildOptions, &instanceInput, 1,
                                           d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias, iasBufferSizes.outputSizeInBytes,
+                                          m_d_ias[0], iasBufferSizes.outputSizeInBytes,
                                           &m_systemParameter.topObject, nullptr, 0));
 
         CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
@@ -939,44 +867,44 @@ void OptixRenderer::init()
 
     // Direct callables
     {
-        std::string ptxBsdf = ReadPtx("ptx/Bsdf.ptx");
-        OptixModule moduleBsdf;
-        OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxBsdf.c_str(), ptxBsdf.size(), nullptr, nullptr, &moduleBsdf));
+        // std::string ptxBsdf = ReadPtx("ptx/Bsdf.ptx");
+        // OptixModule moduleBsdf;
+        // OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxBsdf.c_str(), ptxBsdf.size(), nullptr, nullptr, &moduleBsdf));
 
-        std::vector<OptixProgramGroupDesc> programGroupDescCallables;
+        // std::vector<OptixProgramGroupDesc> programGroupDescCallables;
 
-        OptixProgramGroupDesc pgd = {};
+        // OptixProgramGroupDesc pgd = {};
 
-        pgd.kind = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
-        pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+        // pgd.kind = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+        // pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
 
-        pgd.callables.moduleDC = moduleBsdf;
+        // pgd.callables.moduleDC = moduleBsdf;
 
-        pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection"; // 0
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission"; // 1
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection"; // 2
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection"; // 3
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection"; // 4
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection"; // 5
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm"; // 6
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm"; // 7
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection_metal"; // 8
-        programGroupDescCallables.push_back(pgd);
-        pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection_metal"; // 9
-        programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection"; // 0
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission"; // 1
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection"; // 2
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection"; // 3
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection"; // 4
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection"; // 5
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection_transmission_thinfilm"; // 6
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection_transmission_thinfilm"; // 7
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_microfacet_reflection_metal"; // 8
+        // programGroupDescCallables.push_back(pgd);
+        // pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_microfacet_reflection_metal"; // 9
+        // programGroupDescCallables.push_back(pgd);
 
-        programGroupCallables.resize(programGroupDescCallables.size());
-        OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
-        programGroups.insert(programGroups.end(), programGroupCallables.begin(), programGroupCallables.end());
-        moduleList.push_back(moduleBsdf);
+        // programGroupCallables.resize(programGroupDescCallables.size());
+        // OPTIX_CHECK(m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()));
+        // programGroups.insert(programGroups.end(), programGroupCallables.begin(), programGroupCallables.end());
+        // moduleList.push_back(moduleBsdf);
     }
 
     // Pipeline
@@ -1067,16 +995,16 @@ void OptixRenderer::init()
     }
 
     // Direct callables
-    std::vector<SbtRecordHeader> sbtRecordCallables(programGroupCallables.size());
-    {
-        for (size_t i = 0; i < programGroupCallables.size(); ++i)
-        {
-            OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]));
-        }
+    // std::vector<SbtRecordHeader> sbtRecordCallables(programGroupCallables.size());
+    // {
+    //     for (size_t i = 0; i < programGroupCallables.size(); ++i)
+    //     {
+    //         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]));
+    //     }
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-    }
+    //     CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
+    //     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+    // }
 
     // Setup the OptixShaderBindingTable
     {
@@ -1092,9 +1020,9 @@ void OptixRenderer::init()
         m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
         m_sbt.hitgroupRecordCount = numObjects * numTypesOfRays;
 
-        m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
-        m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
-        m_sbt.callablesRecordCount = (unsigned int)sbtRecordCallables.size();
+        // m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
+        // m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
+        // m_sbt.callablesRecordCount = (unsigned int)sbtRecordCallables.size();
     }
 
     // Setup "sysParam" data.

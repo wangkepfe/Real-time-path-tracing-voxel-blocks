@@ -174,11 +174,6 @@ void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
                 }
 
                 inputHandler.currentSelectedBlockId = min(inputHandler.currentSelectedBlockId, BlockTypeNum - 1);
-
-                if (inputHandler.currentSelectedBlockId == BlockTypeWater)
-                {
-                    inputHandler.currentSelectedBlockId = 0;
-                }
             }
         }
     }

@@ -195,19 +195,19 @@ void VoxelEngine::initInstanceGeometry()
     auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
     auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-    for (int i = totalNumUninstancedGeometries; i < totalNumUninstancedGeometries + totalNumInstancedGeometries; ++i)
+    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        sceneGeometryAttributeSize[i] = 0;
-        sceneGeometryIndicesSize[i] = 0;
+        sceneGeometryAttributeSize[objectId] = 0;
+        sceneGeometryIndicesSize[objectId] = 0;
 
-        unsigned int blockId = i + 1;
+        unsigned int blockId = ObjectIdToBlockId(objectId);
 
         std::string modelFileName = GetModelFileName(blockId);
 
-        loadModel(&(sceneGeometryAttributes[i]),
-                  &(sceneGeometryIndices[i]),
-                  sceneGeometryAttributeSize[i],
-                  sceneGeometryIndicesSize[i],
+        loadModel(&(sceneGeometryAttributes[objectId]),
+                  &(sceneGeometryIndices[objectId]),
+                  sceneGeometryAttributeSize[objectId],
+                  sceneGeometryIndicesSize[objectId],
                   modelFileName);
     }
 }
@@ -227,9 +227,9 @@ void VoxelEngine::updateInstances()
 
     // Load geometry of instance object
     unsigned int totalNumTriLights = 0;
-    for (int i = totalNumUninstancedGeometries; i < totalNumUninstancedGeometries + totalNumInstancedGeometries; ++i)
+    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        unsigned int blockId = i + 1;
+        unsigned int blockId = ObjectIdToBlockId(objectId);
         for (unsigned int x = 0; x < voxelChunk.width; ++x)
         {
             for (unsigned int y = 0; y < voxelChunk.width; ++y)
@@ -240,9 +240,9 @@ void VoxelEngine::updateInstances()
                     bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
                     if (val.id == blockId || specialCase)
                     {
-                        unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, i, x, y, z, voxelChunk.width);
+                        unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, x, y, z, voxelChunk.width);
 
-                        geometryInstanceIdMap[i].insert(instanceId);
+                        geometryInstanceIdMap[objectId].insert(instanceId);
 
                         std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)x,
                                                            0.0f, 1.0f, 0.0f, (float)y,
@@ -257,8 +257,8 @@ void VoxelEngine::updateInstances()
         // Accumulate light count
         if (IsBlockEmissive(blockId))
         {
-            unsigned int numInstances = geometryInstanceIdMap[i].size();
-            unsigned int numTriPerInstance = sceneGeometryIndicesSize[i] / 3;
+            unsigned int numInstances = geometryInstanceIdMap[objectId].size();
+            unsigned int numTriPerInstance = sceneGeometryIndicesSize[objectId] / 3;
             unsigned int numTriLight = numTriPerInstance * numInstances;
             totalNumTriLights += numTriLight;
         }
@@ -274,18 +274,18 @@ void VoxelEngine::updateInstances()
     // Generate light info
     unsigned int currentGlobalOffset = 0;
     scene.instanceLightMapping.clear();
-    for (int i = totalNumUninstancedGeometries; i < totalNumUninstancedGeometries + totalNumInstancedGeometries; ++i)
+    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        unsigned int blockId = i + 1;
+        unsigned int blockId = ObjectIdToBlockId(objectId);
         if (IsBlockEmissive(blockId))
         {
-            unsigned int numInstances = geometryInstanceIdMap[i].size();
-            unsigned int numTriPerInstance = sceneGeometryIndicesSize[i] / 3;
+            unsigned int numInstances = geometryInstanceIdMap[objectId].size();
+            unsigned int numTriPerInstance = sceneGeometryIndicesSize[objectId] / 3;
             unsigned int numTriLight = numTriPerInstance * numInstances;
 
             std::vector<std::array<float, 12>> transforms;
             unsigned int lightOffset = currentGlobalOffset;
-            for (unsigned int instanceId : geometryInstanceIdMap[i])
+            for (unsigned int instanceId : geometryInstanceIdMap[objectId])
             {
                 transforms.push_back(instanceTransformMatrices[instanceId]);
                 scene.instanceLightMapping.push_back(InstanceLightMapping{instanceId, lightOffset, numTriPerInstance});
@@ -299,7 +299,7 @@ void VoxelEngine::updateInstances()
             cudaMalloc((void **)&d_transforms, transformsSizeInBytes);
             cudaMemcpy(d_transforms, &(transforms[0][0]), transformsSizeInBytes, cudaMemcpyHostToDevice);
 
-            launchGenerateLightInfos(sceneGeometryAttributes[i], sceneGeometryIndices[i], sceneGeometryIndicesSize[i], d_transforms, numInstances, radiance, scene.m_lights, currentGlobalOffset);
+            launchGenerateLightInfos(sceneGeometryAttributes[objectId], sceneGeometryIndices[objectId], sceneGeometryIndicesSize[objectId], d_transforms, numInstances, radiance, scene.m_lights, currentGlobalOffset);
 
             cudaFree(d_transforms);
         }
@@ -332,25 +332,27 @@ void VoxelEngine::updateUninstancedMeshes(Voxel *d_data)
     auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
     auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-    for (int i = 0; i < totalNumUninstancedGeometries - 1; ++i)
+    for (int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
     {
-        sceneGeometryAttributeSize[i] = 0;
-        sceneGeometryIndicesSize[i] = 0;
+        int blockId = ObjectIdToBlockId(objectId);
 
-        currentFaceCount[i] = 0;
-        maxFaceCount[i] = 0;
+        sceneGeometryAttributeSize[objectId] = 0;
+        sceneGeometryIndicesSize[objectId] = 0;
+
+        currentFaceCount[objectId] = 0;
+        maxFaceCount[objectId] = 0;
 
         generateMesh(
-            &(sceneGeometryAttributes[i]),
-            &(sceneGeometryIndices[i]),
-            faceLocation[i],
-            sceneGeometryAttributeSize[i],
-            sceneGeometryIndicesSize[i],
-            currentFaceCount[i],
-            maxFaceCount[i],
+            &(sceneGeometryAttributes[objectId]),
+            &(sceneGeometryIndices[objectId]),
+            faceLocation[objectId],
+            sceneGeometryAttributeSize[objectId],
+            sceneGeometryIndicesSize[objectId],
+            currentFaceCount[objectId],
+            maxFaceCount[objectId],
             voxelChunk,
             d_data,
-            i + 1);
+            blockId);
     }
 }
 
@@ -366,24 +368,18 @@ void VoxelEngine::init()
     auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
     auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-    // Important geoemetry count
-    totalNumBlockTypes = BlockTypeWater - 1;
-    totalNumUninstancedGeometries = totalNumBlockTypes + 1; // Plus one for water
-    totalNumInstancedGeometries = BlockTypeNum - BlockTypeWater - 1;
-    totalNumGeometries = totalNumUninstancedGeometries + totalNumInstancedGeometries;
+    scene.uninstancedGeometryCount = GetNumUninstancedBlockTypes();
+    scene.instancedGeometryCount = GetNumInstancedBlockTypes();
 
-    scene.uninstancedGeometryCount = totalNumUninstancedGeometries;
-    scene.instancedGeometryCount = totalNumInstancedGeometries;
+    sceneGeometryAttributes.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
+    sceneGeometryIndices.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
+    sceneGeometryAttributeSize.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
+    sceneGeometryIndicesSize.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
 
-    sceneGeometryAttributes.resize(totalNumGeometries);
-    sceneGeometryIndices.resize(totalNumGeometries);
-    sceneGeometryAttributeSize.resize(totalNumGeometries);
-    sceneGeometryIndicesSize.resize(totalNumGeometries);
-
-    faceLocation.resize(totalNumBlockTypes);
-    currentFaceCount.resize(totalNumBlockTypes);
-    maxFaceCount.resize(totalNumBlockTypes);
-    freeFaces.resize(totalNumBlockTypes);
+    faceLocation.resize(GetNumUninstancedBlockTypes());
+    currentFaceCount.resize(GetNumUninstancedBlockTypes());
+    maxFaceCount.resize(GetNumUninstancedBlockTypes());
+    freeFaces.resize(GetNumUninstancedBlockTypes());
 
     // Init voxel
     Voxel *d_data;
@@ -393,15 +389,6 @@ void VoxelEngine::init()
     updateUninstancedMeshes(d_data);
     freeDeviceVoxelData(d_data);
 
-    // Generate geometry for sea
-    int seaIndex = totalNumUninstancedGeometries - 1;
-    generateSea(
-        &(sceneGeometryAttributes[seaIndex]),
-        &(sceneGeometryIndices[seaIndex]),
-        sceneGeometryAttributeSize[seaIndex],
-        sceneGeometryIndicesSize[seaIndex],
-        voxelChunk.width);
-
     // Init and update instanced meshes
     initInstanceGeometry();
     updateInstances();
@@ -410,13 +397,9 @@ void VoxelEngine::init()
 void VoxelEngine::reload()
 {
     // A hack to make sure all materials have a valid geometry
-    for (int i = 1; i < BlockTypeNum; ++i)
+    for (int blockId = 1; blockId < BlockTypeNum; ++blockId)
     {
-        if (i == BlockTypeWater)
-        {
-            continue;
-        }
-        voxelChunk.data[GetLinearId(1, 1, i, voxelChunk.width)] = i;
+        voxelChunk.data[GetLinearId(1, 1, blockId, voxelChunk.width)] = blockId;
     }
 
     // Upload voxel data from disk load
@@ -617,57 +600,54 @@ void VoxelEngine::update()
         {
             if (hitSurface)
             {
-
                 auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
                 auto &sceneGeometryIndices = scene.m_geometryIndices;
                 auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
                 auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
                 unsigned int newVal = 0;
-                int idx = deleteBlockId - 1;
+                int objectId = BlockIdToObjectId(deleteBlockId);
 
-                if (deleteBlockId < BlockTypeWater)
+                if (IsUninstancedBlockType(deleteBlockId))
                 {
                     updateSingleVoxel(
                         deletePos.x, deletePos.y, deletePos.z,
                         newVal,
                         voxelChunk,
-                        sceneGeometryAttributes[idx],
-                        sceneGeometryIndices[idx],
-                        faceLocation[idx],
-                        sceneGeometryAttributeSize[idx],
-                        sceneGeometryIndicesSize[idx],
-                        currentFaceCount[idx],
-                        maxFaceCount[idx],
-                        freeFaces[idx]);
+                        sceneGeometryAttributes[objectId],
+                        sceneGeometryIndices[objectId],
+                        faceLocation[objectId],
+                        sceneGeometryAttributeSize[objectId],
+                        sceneGeometryIndicesSize[objectId],
+                        currentFaceCount[objectId],
+                        maxFaceCount[objectId],
+                        freeFaces[objectId]);
 
                     scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(idx);
+                    scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(0);
                 }
-                else if (deleteBlockId > BlockTypeWater)
+                else if (IsInstancedBlockType(deleteBlockId))
                 {
                     unsigned int vid = GetLinearId(deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
                     Voxel oldVoxel = voxelChunk.data[vid];
                     voxelChunk.data[vid].id = newVal;
 
                     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
-                    // std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
-                    unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, idx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
-                    geometryInstanceIdMap[idx].erase(instanceId);
+                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                    geometryInstanceIdMap[objectId].erase(instanceId);
 
                     scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(idx);
+                    scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(instanceId);
 
-                    bool specialCase = (deleteBlockId == BlockTypeTestLightBase);
-                    if (specialCase)
+                    if (IsBaseLightBlockType(deleteBlockId))
                     {
                         int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = childBlockId - 1;
+                        int childObjectIdx = BlockIdToObjectId(childBlockId);
 
-                        unsigned int childInstanceId = PositionToInstanceId(totalNumUninstancedGeometries, childObjectIdx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
                         geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
 
                         scene.sceneUpdateObjectId.push_back(childObjectIdx);
@@ -688,28 +668,28 @@ void VoxelEngine::update()
                 auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
                 unsigned int newVal = blockId;
-                int idx = blockId - 1;
+                int objectId = BlockIdToObjectId(blockId);
 
-                if (blockId < BlockTypeWater)
+                if (IsUninstancedBlockType(blockId))
                 {
                     updateSingleVoxel(
                         createPos.x, createPos.y, createPos.z,
                         newVal,
                         voxelChunk,
-                        sceneGeometryAttributes[idx],
-                        sceneGeometryIndices[idx],
-                        faceLocation[idx],
-                        sceneGeometryAttributeSize[idx],
-                        sceneGeometryIndicesSize[idx],
-                        currentFaceCount[idx],
-                        maxFaceCount[idx],
-                        freeFaces[idx]);
+                        sceneGeometryAttributes[objectId],
+                        sceneGeometryIndices[objectId],
+                        faceLocation[objectId],
+                        sceneGeometryAttributeSize[objectId],
+                        sceneGeometryIndicesSize[objectId],
+                        currentFaceCount[objectId],
+                        maxFaceCount[objectId],
+                        freeFaces[objectId]);
 
                     scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(idx);
+                    scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(0);
                 }
-                else if (blockId > BlockTypeWater)
+                else if (IsInstancedBlockType(blockId))
                 {
                     unsigned int vid = GetLinearId(createPos.x, createPos.y, createPos.z, voxelChunk.width);
                     Voxel oldVoxel = voxelChunk.data[vid];
@@ -718,8 +698,8 @@ void VoxelEngine::update()
                     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
                     std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
-                    unsigned int instanceId = PositionToInstanceId(totalNumUninstancedGeometries, idx, createPos.x, createPos.y, createPos.z, voxelChunk.width);
-                    geometryInstanceIdMap[idx].insert(instanceId);
+                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                    geometryInstanceIdMap[objectId].insert(instanceId);
 
                     std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)createPos.x,
                                                        0.0f, 1.0f, 0.0f, (float)createPos.y,
@@ -727,16 +707,15 @@ void VoxelEngine::update()
                     instanceTransformMatrices[instanceId] = transform;
 
                     scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(idx);
+                    scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(instanceId);
 
-                    bool specialCase = (blockId == BlockTypeTestLightBase);
-                    if (specialCase)
+                    if (IsBaseLightBlockType(deleteBlockId))
                     {
                         int childBlockId = BlockTypeTestLight;
                         int childObjectIdx = childBlockId - 1;
 
-                        unsigned int childInstanceId = PositionToInstanceId(totalNumUninstancedGeometries, childObjectIdx, createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, voxelChunk.width);
                         geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
 
                         instanceTransformMatrices[childInstanceId] = transform;

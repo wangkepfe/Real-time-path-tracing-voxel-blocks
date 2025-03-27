@@ -52,7 +52,8 @@ private:
 
     OptixFunctionTable m_api;
     OptixDeviceContext m_context;
-    CUdeviceptr m_d_ias;
+    CUdeviceptr m_d_ias[2] = {0, 0};
+    int m_currentIasIdx = 0;
     OptixPipeline m_pipeline;
 
     SystemParameter *m_d_systemParameter;

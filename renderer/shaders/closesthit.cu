@@ -9,10 +9,13 @@ extern "C" __constant__ SystemParameter sysParam;
 
 extern "C" __global__ void __closesthit__radiance()
 {
+    Int2 pixelPosition = Int2(optixGetLaunchIndex());
+
     RayData *rayData = (RayData *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
     // Ray travel distance/time t
     rayData->distance = optixGetRayTmax();
+    int &randIdx = rayData->randIdx;
 
     // Get triangle data
     const GeometryInstanceData *instanceData = reinterpret_cast<const GeometryInstanceData *>(optixGetSbtDataPointer());
@@ -35,7 +38,7 @@ extern "C" __global__ void __closesthit__radiance()
     // Get numerically good hit pos
     Float3 frontPos;
     Float3 backPos;
-    Float3 geometricNormal;
+    Float3 geoNormal;
     {
         float3 objPos, objNorm;
         float objOffset;
@@ -66,29 +69,32 @@ extern "C" __global__ void __closesthit__radiance()
 
         frontPos = Float3(tmpFrontPos);
         backPos = Float3(tmpBackPos);
-        geometricNormal = Float3(safeNorm);
+        geoNormal = Float3(safeNorm);
     }
 
     // Default pos
     rayData->pos = frontPos;
 
-    bool hitFrontFace = dot(rayData->wo, geometricNormal) > 0.0f;
+    bool hitFrontFace = dot(rayData->wo, geoNormal) > 0.0f;
 
     const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
-    int materialId = parameters.indexBSDF;
+    // int materialId = parameters.indexBSDF;
+    int materialId = parameters.materialId;
 
-    rayData->material = (float)materialId;
+    bool isEmissive = parameters.isEmissive;
+    bool isThinfilm = parameters.isThinfilm;
 
-    bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
-    bool isEmissive = materialId == INDEX_BSDF_EMISSIVE;
+    // bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
+    // bool isEmissive = materialId == INDEX_BSDF_EMISSIVE;
     // bool isTransmissive = materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-    bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
+    // bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
 
     if (isEmissive)
     {
         if (!rayData->hitFirstDiffuseSurface)
         {
             rayData->radiance = parameters.albedo;
+            Store2DFloat4(Float4(1.0f), sysParam.albedoBuffer, pixelPosition);
         }
 
         rayData->shouldTerminate = true;
@@ -98,7 +104,7 @@ extern "C" __global__ void __closesthit__radiance()
     // In the case of thin film, make sure the normal is always pointing towards the incoming ray
     if (isThinfilm && !hitFrontFace)
     {
-        geometricNormal = -geometricNormal;
+        geoNormal = -geoNormal;
         hitFrontFace = true;
 
         Float3 tmp = frontPos;
@@ -126,40 +132,41 @@ extern "C" __global__ void __closesthit__radiance()
 
             if (d0 < tolerance || d1 < tolerance || d2 < tolerance || d3 < tolerance)
             {
-                Store2DFloat4(Float4(1.0f), sysParam.outUiBuffer, Int2(optixGetLaunchIndex().x, optixGetLaunchIndex().y));
+                Store2DFloat4(Float4(1.0f), sysParam.UIBuffer, Int2(optixGetLaunchIndex().x, optixGetLaunchIndex().y));
             }
         }
     }
 
     MaterialState state;
-    state.geometricNormal = geometricNormal;
+    state.geoNormal = geoNormal;
     state.wo = rayData->wo;
 
     const Float2 theBarycentrics = Float2(bary);
     const float alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
 
     // Texture coordinates
-    if (parameters.flags == 2) // use texture coordinates
+    Float2 texCoords;
+    if (parameters.useWorldGridUV) // use texture coordinates
     {
-        state.texcoord = va0.texcoord * alpha + va1.texcoord * theBarycentrics.x + va2.texcoord * theBarycentrics.y;
+        if (abs(state.geoNormal.x) > 0.9f)
+        {
+            texCoords.x = fmodf(rayData->pos.z, parameters.uvScale);
+            texCoords.y = fmodf(rayData->pos.y, parameters.uvScale);
+        }
+        else if (abs(state.geoNormal.y) > 0.9f)
+        {
+            texCoords.x = fmodf(rayData->pos.x, parameters.uvScale);
+            texCoords.y = fmodf(rayData->pos.z, parameters.uvScale);
+        }
+        else if (abs(state.geoNormal.z) > 0.9f)
+        {
+            texCoords.x = fmodf(rayData->pos.x, parameters.uvScale);
+            texCoords.y = fmodf(rayData->pos.y, parameters.uvScale);
+        }
     }
     else
     {
-        if (abs(state.geometricNormal.x) > 0.9f)
-        {
-            state.texcoord.x = fmodf(rayData->pos.z, parameters.uvScale);
-            state.texcoord.y = fmodf(rayData->pos.y, parameters.uvScale);
-        }
-        else if (abs(state.geometricNormal.y) > 0.9f)
-        {
-            state.texcoord.x = fmodf(rayData->pos.x, parameters.uvScale);
-            state.texcoord.y = fmodf(rayData->pos.z, parameters.uvScale);
-        }
-        else if (abs(state.geometricNormal.z) > 0.9f)
-        {
-            state.texcoord.x = fmodf(rayData->pos.x, parameters.uvScale);
-            state.texcoord.y = fmodf(rayData->pos.y, parameters.uvScale);
-        }
+        texCoords = va0.texcoord * alpha + va1.texcoord * theBarycentrics.x + va2.texcoord * theBarycentrics.y;
     }
 
     rayData->hitFrontFace = hitFrontFace;
@@ -168,474 +175,565 @@ extern "C" __global__ void __closesthit__radiance()
     rayData->rayConeWidth += rayData->rayConeSpread * rayData->distance; // +surfaceRayConeSpread; // @TODO Based on the local surface curvature
 
     // Texture LOD
-    state.texcoord /= parameters.uvScale;
+    texCoords /= parameters.uvScale;
     float texMip0Size = parameters.texSize.length();
-    float lod = log2f(rayData->rayConeWidth / max(dot(state.geometricNormal, rayData->wo), 0.2f) / parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
+    float lod = log2f(rayData->rayConeWidth / max(dot(state.geoNormal, rayData->wo), 0.2f) / parameters.uvScale * 2.0f * texMip0Size) - 3.0f;
 
     // Albedo
-    Float3 albedo = parameters.albedo;
+    state.albedo = parameters.albedo;
     if (parameters.textureAlbedo != 0)
     {
-        const Float3 texColor = Float3(tex2DLod<float4>(parameters.textureAlbedo, state.texcoord.x, state.texcoord.y, lod));
-        albedo *= texColor;
+        const Float3 texColor = Float3(tex2DLod<float4>(parameters.textureAlbedo, texCoords.x, texCoords.y, lod));
+        state.albedo *= texColor;
     }
-    albedo = max3f(albedo, Float3(0.001f)); // Prevent divide-by-zero at demodulation
-    state.albedo = albedo;
+    state.albedo = max3f(state.albedo, Float3(0.001f)); // Prevent divide-by-zero at demodulation
 
     // Roughness
-    state.roughness = 1.0f;
+    state.roughness = parameters.roughness;
     if (parameters.textureRoughness != 0)
     {
-        state.roughness = tex2DLod<float1>(parameters.textureRoughness, state.texcoord.x, state.texcoord.y, lod).x;
+        state.roughness = tex2DLod<float1>(parameters.textureRoughness, texCoords.x, texCoords.y, lod).x;
     }
 
     // Roughness control path regulization: After the first diffuse, all BSDF increase its roughness
-    if (rayData->hitFirstDiffuseSurface && state.roughness < 0.5f)
+    if (rayData->hitFirstDiffuseSurface)
     {
-        state.roughness *= 2.0f;
+        state.roughness = min(state.roughness * 2.0f + 0.1f, 1.0f);
+    }
+
+    bool isDiffuse = state.roughness > roughnessThreshold;
+
+    if (OPTIX_CENTER_BLOCK() && !isDiffuse)
+    {
+        OPTIX_DEBUG_PRINT(state.roughness);
     }
 
     // Metallic
-    state.metallic = 0.0f;
+    state.metallic = parameters.metallic;
     if (parameters.textureMetallic != 0)
     {
-        state.metallic = tex2DLod<float1>(parameters.textureMetallic, state.texcoord.x, state.texcoord.y, lod).x;
+        state.metallic = tex2DLod<float1>(parameters.textureMetallic, texCoords.x, texCoords.y, lod).x > 0.5f ? true : false;
     }
+
+    state.translucency = parameters.translucency;
 
     // Normal
     if (parameters.textureNormal != 0)
     {
-        Float3 texNormal = Float3(tex2DLod<float4>(parameters.textureNormal, state.texcoord.x, state.texcoord.y, lod));
+        Float3 texNormal = Float3(tex2DLod<float4>(parameters.textureNormal, texCoords.x, texCoords.y, lod));
         state.normal = normalize(texNormal - 0.5f);
         state.normal.x = -state.normal.x;
         state.normal.y = -state.normal.y;
-        alignVector(state.geometricNormal, state.normal);
+        alignVector(state.geoNormal, state.normal);
     }
     else
     {
-        state.normal = state.geometricNormal;
+        state.normal = state.geoNormal;
     }
-    state.normal = lerp3f(state.geometricNormal, state.normal, 0.5f);
+    constexpr float normalMapStrength = 0.2f;
+    state.normal = lerp3f(state.geoNormal, state.normal, normalMapStrength);
 
-    // Water
-    if (parameters.flags == 1)
-    {
-        if ((abs(state.geometricNormal.x) > 0.9f) || (abs(state.geometricNormal.z) > 0.9f))
-        {
-            state.normal = state.geometricNormal;
-        }
-        else
-        {
-            Float2 texcoord1 = state.texcoord;
-            Float2 texcoord2 = state.texcoord;
-            texcoord1.x += sysParam.timeInSecond * 0.1f;
-            texcoord2 *= 2.0f;
-            texcoord2.y += sysParam.timeInSecond * 0.05f;
-            Float3 normal1 = Float3(tex2DLod<float4>(parameters.textureNormal, texcoord1.x, texcoord1.y, lod)) - 0.5f;
-            Float3 normal2 = Float3(tex2DLod<float4>(parameters.textureNormal, texcoord2.x, texcoord2.y, lod)) - 0.5f;
-            state.normal = normalize(normal1 + normal2 * 2.0f);
-            alignVector(state.geometricNormal, state.normal);
-        }
-    }
-
-    rayData->normal = state.normal;
-    rayData->geoNormal = state.geometricNormal;
-    rayData->roughness = state.roughness;
     rayData->isCurrentBounceDiffuse = isDiffuse;
-    rayData->hitThinfilm = isThinfilm;
 
-    const int indexBsdfSample = materialId;
+    // Write Gbuffer data
+    if (rayData->depth == 0)
+    {
+        Store2DFloat1((float)parameters.materialId, sysParam.materialBuffer, pixelPosition);
+        Store2DFloat4(Float4(state.normal, state.roughness), sysParam.normalRoughnessBuffer, pixelPosition);
+        Store2DFloat4(Float4(state.normal, isThinfilm ? 1.0f : 0.0f), sysParam.geoNormalThinfilmBuffer, pixelPosition);
+        Store2DFloat4(Float4(state.metallic ? 1.0f : 0.0f, state.translucency, 0.0f, 0.0f), sysParam.materialParameterBuffer, pixelPosition);
+    }
 
-    Float3 surfWi;
-    Float3 surfBsdfOverPdf;
-    float surfSampleSurfPdf;
+    // const int indexBsdfSample = materialId;
 
-    optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, surfWi, surfBsdfOverPdf, surfSampleSurfPdf);
+    Float3 bsdfSampleWi;
+    Float3 bsdfSampleBsdfOverPdf;
+    float bsdfSamplePdf;
+    // optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, int &, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, rayData->randIdx, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf);
+
+    rayData->transmissionEvent = false;
+    UberBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent);
+
+    if (bsdfSamplePdf <= 0.0f)
+    {
+        rayData->shouldTerminate = true;
+    }
 
     // Find the correct front face offset position
-    bool thinfilmTransmissionEvent = dot(surfWi, state.normal) < 0.0f;
-    bool useFrontPos = isThinfilm
-                           ? !thinfilmTransmissionEvent
-                           : (rayData->hitFrontFace
-                                  ? (rayData->isInsideVolume ? true : !rayData->transmissionEvent)
-                                  : (rayData->isInsideVolume ? rayData->transmissionEvent : true));
-    rayData->pos = useFrontPos ? frontPos : backPos;
-    Float3 backfacePos = useFrontPos ? backPos : frontPos;
+    // bool useFrontPos = isThinfilm
+    //                        ? (dot(bsdfSampleWi, state.normal) >= 0.0f)
+    //                        : (rayData->hitFrontFace
+    //                               ? (rayData->isInsideVolume ? true : !rayData->transmissionEvent)
+    //                               : (rayData->isInsideVolume ? rayData->transmissionEvent : true));
+    rayData->pos = isThinfilm ? (dot(bsdfSampleWi, state.normal) > 0.0f ? frontPos : backPos) : frontPos;
 
     // Demodulate albedo and save it in the albedo map
     bool skipAlbedoInShadowRayContribution = false;
     if (!rayData->hitFirstDiffuseSurface && isDiffuse)
     {
         rayData->hitFirstDiffuseSurface = true;
+        Store2DFloat4(Float4(state.albedo, 1.0f), sysParam.albedoBuffer, pixelPosition);
 
-        // Record the first ever albedo in ray data for output
-        if (rayData->sampleIdx == 0)
-        {
-            rayData->albedo = albedo;
-        }
-        else
-        {
-            rayData->albedo = lerp3f(rayData->albedo, albedo, 1.0f / (float)(rayData->sampleIdx + 1));
-        }
-
-        // Demodulate the first ever albedo contribution
-        surfBsdfOverPdf /= albedo;
+        // Demodulate the first albedo contribution
+        bsdfSampleBsdfOverPdf /= state.albedo;
         skipAlbedoInShadowRayContribution = true;
     }
 
-    if (isDiffuse)
+    rayData->wi = bsdfSampleWi;
+    rayData->bsdfOverPdf = bsdfSampleBsdfOverPdf;
+    rayData->pdf = bsdfSamplePdf;
+
+    // Specular hit = no shadow ray
+    if (!isDiffuse)
     {
-        Int2 pixelPosition = Int2(optixGetLaunchIndex());
-        int &randIdx = rayData->randIdx;
+        return;
+    }
 
-        const bool enableRIS = true;
-        const bool enableReSTIR = true && rayData->depth == 0;
+    const bool enableReSTIR = true && rayData->depth == 0;
 
-        Surface surface;
-        surface.pos = rayData->pos;
-        surface.backfacePos = backfacePos;
-        surface.wo = rayData->wo;
-        surface.depth = rayData->distance;
-        surface.normal = rayData->normal;
-        surface.geoNormal = state.geometricNormal;
-        surface.albedo = state.albedo;
-        surface.roughness = state.roughness;
-        surface.thinfilm = isThinfilm;
+    Surface surface;
+    surface.state = state;
+    surface.materialId = materialId;
+    surface.pos = rayData->pos;
+    surface.depth = rayData->distance;
+    surface.isThinfilm = isThinfilm;
 
-        LightSample lightSample = {};
-        DIReservoir risReservoir = EmptyDIReservoir();
+    LightSample lightSample = {};
+    DIReservoir risReservoir = EmptyDIReservoir();
 
-        if (enableRIS)
+    const int numLocalLightSamples = 8;
+    const int numSunLightSamples = 1;
+    const int numSkyLightSamples = 1;
+    const int numBrdfSamples = 1;
+
+    const int numMisSamples = numLocalLightSamples + numSunLightSamples + numSkyLightSamples + numBrdfSamples;
+
+    const float localLightMisWeight = float(numLocalLightSamples) / numMisSamples;
+    const float sunLightMisWeight = float(numSunLightSamples) / numMisSamples;
+    const float skyLightMisWeight = float(numSkyLightSamples) / numMisSamples;
+    const float brdfMisWeight = float(numBrdfSamples) / numMisSamples;
+
+    const float brdfCutoff = 0.0001f;
+
+    // Local light
+    DIReservoir localReservoir = EmptyDIReservoir();
+    LightSample localSample = LightSample{};
+    for (unsigned int i = 0; i < numLocalLightSamples; i++)
+    {
+        float sourcePdf;
+        int lightIndex = sysParam.lightAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
+        LightInfo lightInfo = sysParam.lights[lightIndex];
+
+        Float2 uv = rand2(sysParam, randIdx);
+
+        TriangleLight triLight = TriangleLight::Create(lightInfo);
+        LightSample candidateSample = triLight.calcSample(uv, surface.pos);
+
+        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, localLightMisWeight, false, brdfMisWeight, brdfCutoff);
+        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
+        float risRnd = rand(sysParam, randIdx);
+
+        if (blendedSourcePdf != 0.0f)
         {
-            const int numLocalLightSamples = 8;
-            const int numSunLightSamples = 1;
-            const int numSkyLightSamples = 1;
-            const int numBrdfSamples = 1;
-
-            const int numMisSamples = numLocalLightSamples + numSunLightSamples + numSkyLightSamples + numBrdfSamples;
-
-            const float localLightMisWeight = float(numLocalLightSamples) / numMisSamples;
-            const float sunLightMisWeight = float(numSunLightSamples) / numMisSamples;
-            const float skyLightMisWeight = float(numSkyLightSamples) / numMisSamples;
-            const float brdfMisWeight = float(numBrdfSamples) / numMisSamples;
-
-            const float brdfCutoff = 0.0001f;
-
-            // Local light
-            DIReservoir localReservoir = EmptyDIReservoir();
-            LightSample localSample = LightSample{};
-            for (unsigned int i = 0; i < numLocalLightSamples; i++)
+            bool selected = StreamSample(localReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
+            if (selected)
             {
-                float sourcePdf;
-                int lightIndex = sysParam.lightAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-                LightInfo lightInfo = sysParam.lights[lightIndex];
-
-                Float2 uv = rand2(sysParam, randIdx);
-
-                TriangleLight triLight = TriangleLight::Create(lightInfo);
-                LightSample candidateSample = triLight.calcSample(uv, surface.pos);
-
-                float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, localLightMisWeight, false, brdfMisWeight, brdfCutoff);
-                float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-                float risRnd = rand(sysParam, randIdx);
-
-                if (blendedSourcePdf != 0.0f)
-                {
-                    bool selected = StreamSample(localReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-                    if (selected)
-                    {
-                        localSample = candidateSample;
-                    }
-                }
-            }
-            FinalizeResampling(localReservoir, 1.0, numMisSamples);
-            localReservoir.M = 1;
-
-            // Sun
-            DIReservoir sunLightReservoir = EmptyDIReservoir();
-            LightSample sunLightSample = LightSample{};
-            for (unsigned int i = 0; i < numSunLightSamples; i++)
-            {
-                float sourcePdf;
-                int sampledSunIdx = sysParam.sunAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-
-                // Create candidate sample using the helper function.
-                LightSample candidateSample = createSunLightSample(sampledSunIdx);
-
-                // Recompute UV for stream sampling.
-                Int2 sunIdx(sampledSunIdx % sysParam.sunRes.x, sampledSunIdx / sysParam.sunRes.x);
-                Float2 uv((sunIdx.x + 0.5f) / float(sysParam.sunRes.x), (sunIdx.y + 0.5f) / float(sysParam.sunRes.y));
-
-                float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, sunLightMisWeight, true, brdfMisWeight, brdfCutoff);
-                float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-                float risRnd = rand(sysParam, randIdx);
-
-                bool selected = StreamSample(sunLightReservoir, SunLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-                if (selected)
-                {
-                    sunLightSample = candidateSample;
-                }
-            }
-            FinalizeResampling(sunLightReservoir, 1.0, numMisSamples);
-            sunLightReservoir.M = 1;
-
-            // Sky
-            DIReservoir skyLightReservoir = EmptyDIReservoir();
-            LightSample skyLightSample = LightSample{};
-            for (unsigned int i = 0; i < numSkyLightSamples; i++)
-            {
-                float sourcePdf;
-                int sampledSkyIdx = sysParam.skyAliasTable->sample(rand16bits(sysParam, randIdx), sourcePdf);
-
-                // Create candidate sample using the helper function.
-                LightSample candidateSample = createSkyLightSample(sampledSkyIdx);
-
-                // Recompute UV for stream sampling.
-                Int2 skyIdx(sampledSkyIdx % sysParam.skyRes.x, sampledSkyIdx / sysParam.skyRes.x);
-                Float2 uv((skyIdx.x + 0.5f) / float(sysParam.skyRes.x), (skyIdx.y + 0.5f) / float(sysParam.skyRes.y));
-
-                float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, skyLightMisWeight, true, brdfMisWeight, brdfCutoff);
-                float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-                float risRnd = rand(sysParam, randIdx);
-
-                bool selected = StreamSample(skyLightReservoir, SkyLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-                if (selected)
-                {
-                    skyLightSample = candidateSample;
-                }
-            }
-            FinalizeResampling(skyLightReservoir, 1.0, numMisSamples);
-            skyLightReservoir.M = 1;
-
-            // BSDF sample
-            DIReservoir brdfReservoir = EmptyDIReservoir();
-            LightSample brdfSample = LightSample{};
-            for (unsigned int i = 0; i < numBrdfSamples; ++i)
-            {
-                float lightSourcePdf = 0.0f;
-                Float3 sampleDir;
-                unsigned int lightIndex = InvalidLightIndex;
-                Float2 uv = Float2(0, 0);
-                LightSample candidateSample = LightSample{};
-
-                float brdfPdf;
-                if (GetSurfaceBrdfSample(surface, rand3(sysParam, randIdx), sampleDir, brdfPdf))
-                {
-                    float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
-
-                    ShadowRayData rayData;
-                    rayData.lightIdx = InvalidLightIndex;
-                    UInt2 payload = splitPointer(&rayData);
-
-                    Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
-                    optixTrace(sysParam.topObject,
-                               (float3)shadowRayOrig, (float3)sampleDir,
-                               0.0f, maxDistance, 0.0f, // tmin, tmax, time
-                               OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_ANYHIT,
-                               1, 2, 1,
-                               payload.x, payload.y);
-
-                    if (rayData.lightIdx == InvalidLightIndex)
-                    {
-                        lightIndex = InvalidLightIndex;
-                    }
-                    else if (rayData.lightIdx == SkyLightIndex)
-                    {
-                        const float sunAngle = 0.51f; // angular diagram in degrees
-                        const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
-                        bool hitDisk = EqualAreaMapCone(uv, sysParam.sunDir, sampleDir, sunAngleCosThetaMax);
-                        if (hitDisk)
-                        {
-                            lightIndex = SunLightIndex;
-
-                            // Compute UV from sampleDir for sun.
-                            Int2 sunIdx((int)(uv.x * sysParam.sunRes.x - 0.5f), (int)(uv.y * sysParam.sunRes.y - 0.5f));
-                            if (sunIdx.x >= sysParam.sunRes.x)
-                            {
-                                sunIdx.x %= sysParam.sunRes.x;
-                            }
-                            if (sunIdx.x < 0)
-                            {
-                                sunIdx.x = sysParam.sunRes.x - ((-sunIdx.x) % sysParam.sunRes.x);
-                            }
-
-                            sunIdx.y = clampi(sunIdx.y, 0, sysParam.sunRes.y - 1);
-                            int sampledSunIdx = sunIdx.y * sysParam.sunRes.x + sunIdx.x;
-
-                            candidateSample = createSunLightSample(sampledSunIdx);
-                            candidateSample.position = sampleDir; // override with the BSDF sample direction
-
-                            lightSourcePdf = sysParam.sunAliasTable->PMF(sampledSunIdx);
-                        }
-                        else
-                        {
-                            lightIndex = SkyLightIndex;
-                            uv = EqualAreaMap(sampleDir);
-
-                            Int2 skyIdx((int)(uv.x * sysParam.skyRes.x - 0.5f), (int)(uv.y * sysParam.skyRes.y - 0.5f));
-                            clamp2i(skyIdx, Int2(0), sysParam.skyRes - 1);
-
-                            int sampledSkyIdx = skyIdx.y * sysParam.skyRes.x + skyIdx.x;
-
-                            candidateSample = createSkyLightSample(sampledSkyIdx);
-                            candidateSample.position = sampleDir; // override with the BSDF sample direction
-
-                            lightSourcePdf = sysParam.skyAliasTable->PMF(sampledSkyIdx);
-                        }
-                    }
-                    else
-                    {
-                        lightIndex = rayData.lightIdx;
-
-                        LightInfo lightInfo = sysParam.lights[lightIndex];
-
-                        TriangleLight triLight = TriangleLight::Create(lightInfo);
-
-                        uv = InverseTriangleSample(rayData.bary);
-                        candidateSample = triLight.calcSample(uv, surface.pos);
-
-                        if (brdfCutoff > 0.0f)
-                        {
-                            float lightDistance = length(candidateSample.position - surface.pos);
-
-                            float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
-                            if (lightDistance > maxDistance)
-                            {
-                                lightIndex = InvalidLightIndex;
-                            }
-                        }
-
-                        if (lightIndex != InvalidLightIndex)
-                        {
-                            lightSourcePdf = sysParam.lightAliasTable->PMF(lightIndex);
-                        }
-                    }
-                }
-
-                if (lightSourcePdf == 0.0f)
-                {
-                    continue;
-                }
-
-                float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
-
-                bool isEnvMapSample = lightIndex == SkyLightIndex || lightIndex == SunLightIndex;
-                float misWeight = (lightIndex == SkyLightIndex) ? skyLightMisWeight : ((lightIndex == SunLightIndex) ? sunLightMisWeight : localLightMisWeight);
-
-                float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, lightSourcePdf, misWeight, isEnvMapSample, brdfMisWeight, brdfCutoff);
-                float risRnd = rand(sysParam, randIdx);
-
-                bool selected = StreamSample(brdfReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
-                if (selected)
-                {
-                    brdfSample = candidateSample;
-                }
-            }
-            FinalizeResampling(brdfReservoir, 1.0f, numMisSamples);
-            brdfReservoir.M = 1;
-
-            // Merge samples
-            CombineDIReservoirs(risReservoir, localReservoir, 0.5f, localReservoir.targetPdf);
-            bool selectSunLight = CombineDIReservoirs(risReservoir, sunLightReservoir, rand(sysParam, randIdx), sunLightReservoir.targetPdf);
-            bool selectSkyLight = CombineDIReservoirs(risReservoir, skyLightReservoir, rand(sysParam, randIdx), skyLightReservoir.targetPdf);
-            bool selectBrdf = CombineDIReservoirs(risReservoir, brdfReservoir, rand(sysParam, randIdx), brdfReservoir.targetPdf);
-
-            FinalizeResampling(risReservoir, 1.0f, 1.0f);
-            risReservoir.M = 1;
-
-            if (selectBrdf)
-            {
-                lightSample = brdfSample;
-            }
-            else if (selectSkyLight)
-            {
-                lightSample = skyLightSample;
-            }
-            else if (selectSunLight)
-            {
-                lightSample = sunLightSample;
-            }
-            else
-            {
-                lightSample = localSample;
+                localSample = candidateSample;
             }
         }
+    }
+    FinalizeResampling(localReservoir, 1.0, numMisSamples);
+    localReservoir.M = 1;
 
-        // Initial visibility
-        bool isLightVisible = false;
-        if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(risReservoir))
+    // Sun
+    DIReservoir sunLightReservoir = EmptyDIReservoir();
+    LightSample sunLightSample = LightSample{};
+    for (unsigned int i = 0; i < numSunLightSamples; i++)
+    {
+        float sourcePdf;
+        int sampledSunIdx = sysParam.sunAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
+
+        // Create candidate sample using the helper function.
+        LightSample candidateSample = createSunLightSample(sampledSunIdx);
+
+        // Recompute UV for stream sampling.
+        Int2 sunIdx(sampledSunIdx % sysParam.sunRes.x, sampledSunIdx / sysParam.sunRes.x);
+        Float2 uv((sunIdx.x + 0.5f) / float(sysParam.sunRes.x), (sunIdx.y + 0.5f) / float(sysParam.sunRes.y));
+
+        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, sunLightMisWeight, true, brdfMisWeight, brdfCutoff);
+        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
+        float risRnd = rand(sysParam, randIdx);
+
+        bool selected = StreamSample(sunLightReservoir, SunLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
+        if (selected)
         {
-            isLightVisible = TraceVisibilityShadowRay(lightSample, surface);
-
-            if (!isLightVisible)
-            {
-                // Keep M for correct resampling, remove the actual sample
-                risReservoir.lightData = 0;
-                risReservoir.weightSum = 0;
-            }
+            sunLightSample = candidateSample;
         }
+    }
+    FinalizeResampling(sunLightReservoir, 1.0, numMisSamples);
+    sunLightReservoir.M = 1;
 
-        DIReservoir restirReservoir = EmptyDIReservoir();
-        if (enableReSTIR)
+    // Sky
+    DIReservoir skyLightReservoir = EmptyDIReservoir();
+    LightSample skyLightSample = LightSample{};
+    for (unsigned int i = 0; i < numSkyLightSamples; i++)
+    {
+        float sourcePdf;
+        int sampledSkyIdx = sysParam.skyAliasTable->sample(rand16bits(sysParam, randIdx), sourcePdf);
+
+        // Create candidate sample using the helper function.
+        LightSample candidateSample = createSkyLightSample(sampledSkyIdx);
+
+        // Recompute UV for stream sampling.
+        Int2 skyIdx(sampledSkyIdx % sysParam.skyRes.x, sampledSkyIdx / sysParam.skyRes.x);
+        Float2 uv((skyIdx.x + 0.5f) / float(sysParam.skyRes.x), (skyIdx.y + 0.5f) / float(sysParam.skyRes.y));
+
+        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, sourcePdf, skyLightMisWeight, true, brdfMisWeight, brdfCutoff);
+        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
+        float risRnd = rand(sysParam, randIdx);
+
+        bool selected = StreamSample(skyLightReservoir, SkyLightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
+        if (selected)
         {
-            CombineDIReservoirs(restirReservoir, risReservoir, 0.5f, risReservoir.targetPdf);
+            skyLightSample = candidateSample;
+        }
+    }
+    FinalizeResampling(skyLightReservoir, 1.0, numMisSamples);
+    skyLightReservoir.M = 1;
 
-            Float3 currentWorldPos = surface.pos;
-            Float3 prevWorldPos = currentWorldPos; // TODO: movement of the world
-            Float2 prevUV = sysParam.prevCamera.worldDirectionToUV(normalize(prevWorldPos - sysParam.prevCamera.pos));
+    // BSDF sample
+    DIReservoir brdfReservoir = EmptyDIReservoir();
+    LightSample brdfSample = LightSample{};
+    for (unsigned int i = 0; i < numBrdfSamples; ++i)
+    {
+        float lightSourcePdf = 0.0f;
+        Float3 sampleDir;
+        unsigned int lightIndex = InvalidLightIndex;
+        Float2 uv = Float2(0, 0);
+        LightSample candidateSample = LightSample{};
 
-            // prevUV = Float2(pixelPosition.x / sysParam.camera.resolution.x, pixelPosition.y / sysParam.camera.resolution.y);
-            Int2 prevPixelPos = Int2(prevUV.x * sysParam.prevCamera.resolution.x, prevUV.y * sysParam.prevCamera.resolution.y);
-            // rayData->radiance += Float3(max(prevPixelPos.x - pixelPosition.x, 0), 0, 0);
-            float expectedPrevLinearDepth = distance(prevWorldPos, sysParam.prevCamera.pos);
+        float brdfPdf;
+        bool isTransmissiveEvent = false;
+        if (GetSurfaceBrdfSample(surface, randIdx, sampleDir, brdfPdf, isTransmissiveEvent))
+        {
+            float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
 
-            constexpr unsigned int numTemporalSamples = 2;
-            constexpr unsigned int numSpatialSamples = 2;
-            constexpr unsigned int numSamples = numTemporalSamples + numSpatialSamples;
-            constexpr float mCap = 20.0f;
-            constexpr float spatialRadius = 16.0f;
+            ShadowRayData shadowRayData;
+            shadowRayData.lightIdx = InvalidLightIndex;
+            UInt2 payload = splitPointer(&shadowRayData);
 
-            Int2 temporalOffsets[numTemporalSamples];
-            temporalOffsets[0] = Int2(0);
-            temporalOffsets[1] = Int2((int)(rand(sysParam, randIdx) * 3.0f) - 1, (int)(rand(sysParam, randIdx) * 3.0f) - 1);
+            Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
+            optixTrace(sysParam.topObject,
+                       (float3)shadowRayOrig,
+                       (float3)sampleDir,
+                       0.0f,        // tmin
+                       maxDistance, // tmax
+                       0.0f,
+                       OptixVisibilityMask(0xFF),
+                       OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                       1, 2, 1,
+                       payload.x, payload.y);
 
-            Int2 spatialOffsets[numSpatialSamples == 0 ? 1 : numSpatialSamples];
-            for (int i = 0; i < numSpatialSamples; ++i)
+            if (shadowRayData.lightIdx == InvalidLightIndex)
             {
-                spatialOffsets[i] = Int2((int)((rand(sysParam, randIdx) - 0.5f) * spatialRadius), (int)((rand(sysParam, randIdx) - 0.5f) * spatialRadius));
+                lightIndex = InvalidLightIndex;
             }
-
-            unsigned int cachedResult = 0;
-            int selectedLoopIdx = -1;
-
-            for (int i = 0; i < numSamples; ++i)
+            else if (shadowRayData.lightIdx == SkyLightIndex)
             {
-                Int2 offset;
-                if (i < numTemporalSamples)
+                const float sunAngle = 0.51f; // angular diagram in degrees
+                const float sunAngleCosThetaMax = cosf(sunAngle * M_PI / 180.0f / 2.0f);
+                bool hitDisk = EqualAreaMapCone(uv, sysParam.sunDir, sampleDir, sunAngleCosThetaMax);
+                if (hitDisk)
                 {
-                    offset = temporalOffsets[i];
+                    lightIndex = SunLightIndex;
+
+                    // Compute UV from sampleDir for sun.
+                    Int2 sunIdx((int)(uv.x * sysParam.sunRes.x - 0.5f), (int)(uv.y * sysParam.sunRes.y - 0.5f));
+                    if (sunIdx.x >= sysParam.sunRes.x)
+                    {
+                        sunIdx.x %= sysParam.sunRes.x;
+                    }
+                    if (sunIdx.x < 0)
+                    {
+                        sunIdx.x = sysParam.sunRes.x - ((-sunIdx.x) % sysParam.sunRes.x);
+                    }
+
+                    sunIdx.y = clampi(sunIdx.y, 0, sysParam.sunRes.y - 1);
+                    int sampledSunIdx = sunIdx.y * sysParam.sunRes.x + sunIdx.x;
+
+                    candidateSample = createSunLightSample(sampledSunIdx);
+                    candidateSample.position = sampleDir; // override with the BSDF sample direction
+
+                    lightSourcePdf = sysParam.sunAliasTable->PMF(sampledSunIdx);
                 }
                 else
                 {
-                    offset = spatialOffsets[i - numTemporalSamples];
+                    lightIndex = SkyLightIndex;
+                    uv = EqualAreaMap(sampleDir);
+
+                    Int2 skyIdx((int)(uv.x * sysParam.skyRes.x - 0.5f), (int)(uv.y * sysParam.skyRes.y - 0.5f));
+                    clamp2i(skyIdx, Int2(0), sysParam.skyRes - 1);
+
+                    int sampledSkyIdx = skyIdx.y * sysParam.skyRes.x + skyIdx.x;
+
+                    candidateSample = createSkyLightSample(sampledSkyIdx);
+                    candidateSample.position = sampleDir; // override with the BSDF sample direction
+
+                    lightSourcePdf = sysParam.skyAliasTable->PMF(sampledSkyIdx);
                 }
+            }
+            else
+            {
+                lightIndex = shadowRayData.lightIdx;
+
+                LightInfo lightInfo = sysParam.lights[lightIndex];
+
+                TriangleLight triLight = TriangleLight::Create(lightInfo);
+
+                uv = InverseTriangleSample(shadowRayData.bary);
+                candidateSample = triLight.calcSample(uv, surface.pos);
+
+                if (brdfCutoff > 0.0f)
+                {
+                    float lightDistance = length(candidateSample.position - surface.pos);
+
+                    float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
+                    if (lightDistance > maxDistance)
+                    {
+                        lightIndex = InvalidLightIndex;
+                    }
+                }
+
+                if (lightIndex != InvalidLightIndex)
+                {
+                    lightSourcePdf = sysParam.lightAliasTable->PMF(lightIndex);
+                }
+            }
+        }
+
+        if (lightSourcePdf == 0.0f)
+        {
+            continue;
+        }
+
+        float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
+
+        bool isEnvMapSample = lightIndex == SkyLightIndex || lightIndex == SunLightIndex;
+        float misWeight = (lightIndex == SkyLightIndex) ? skyLightMisWeight : ((lightIndex == SunLightIndex) ? sunLightMisWeight : localLightMisWeight);
+
+        float blendedSourcePdf = LightBrdfMisWeight(surface, candidateSample, lightSourcePdf, misWeight, isEnvMapSample, brdfMisWeight, brdfCutoff);
+        float risRnd = rand(sysParam, randIdx);
+
+        bool selected = StreamSample(brdfReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
+        if (selected)
+        {
+            brdfSample = candidateSample;
+        }
+    }
+    FinalizeResampling(brdfReservoir, 1.0f, numMisSamples);
+    brdfReservoir.M = 1;
+
+    // Merge samples
+    CombineDIReservoirs(risReservoir, localReservoir, 0.5f, localReservoir.targetPdf);
+    bool selectSunLight = CombineDIReservoirs(risReservoir, sunLightReservoir, rand(sysParam, randIdx), sunLightReservoir.targetPdf);
+    bool selectSkyLight = CombineDIReservoirs(risReservoir, skyLightReservoir, rand(sysParam, randIdx), skyLightReservoir.targetPdf);
+    bool selectBrdf = CombineDIReservoirs(risReservoir, brdfReservoir, rand(sysParam, randIdx), brdfReservoir.targetPdf);
+
+    FinalizeResampling(risReservoir, 1.0f, 1.0f);
+    risReservoir.M = 1;
+
+    if (selectBrdf)
+    {
+        lightSample = brdfSample;
+    }
+    else if (selectSkyLight)
+    {
+        lightSample = skyLightSample;
+    }
+    else if (selectSunLight)
+    {
+        lightSample = sunLightSample;
+    }
+    else
+    {
+        lightSample = localSample;
+    }
+
+    // Initial visibility
+    bool isLightVisible = false;
+    if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(risReservoir))
+    {
+        constexpr float rayLengthEpsilon = 0.01f;
+        constexpr float extraRayOffset = 0.0f;
+        constexpr bool usePrevBvh = false;
+
+        Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
+        float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - rayLengthEpsilon - extraRayOffset : RayMax;
+
+        UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
+        Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
+
+        optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
+                   (float3)shadowRayOrig,
+                   (float3)sampleDir,
+                   extraRayOffset, // tmin
+                   maxDistance,    // tmax
+                   0.0f,
+                   OptixVisibilityMask(0xFE),
+                   OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                   0, 2, 2,
+                   visibilityRayPayload.x, visibilityRayPayload.y);
+
+        if (!isLightVisible)
+        {
+            // Keep M for correct resampling, remove the actual sample
+            risReservoir.lightData = 0;
+            risReservoir.weightSum = 0;
+        }
+    }
+
+    DIReservoir restirReservoir = EmptyDIReservoir();
+    if (enableReSTIR)
+    {
+        CombineDIReservoirs(restirReservoir, risReservoir, 0.5f, risReservoir.targetPdf);
+
+        Float3 currentWorldPos = surface.pos;
+        Float3 prevWorldPos = currentWorldPos; // TODO: movement of the world
+        Float2 prevUV = sysParam.prevCamera.worldDirectionToUV(normalize(prevWorldPos - sysParam.prevCamera.pos));
+
+        // prevUV = Float2(pixelPosition.x / sysParam.camera.resolution.x, pixelPosition.y / sysParam.camera.resolution.y);
+        Int2 prevPixelPos = Int2(prevUV.x * sysParam.prevCamera.resolution.x, prevUV.y * sysParam.prevCamera.resolution.y);
+        // rayData->radiance += Float3(max(prevPixelPos.x - pixelPosition.x, 0), 0, 0);
+        float expectedPrevLinearDepth = distance(prevWorldPos, sysParam.prevCamera.pos);
+
+        constexpr unsigned int numTemporalSamples = 3;
+        constexpr float mCap = 20.0f;
+        constexpr float spatialRadius = 16.0f;
+
+        Int2 temporalOffsets[numTemporalSamples];
+        temporalOffsets[0] = Int2(0);
+        temporalOffsets[1] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
+        temporalOffsets[2] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
+
+        unsigned int cachedResult = 0;
+        int selectedLoopIdx = -1;
+
+        for (unsigned int i = 0; i < numTemporalSamples; ++i)
+        {
+            Int2 offset = temporalOffsets[i];
+            Int2 idx = prevPixelPos + offset;
+            idx = ClampSamplePositionIntoView(idx);
+
+            Surface temporalSurface;
+            if (!GetPrevSurface(temporalSurface, idx))
+                continue;
+
+            bool isNormalValid = dot(surface.state.normal, temporalSurface.state.geoNormal) >= 0.5f;
+            bool isDepthValid = abs(expectedPrevLinearDepth - temporalSurface.depth) <= 0.1f * max(expectedPrevLinearDepth, temporalSurface.depth);
+            bool isRoughValid = abs(surface.state.roughness - temporalSurface.state.roughness) <= 0.5f * max(surface.state.roughness, temporalSurface.state.roughness);
+
+            // if (OPTIX_CENTER_PIXEL())
+            // {
+            //     OPTIX_DEBUG_PRINT(Float3(isNormalValid, isDepthValid, isRoughValid));
+            // }
+
+            if (!(isNormalValid && isDepthValid && isRoughValid))
+                continue;
+
+            cachedResult |= (1u << i);
+
+            DIReservoir prevReservoir = LoadDIReservoir(idx);
+            if (isnan(prevReservoir.weightSum) || isinf(prevReservoir.weightSum))
+            {
+                prevReservoir = EmptyDIReservoir();
+            }
+
+            if (prevReservoir.M > mCap)
+            {
+                prevReservoir.M = mCap;
+            }
+
+            float neighborWeight = 0;
+            LightSample candidateLightSample = {};
+            if (IsValidDIReservoir(prevReservoir))
+            {
+                candidateLightSample = GetLightSampleFromReservoir(prevReservoir, surface);
+                neighborWeight = GetLightSampleTargetPdfForSurface(candidateLightSample, surface);
+            }
+
+            if (CombineDIReservoirs(restirReservoir, prevReservoir, rand(sysParam, randIdx), neighborWeight))
+            {
+                lightSample = candidateLightSample;
+                selectedLoopIdx = i;
+            }
+        }
+
+        // Bias correction
+        if (IsValidDIReservoir(restirReservoir))
+        {
+            float pi = restirReservoir.targetPdf;
+            float piSum = restirReservoir.targetPdf * 1;
+
+            unsigned int seletedLightID = GetDIReservoirLightIndex(restirReservoir);
+
+            for (unsigned int i = 0; i < numTemporalSamples; ++i)
+            {
+                if ((cachedResult & (1u << i)) == 0)
+                    continue;
+
+                Int2 offset = temporalOffsets[i];
                 Int2 idx = prevPixelPos + offset;
                 idx = ClampSamplePositionIntoView(idx);
 
                 Surface temporalSurface;
-                if (!GetPrevSurface(temporalSurface, idx))
-                    continue;
+                GetPrevSurface(temporalSurface, idx);
 
-                bool isNormalValid = dot(surface.normal, temporalSurface.normal) >= 0.5f;
-                bool isGeoNormalValid = dot(surface.geoNormal, temporalSurface.geoNormal) >= 0.9f;
-                bool isDepthValid = abs(expectedPrevLinearDepth - temporalSurface.depth) <= 0.1f * max(expectedPrevLinearDepth, temporalSurface.depth);
-                bool isRoughValid = abs(surface.roughness - temporalSurface.roughness) <= 0.5f * max(surface.roughness, temporalSurface.roughness);
-                bool isAlbedoValid = abs(luminance(surface.albedo) - luminance(temporalSurface.albedo)) < 0.25f;
+                // if (OPTIX_CENTER_PIXEL())
+                // {
+                //     OPTIX_DEBUG_PRINT(idx);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.pos);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.wo);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.depth);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.state.geoNormal);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.state.geoNormal);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.albedo);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.roughness);
+                //     OPTIX_DEBUG_PRINT(temporalSurface.isThinfilm);
+                // }
 
-                if (!(isNormalValid && isGeoNormalValid && isDepthValid && isRoughValid && isAlbedoValid))
-                    continue;
+                LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface);
 
-                cachedResult |= (1u << unsigned int(i));
+                float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
+
+                if (ps > 0 && (selectedLoopIdx != i || i != 0))
+                {
+                    constexpr float rayLengthEpsilon = 0.01f;
+                    constexpr float extraRayOffset = 0.01f;
+                    constexpr bool usePrevBvh = true;
+
+                    Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
+                    float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - rayLengthEpsilon - extraRayOffset : RayMax;
+
+                    bool isNeighborSampleVisible = false;
+                    UInt2 visibilityRayPayload = splitPointer(&isNeighborSampleVisible);
+                    Float3 shadowRayOrig = surface.pos;
+
+                    optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
+                               (float3)shadowRayOrig,
+                               (float3)sampleDir,
+                               extraRayOffset, // tmin
+                               maxDistance,    // tmax
+                               0.0f,
+                               OptixVisibilityMask(0xFE),
+                               OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                               0, 2, 2,
+                               visibilityRayPayload.x, visibilityRayPayload.y);
+
+                    if (!isNeighborSampleVisible)
+                    {
+                        ps = 0.0f;
+                    }
+                }
 
                 DIReservoir prevReservoir = LoadDIReservoir(idx);
                 if (isnan(prevReservoir.weightSum) || isinf(prevReservoir.weightSum))
@@ -648,148 +746,82 @@ extern "C" __global__ void __closesthit__radiance()
                     prevReservoir.M = mCap;
                 }
 
-                float neighborWeight = 0;
-                LightSample candidateLightSample = {};
-                if (IsValidDIReservoir(prevReservoir))
+                if (selectedLoopIdx == i)
                 {
-                    candidateLightSample = GetLightSampleFromReservoir(prevReservoir, surface);
-                    neighborWeight = GetLightSampleTargetPdfForSurface(candidateLightSample, surface);
+                    pi = ps;
                 }
 
-                if (CombineDIReservoirs(restirReservoir, prevReservoir, rand(sysParam, randIdx), neighborWeight))
-                {
-                    lightSample = candidateLightSample;
-                    selectedLoopIdx = i;
-                }
+                piSum += ps * prevReservoir.M;
             }
 
-            // Bias correction
-            if (IsValidDIReservoir(restirReservoir))
-            {
-                // float pi = restirReservoir.targetPdf;
-                // float piSum = restirReservoir.targetPdf;
+            FinalizeResampling(restirReservoir, pi, piSum);
 
-                // unsigned int seletedLightID = GetDIReservoirLightIndex(restirReservoir);
-
-                // for (int i = 0; i < numSamples; ++i)
-                // {
-                //     if ((cachedResult & (1u << unsigned int(i))) == 0)
-                //         continue;
-
-                //     Int2 offset;
-                //     if (i < numTemporalSamples)
-                //     {
-                //         offset = temporalOffsets[i];
-                //     }
-                //     else
-                //     {
-                //         offset = spatialOffsets[i - numTemporalSamples];
-                //     }
-                //     Int2 idx = prevPixelPos + offset;
-                //     idx = ClampSamplePositionIntoView(idx);
-
-                //     Surface temporalSurface;
-                //     GetPrevSurface(temporalSurface, idx);
-
-                //     LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface);
-
-                //     float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
-
-                //     // if (selectedLoopIdx != i || i >= numTemporalSamples)
-                //     // {
-                //     //     if (!TraceVisibilityShadowRay(selectedSampleAtNeighbor, temporalSurface, 0.01f))
-                //     //     {
-                //     //         ps = 0.0f;
-                //     //     }
-                //     // }
-
-                //     DIReservoir prevReservoir = LoadDIReservoir(idx);
-                //     if (isnan(prevReservoir.weightSum) || isinf(prevReservoir.weightSum))
-                //     {
-                //         prevReservoir = EmptyDIReservoir();
-                //     }
-
-                //     if (prevReservoir.M > mCap)
-                //     {
-                //         prevReservoir.M = mCap;
-                //     }
-
-                //     if (selectedLoopIdx == i)
-                //     {
-                //         pi = ps;
-                //     }
-
-                //     piSum += ps * prevReservoir.M;
-                // }
-
-                // FinalizeResampling(restirReservoir, pi, piSum);
-
-                FinalizeResampling(restirReservoir, 1.0f, restirReservoir.M);
-            }
+            // FinalizeResampling(restirReservoir, 1.0f, restirReservoir.M);
         }
 
-        // Boiling filter
-        // {
-        //     float threadGroupWeightSum = restirReservoir.weightSum;
-        //     float threadCount = 1.0f;
-        //     for (int offset = warpSize / 2; offset > 0; offset /= 2)
-        //     {
-        //         threadGroupWeightSum += __shfl_down_sync(__activemask(), threadGroupWeightSum, offset);
-        //         threadCount += __shfl_down_sync(__activemask(), threadCount, offset);
-        //     }
-
-        //     if (restirReservoir.weightSum > (threadGroupWeightSum / threadCount) * 40.0f)
-        //     {
-        //         restirReservoir = EmptyDIReservoir();
-        //     }
-        // }
-
-        // Shading
-        if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(restirReservoir))
+        // Final visibility
+        if (lightSample.lightType != LightTypeInvalid)
         {
-            // Final visibility
-            if (enableReSTIR)
+            constexpr float rayLengthEpsilon = 0.01f;
+            constexpr float extraRayOffset = 0.0f;
+            constexpr bool usePrevBvh = false;
+
+            Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
+            float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - rayLengthEpsilon - extraRayOffset : RayMax;
+
+            isLightVisible = false;
+            UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
+            Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
+
+            optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
+                       (float3)shadowRayOrig,
+                       (float3)sampleDir,
+                       extraRayOffset, // tmin
+                       maxDistance,    // tmax
+                       0.0f,
+                       OptixVisibilityMask(0xFE),
+                       OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                       0, 2, 2,
+                       visibilityRayPayload.x, visibilityRayPayload.y);
+
+            if (!isLightVisible)
             {
-                isLightVisible = TraceVisibilityShadowRay(lightSample, surface);
-
-                if (!isLightVisible)
-                {
-                    // Keep M for correct resampling, remove the actual sample
-                    restirReservoir.lightData = 0;
-                    restirReservoir.weightSum = 0;
-                }
+                // Keep M for correct resampling, remove the actual sample
+                restirReservoir.lightData = 0;
+                restirReservoir.weightSum = 0;
             }
-
-            if (isLightVisible)
-            {
-                Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-
-                const int indexBsdfEval = indexBsdfSample + 1;
-                const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, sampleDir);
-                Float3 bsdf = bsdfPdf.xyz;
-
-                if (skipAlbedoInShadowRayContribution)
-                {
-                    bsdf /= state.albedo;
-                }
-
-                float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
-
-                Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(restirReservoir) / lightSample.solidAnglePdf;
-
-                rayData->radiance += shadowRayRadiance;
-            }
-        }
-
-        if (enableReSTIR)
-        {
-            StoreDIReservoir(restirReservoir, pixelPosition);
         }
     }
 
-    rayData->wi = surfWi;
-    rayData->f_over_pdf = surfBsdfOverPdf;
-    rayData->pdf = surfSampleSurfPdf;
+    // Shading
+    DIReservoir shadingReservoir = enableReSTIR ? restirReservoir : risReservoir;
+    if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(shadingReservoir))
+    {
+        if (isLightVisible)
+        {
+            Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
+
+            // const int indexBsdfEval = indexBsdfSample + 1;
+            // const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, sampleDir);
+            // Float3 bsdf = bsdfPdf.xyz;
+            const Float3 albedo = skipAlbedoInShadowRayContribution ? Float3(1.0f) : state.albedo;
+            Float3 bsdf;
+            float pdf;
+            UberBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, bsdf, pdf);
+
+            float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
+
+            Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
+
+            rayData->radiance += shadowRayRadiance;
+        }
+    }
+
+    // Store the reservoir
+    if (enableReSTIR)
+    {
+        StoreDIReservoir(restirReservoir, pixelPosition);
+    }
 }
 
 extern "C" __global__ void __closesthit__bsdf_light()
@@ -806,11 +838,8 @@ extern "C" __global__ void __closesthit__bsdf_light()
     rayData->bary = Float2(bary);
 
     const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
-    int materialId = parameters.indexBSDF;
 
-    bool isEmissive = materialId == INDEX_BSDF_EMISSIVE;
-
-    if (isEmissive)
+    if (parameters.isEmissive)
     {
         int idx = -1;
         {

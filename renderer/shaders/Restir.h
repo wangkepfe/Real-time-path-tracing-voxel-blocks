@@ -7,6 +7,7 @@
 extern "C" __constant__ SystemParameter sysParam;
 
 static const unsigned int RESERVOIR_BLOCK_SIZE = 16;
+static constexpr bool useUberShader = true;
 
 INL_DEVICE void StoreDIReservoir(const DIReservoir reservoir, Int2 reservoirPosition)
 {
@@ -155,29 +156,42 @@ INL_DEVICE void FinalizeResampling(
 
 INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
 {
-    Float3 f;
     float pdf;
 
-    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
+    if (useUberShader)
+    {
+        Float3 f;
+        UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
+    }
+    else
+    {
+        // const int indexBsdfEval = surface.materialId + 1;
+        // MaterialParameter parameters = {};
+        // const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, surface.state, nullptr, wi);
+        // pdf = bsdfPdf.w;
+    }
 
     return pdf;
 }
 
-INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, Float3 u, Float3 &wi, float &pdf)
+INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, int &randIdx, Float3 &wi, float &pdf, bool &isTransmissiveEvent)
 {
     Float3 bsdfOverPdf;
 
-    UberBSDFSample(u, surface.normal, surface.geoNormal, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), wi, bsdfOverPdf, pdf);
+    if (useUberShader)
+    {
+        UberBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
+    }
+    else
+    {
+        // const int indexBsdfSample = surface.materialId;
+        // MaterialParameter parameters = {};
+        // optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, int &, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, surface.state, nullptr, randIdx, wi, bsdfOverPdf, pdf);
+    }
 
     return pdf > 0.0f;
 }
 
-// Computes the weight of the given light samples when the given surface is
-// shaded using that light sample. Exact or approximate BRDF evaluation can be
-// used to compute the weight. ReSTIR will converge to a correct lighting result
-// even if all samples have a fixed weight of 1.0, but that will be very noisy.
-// Scaling of the weights can be arbitrary, as long as it's consistent
-// between all lights and surfaces.
 INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surface surface)
 {
     if (lightSample.solidAnglePdf <= 0 || lightSample.lightType == LightTypeInvalid)
@@ -188,11 +202,21 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
     Float3 wi = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
 
     Float3 f;
-    float pdf;
 
-    UberBSDFEvaluate(surface.normal, surface.geoNormal, wi, surface.wo, surface.albedo, Float3(0.0278f), fmaxf(surface.roughness, 0.01f), f, pdf);
+    if (useUberShader)
+    {
+        float pdf;
+        UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
+    }
+    else
+    {
+        // const int indexBsdfEval = surface.materialId + 1;
+        // MaterialParameter parameters = {};
+        // const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, surface.state, nullptr, wi);
+        // f = bsdfPdf.xyz;
+    }
 
-    Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.normal)) / lightSample.solidAnglePdf;
+    Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.state.normal)) / lightSample.solidAnglePdf;
 
     return luminance(reflectedRadiance);
 }
@@ -314,24 +338,6 @@ INL_DEVICE float LightBrdfMisWeight(Surface surface, LightSample lightSample, fl
     return blendedSourcePdf;
 }
 
-INL_DEVICE bool TraceVisibilityShadowRay(LightSample lightSample, Surface surface, float rayOffset = 0.0f)
-{
-    Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-    float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - 0.01f - rayOffset : RayMax;
-
-    bool isLightVisible = false;
-    UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
-    Float3 shadowRayOrig = surface.thinfilm ? (dot(sampleDir, surface.normal) > 0.0f ? surface.pos : surface.backfacePos) : surface.pos;
-    optixTrace(sysParam.topObject,
-               (float3)shadowRayOrig, (float3)sampleDir,
-               rayOffset, maxDistance, 0.0f, // tmin, tmax, time
-               OptixVisibilityMask(0xFE), OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-               0, 2, 2,
-               visibilityRayPayload.x, visibilityRayPayload.y);
-
-    return isLightVisible;
-}
-
 INL_DEVICE Int2 ClampSamplePositionIntoView(Int2 pixelPosition)
 {
     int width = int(sysParam.camera.resolution.x);
@@ -362,17 +368,25 @@ INL_DEVICE bool GetPrevSurface(Surface &surface, Int2 pixelPosition)
 
     Float4 normalRoughness = Load2DFloat4(sysParam.prevNormalRoughnessBuffer, pixelPosition);
     Float4 geoNormalThinfilm = Load2DFloat4(sysParam.prevGeoNormalThinfilmBuffer, pixelPosition);
+    Float4 materialParameters = Load2DFloat4(sysParam.prevMaterialParameterBuffer, pixelPosition);
+    float material = Load2DFloat1(sysParam.prevMaterialBuffer, pixelPosition);
 
-    Float3 viewDir = sysParam.prevCamera.uvToViewDirection(Float2(pixelPosition.x, pixelPosition.y) * sysParam.prevCamera.inversedResolution);
+    int prevSeed = 0;
+    Float2 prevPixelJitter = Float2(randPrev(sysParam, prevSeed), randPrev(sysParam, prevSeed));
+    Float2 prevPixelUV = (Float2(pixelPosition.x, pixelPosition.y) + prevPixelJitter) * sysParam.prevCamera.inversedResolution;
+    Float3 viewDir = sysParam.prevCamera.uvToWorldDirection(prevPixelUV);
+
     surface.pos = sysParam.prevCamera.pos + viewDir * surface.depth;
-    surface.backfacePos = surface.pos;
-    surface.wo = normalize(sysParam.prevCamera.pos - surface.pos);
+    surface.isThinfilm = (geoNormalThinfilm.w == 1.0f);
+    surface.materialId = (int)material;
 
-    surface.normal = normalRoughness.xyz;
-    surface.geoNormal = geoNormalThinfilm.xyz;
-    surface.albedo = Load2DFloat4(sysParam.prevAlbedoBuffer, pixelPosition).xyz;
-    surface.roughness = normalRoughness.w;
-    surface.thinfilm = (geoNormalThinfilm.w == 1.0f);
+    surface.state.wo = -viewDir;
+    surface.state.normal = normalRoughness.xyz;
+    surface.state.geoNormal = geoNormalThinfilm.xyz;
+    surface.state.albedo = Load2DFloat4(sysParam.prevAlbedoBuffer, pixelPosition).xyz;
+    surface.state.roughness = normalRoughness.w;
+    surface.state.metallic = (materialParameters.x == 1.0f);
+    surface.state.translucency = materialParameters.y;
 
     return true;
 }

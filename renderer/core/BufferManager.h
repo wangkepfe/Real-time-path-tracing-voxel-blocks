@@ -25,12 +25,14 @@ enum Buffer2DName
     PrevHistoryLengthBuffer,
     PrevNormalRoughnessBuffer,
     GeoNormalThinfilmBuffer,
+    MaterialParameterBuffer,
+    PrevMaterialParameterBuffer,
     PrevGeoNormalThinfilmBuffer,
     PrevAlbedoBuffer,
     SkyBuffer,
     SunBuffer,
     DebugBuffer,
-    UiBuffer,
+    UIBuffer,
     Buffer2DCount,
 };
 
