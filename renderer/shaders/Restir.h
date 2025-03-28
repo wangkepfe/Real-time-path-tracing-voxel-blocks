@@ -422,3 +422,43 @@ INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir,
     }
     return ls;
 }
+
+INL_DEVICE float ShiftMappingJacobian(
+    const LightSample &lightSample,
+    const Surface &surface,
+    const Surface &temporalSurface)
+{
+    if (lightSample.lightType == LightTypeSky || lightSample.lightType == LightTypeSun)
+    {
+        return 1.0f;
+    }
+
+    // Compute the connection directions (unit vectors).
+    Float3 dstConnectionV = normalize(lightSample.position - surface.pos);
+    Float3 srcConnectionV = normalize(lightSample.position - temporalSurface.pos);
+
+    // Compute the displacement vectors from the light sample to each shading point.
+    Float3 shiftedDisp = lightSample.position - surface.pos;
+    Float3 originalDisp = lightSample.position - temporalSurface.pos;
+
+    // Compute squared distances.
+    float shiftedDist2 = dot(shiftedDisp, shiftedDisp);
+    float originalDist2 = dot(originalDisp, originalDisp);
+
+    if (shiftedDist2 <= 0.0f || originalDist2 <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    // Use the light's surface normal (or an approximation).
+    Float3 lightNormal = lightSample.normal; // Make sure lightSample provides a valid normal.
+
+    // Cosine factors from the light normal with the negated connection directions.
+    float shiftedCosine = fabs(dot(lightNormal, -dstConnectionV));
+    float originalCosine = fabs(dot(lightNormal, -srcConnectionV));
+
+    // Compute the Jacobian factor.
+    float jacobian = (shiftedCosine / shiftedDist2) * (originalDist2 / originalCosine);
+
+    return jacobian;
+}

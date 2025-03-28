@@ -703,6 +703,8 @@ extern "C" __global__ void __closesthit__radiance()
 
                 LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface);
 
+                selectedSampleAtNeighbor.radiance *= ShiftMappingJacobian(selectedSampleAtNeighbor, surface, temporalSurface);
+
                 float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
 
                 if (ps > 0 && (selectedLoopIdx != i || i != 0))
