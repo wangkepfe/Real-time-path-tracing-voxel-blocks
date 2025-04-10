@@ -7,7 +7,6 @@
 extern "C" __constant__ SystemParameter sysParam;
 
 static const unsigned int RESERVOIR_BLOCK_SIZE = 16;
-static constexpr bool useUberShader = true;
 
 INL_DEVICE void StoreDIReservoir(const DIReservoir reservoir, Int2 reservoirPosition)
 {
@@ -158,18 +157,8 @@ INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
 {
     float pdf;
 
-    if (useUberShader)
-    {
-        Float3 f;
-        UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
-    }
-    else
-    {
-        // const int indexBsdfEval = surface.materialId + 1;
-        // MaterialParameter parameters = {};
-        // const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, surface.state, nullptr, wi);
-        // pdf = bsdfPdf.w;
-    }
+    Float3 f;
+    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     return pdf;
 }
@@ -178,16 +167,7 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, int &randIdx, Float3 &wi, 
 {
     Float3 bsdfOverPdf;
 
-    if (useUberShader)
-    {
-        UberBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
-    }
-    else
-    {
-        // const int indexBsdfSample = surface.materialId;
-        // MaterialParameter parameters = {};
-        // optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, int &, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, surface.state, nullptr, randIdx, wi, bsdfOverPdf, pdf);
-    }
+    UberBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
 
     return pdf > 0.0f;
 }
@@ -203,18 +183,8 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
 
     Float3 f;
 
-    if (useUberShader)
-    {
-        float pdf;
-        UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
-    }
-    else
-    {
-        // const int indexBsdfEval = surface.materialId + 1;
-        // MaterialParameter parameters = {};
-        // const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, surface.state, nullptr, wi);
-        // f = bsdfPdf.xyz;
-    }
+    float pdf;
+    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.state.normal)) / lightSample.solidAnglePdf;
 
@@ -421,44 +391,4 @@ INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir,
         ls = triLight.calcSample(uv, surface.pos);
     }
     return ls;
-}
-
-INL_DEVICE float ShiftMappingJacobian(
-    const LightSample &lightSample,
-    const Surface &surface,
-    const Surface &temporalSurface)
-{
-    if (lightSample.lightType == LightTypeSky || lightSample.lightType == LightTypeSun)
-    {
-        return 1.0f;
-    }
-
-    // Compute the connection directions (unit vectors).
-    Float3 dstConnectionV = normalize(lightSample.position - surface.pos);
-    Float3 srcConnectionV = normalize(lightSample.position - temporalSurface.pos);
-
-    // Compute the displacement vectors from the light sample to each shading point.
-    Float3 shiftedDisp = lightSample.position - surface.pos;
-    Float3 originalDisp = lightSample.position - temporalSurface.pos;
-
-    // Compute squared distances.
-    float shiftedDist2 = dot(shiftedDisp, shiftedDisp);
-    float originalDist2 = dot(originalDisp, originalDisp);
-
-    if (shiftedDist2 <= 0.0f || originalDist2 <= 0.0f)
-    {
-        return 0.0f;
-    }
-
-    // Use the light's surface normal (or an approximation).
-    Float3 lightNormal = lightSample.normal; // Make sure lightSample provides a valid normal.
-
-    // Cosine factors from the light normal with the negated connection directions.
-    float shiftedCosine = fabs(dot(lightNormal, -dstConnectionV));
-    float originalCosine = fabs(dot(lightNormal, -srcConnectionV));
-
-    // Compute the Jacobian factor.
-    float jacobian = (shiftedCosine / shiftedDist2) * (originalDist2 / originalCosine);
-
-    return jacobian;
 }

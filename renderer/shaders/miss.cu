@@ -2,6 +2,7 @@
 #include "SystemParameter.h"
 #include "ShaderDebugUtils.h"
 #include "Sampler.h"
+#include "Restir.h"
 
 extern "C" __constant__ SystemParameter sysParam;
 
@@ -9,7 +10,24 @@ extern "C" __global__ void __miss__radiance()
 {
     RayData *rayData = (RayData *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
+    Int2 pixelPosition = Int2(optixGetLaunchIndex());
+
     Float3 emission = Float3(0);
+
+    const bool enableReSTIR = true && rayData->depth == 0;
+    if (enableReSTIR)
+    {
+        StoreDIReservoir(EmptyDIReservoir(), pixelPosition);
+    }
+
+    if (rayData->depth == 0)
+    {
+        Store2DFloat4(Float4(1.0f), sysParam.albedoBuffer, pixelPosition);
+        Store2DFloat1((float)(0xFFFF), sysParam.materialBuffer, pixelPosition);
+        Store2DFloat4(Float4(0.0f, -1.0f, 0.0f, 0.0f), sysParam.normalRoughnessBuffer, pixelPosition);
+        Store2DFloat4(Float4(0.0f, -1.0f, 0.0f, 0.0f), sysParam.geoNormalThinfilmBuffer, pixelPosition);
+        Store2DFloat4(Float4(0.0f, 0.0f, 0.0f, 0.0f), sysParam.materialParameterBuffer, pixelPosition);
+    }
 
     // if (rayData->isLastBounceDiffuse)
     // {

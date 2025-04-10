@@ -83,6 +83,7 @@ struct SystemParameter
 
     LightInfo *lights;
     AliasTable *lightAliasTable;
+    float accumulatedLocalLightLuminance;
 
     Float3 *edgeToHighlight;
 

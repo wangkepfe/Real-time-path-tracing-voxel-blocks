@@ -143,6 +143,7 @@ void OptixRenderer::render()
     m_systemParameter.sunDir = skyModel.getSunDir();
     m_systemParameter.accumulatedSkyLuminance = skyModel.getAccumulatedSkyLuminance();
     m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
+    m_systemParameter.accumulatedLocalLightLuminance = scene.accumulatedLocalLightLuminance;
 
     m_systemParameter.lights = scene.m_lights;
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;

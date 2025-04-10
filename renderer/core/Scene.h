@@ -60,6 +60,7 @@ public:
     LightInfo *m_lights = nullptr;
     AliasTable lightAliasTable;
     AliasTable *d_lightAliasTable = nullptr;
+    float accumulatedLocalLightLuminance = 0.0f;
 
     std::vector<InstanceLightMapping> instanceLightMapping;
     InstanceLightMapping *d_instanceLightMapping;

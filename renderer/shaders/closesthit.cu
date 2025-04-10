@@ -78,23 +78,22 @@ extern "C" __global__ void __closesthit__radiance()
     bool hitFrontFace = dot(rayData->wo, geoNormal) > 0.0f;
 
     const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
-    // int materialId = parameters.indexBSDF;
-    int materialId = parameters.materialId;
 
+    int materialId = parameters.materialId;
     bool isEmissive = parameters.isEmissive;
     bool isThinfilm = parameters.isThinfilm;
-
-    // bool isDiffuse = materialId >= NUM_SPECULAR_BSDF;
-    // bool isEmissive = materialId == INDEX_BSDF_EMISSIVE;
-    // bool isTransmissive = materialId == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION;
-    // bool isThinfilm = materialId == INDEX_BSDF_DIFFUSE_REFLECTION_TRANSMISSION_THINFILM;
 
     if (isEmissive)
     {
         if (!rayData->hitFirstDiffuseSurface)
         {
             rayData->radiance = parameters.albedo;
+
             Store2DFloat4(Float4(1.0f), sysParam.albedoBuffer, pixelPosition);
+            Store2DFloat1((float)(0xFFFF), sysParam.materialBuffer, pixelPosition);
+            Store2DFloat4(Float4(0.0f, -1.0f, 0.0f, 0.0f), sysParam.normalRoughnessBuffer, pixelPosition);
+            Store2DFloat4(Float4(0.0f, -1.0f, 0.0f, 0.0f), sysParam.geoNormalThinfilmBuffer, pixelPosition);
+            Store2DFloat4(Float4(0.0f, 0.0f, 0.0f, 0.0f), sysParam.materialParameterBuffer, pixelPosition);
         }
 
         rayData->shouldTerminate = true;
@@ -269,7 +268,8 @@ extern "C" __global__ void __closesthit__radiance()
 
     // Demodulate albedo and save it in the albedo map
     bool skipAlbedoInShadowRayContribution = false;
-    if (!rayData->hitFirstDiffuseSurface && isDiffuse)
+    // if (!rayData->hitFirstDiffuseSurface && isDiffuse) // TODO
+    if (rayData->depth == 0)
     {
         rayData->hitFirstDiffuseSurface = true;
         Store2DFloat4(Float4(state.albedo, 1.0f), sysParam.albedoBuffer, pixelPosition);
@@ -283,13 +283,18 @@ extern "C" __global__ void __closesthit__radiance()
     rayData->bsdfOverPdf = bsdfSampleBsdfOverPdf;
     rayData->pdf = bsdfSamplePdf;
 
+    const bool enableReSTIR = true && rayData->depth == 0;
+
     // Specular hit = no shadow ray
     if (!isDiffuse)
     {
+        if (enableReSTIR)
+        {
+            StoreDIReservoir(EmptyDIReservoir(), pixelPosition);
+        }
+
         return;
     }
-
-    const bool enableReSTIR = true && rayData->depth == 0;
 
     Surface surface;
     surface.state = state;
@@ -301,8 +306,10 @@ extern "C" __global__ void __closesthit__radiance()
     LightSample lightSample = {};
     DIReservoir risReservoir = EmptyDIReservoir();
 
+    bool skipSunSample = !isThinfilm && (dot(state.normal, sysParam.sunDir) < 0.0f || dot(state.geoNormal, sysParam.sunDir) < 0.0f);
+
     const int numLocalLightSamples = 8;
-    const int numSunLightSamples = 1;
+    const int numSunLightSamples = skipSunSample ? 0 : 1;
     const int numSkyLightSamples = 1;
     const int numBrdfSamples = 1;
 
@@ -313,7 +320,12 @@ extern "C" __global__ void __closesthit__radiance()
     const float skyLightMisWeight = float(numSkyLightSamples) / numMisSamples;
     const float brdfMisWeight = float(numBrdfSamples) / numMisSamples;
 
-    const float brdfCutoff = 0.0001f;
+    const float totalSceneLuminance = sysParam.accumulatedLocalLightLuminance + sysParam.accumulatedSkyLuminance + sysParam.accumulatedSunLuminance;
+    const float localLightSourcePdf = sysParam.accumulatedLocalLightLuminance / totalSceneLuminance;
+    const float sunLightSourcePdf = sysParam.accumulatedSunLuminance / totalSceneLuminance;
+    const float skyLightSourcePdf = sysParam.accumulatedSkyLuminance / totalSceneLuminance;
+
+    const float brdfCutoff = 0.0f; // 0.0001f;
 
     // Local light
     DIReservoir localReservoir = EmptyDIReservoir();
@@ -580,7 +592,7 @@ extern "C" __global__ void __closesthit__radiance()
                    maxDistance,    // tmax
                    0.0f,
                    OptixVisibilityMask(0xFE),
-                   OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                   OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
                    0, 2, 2,
                    visibilityRayPayload.x, visibilityRayPayload.y);
 
@@ -601,14 +613,12 @@ extern "C" __global__ void __closesthit__radiance()
         Float3 prevWorldPos = currentWorldPos; // TODO: movement of the world
         Float2 prevUV = sysParam.prevCamera.worldDirectionToUV(normalize(prevWorldPos - sysParam.prevCamera.pos));
 
-        // prevUV = Float2(pixelPosition.x / sysParam.camera.resolution.x, pixelPosition.y / sysParam.camera.resolution.y);
         Int2 prevPixelPos = Int2(prevUV.x * sysParam.prevCamera.resolution.x, prevUV.y * sysParam.prevCamera.resolution.y);
-        // rayData->radiance += Float3(max(prevPixelPos.x - pixelPosition.x, 0), 0, 0);
         float expectedPrevLinearDepth = distance(prevWorldPos, sysParam.prevCamera.pos);
 
         constexpr unsigned int numTemporalSamples = 3;
         constexpr float mCap = 20.0f;
-        constexpr float spatialRadius = 16.0f;
+        constexpr float spatialRadius = 32.0f;
 
         Int2 temporalOffsets[numTemporalSamples];
         temporalOffsets[0] = Int2(0);
@@ -631,11 +641,6 @@ extern "C" __global__ void __closesthit__radiance()
             bool isNormalValid = dot(surface.state.normal, temporalSurface.state.geoNormal) >= 0.5f;
             bool isDepthValid = abs(expectedPrevLinearDepth - temporalSurface.depth) <= 0.1f * max(expectedPrevLinearDepth, temporalSurface.depth);
             bool isRoughValid = abs(surface.state.roughness - temporalSurface.state.roughness) <= 0.5f * max(surface.state.roughness, temporalSurface.state.roughness);
-
-            // if (OPTIX_CENTER_PIXEL())
-            // {
-            //     OPTIX_DEBUG_PRINT(Float3(isNormalValid, isDepthValid, isRoughValid));
-            // }
 
             if (!(isNormalValid && isDepthValid && isRoughValid))
                 continue;
@@ -688,37 +693,22 @@ extern "C" __global__ void __closesthit__radiance()
                 Surface temporalSurface;
                 GetPrevSurface(temporalSurface, idx);
 
-                // if (OPTIX_CENTER_PIXEL())
-                // {
-                //     OPTIX_DEBUG_PRINT(idx);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.pos);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.wo);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.depth);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.state.geoNormal);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.state.geoNormal);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.albedo);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.roughness);
-                //     OPTIX_DEBUG_PRINT(temporalSurface.isThinfilm);
-                // }
-
                 LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface);
-
-                selectedSampleAtNeighbor.radiance *= ShiftMappingJacobian(selectedSampleAtNeighbor, surface, temporalSurface);
 
                 float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
 
-                if (ps > 0 && (selectedLoopIdx != i || i != 0))
+                if (ps > 0)
                 {
                     constexpr float rayLengthEpsilon = 0.01f;
-                    constexpr float extraRayOffset = 0.01f;
+                    const float extraRayOffset = 0.01f + 0.01f * temporalSurface.depth;
                     constexpr bool usePrevBvh = true;
 
-                    Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-                    float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - surface.pos) - rayLengthEpsilon - extraRayOffset : RayMax;
+                    Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - temporalSurface.pos) : lightSample.position;
+                    float maxDistance = (lightSample.lightType == LightTypeLocalTriangle) ? length(lightSample.position - temporalSurface.pos) - rayLengthEpsilon - extraRayOffset : RayMax;
 
                     bool isNeighborSampleVisible = false;
                     UInt2 visibilityRayPayload = splitPointer(&isNeighborSampleVisible);
-                    Float3 shadowRayOrig = surface.pos;
+                    Float3 shadowRayOrig = temporalSurface.pos;
 
                     optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
                                (float3)shadowRayOrig,
@@ -727,7 +717,7 @@ extern "C" __global__ void __closesthit__radiance()
                                maxDistance,    // tmax
                                0.0f,
                                OptixVisibilityMask(0xFE),
-                               OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                               OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
                                0, 2, 2,
                                visibilityRayPayload.x, visibilityRayPayload.y);
 
@@ -782,7 +772,7 @@ extern "C" __global__ void __closesthit__radiance()
                        maxDistance,    // tmax
                        0.0f,
                        OptixVisibilityMask(0xFE),
-                       OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                       OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
                        0, 2, 2,
                        visibilityRayPayload.x, visibilityRayPayload.y);
 

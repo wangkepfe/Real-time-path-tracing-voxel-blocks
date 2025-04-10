@@ -5,8 +5,7 @@
 static constexpr float roughnessThreshold = 0.00001f;
 static constexpr float translucencyThreshold = 0.001f;
 
-INL_DEVICE void
-UnitSquareToCosineHemisphere(Float2 sample, Float3 axis, Float3 &w, float &pdf)
+INL_DEVICE void UnitSquareToCosineHemisphere(Float2 sample, Float3 axis, Float3 &w, float &pdf)
 {
     // Choose a point on the local hemisphere coordinates about +z
     const float theta = 2.0f * M_PI * sample.x;

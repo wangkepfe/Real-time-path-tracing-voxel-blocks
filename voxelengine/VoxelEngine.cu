@@ -136,7 +136,7 @@ __global__ void extractRadianceKernel(const LightInfo *lights, float *d_radiance
 
 //-----------------------------------------------------------------------------
 // Step 2. Build the device radiance array and update the alias table.
-void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &aliasTable)
+void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &aliasTable, float &accumulatedLocalLightLuminance)
 {
     // Allocate device memory to store one radiance weight per light.
     float *d_radiance = nullptr;
@@ -160,13 +160,11 @@ void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &
     }
 
     // Build the alias table based on the radiance weights.
-    float sumWeight = 0.0f;
-    aliasTable.update(d_radiance, totalLights, sumWeight);
+    accumulatedLocalLightLuminance = 0.0f;
+    aliasTable.update(d_radiance, totalLights, accumulatedLocalLightLuminance);
 
     // Optionally, you can free the d_radiance buffer if it is no longer needed.
     cudaFree(d_radiance);
-
-    // (For debugging, you might want to print out sumWeight or check the alias table.)
 }
 
 unsigned int PositionToInstanceId(unsigned int offset, unsigned int geometryId, unsigned int x, unsigned int y, unsigned int z, unsigned int width)
@@ -320,7 +318,7 @@ void VoxelEngine::updateInstances()
     {
         scene.lightAliasTable = AliasTable(); // trigger the destructor and constructor
     }
-    buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable);
+    buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 }
 
