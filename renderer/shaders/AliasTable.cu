@@ -70,6 +70,7 @@ void AliasTable::update(const float *weights, unsigned int n, float &sumWeight)
     if (g_use_cpu_build)
     {
         // Compute the sum of weights on the device using Thrust.
+
         thrust::device_ptr<const float> dev_weights(weights);
         sumWeight = thrust::reduce(dev_weights, dev_weights + n, 0.0f, thrust::plus<float>());
 
@@ -157,6 +158,7 @@ void AliasTable::update(const float *weights, unsigned int n, float &sumWeight)
         // Assumes that 'weights' is a device pointer.
         // ----------------------------
         // Compute sum of weights using Thrust.
+
         thrust::device_ptr<const float> dev_weights(weights);
         sumWeight = thrust::reduce(dev_weights, dev_weights + n, 0.0f, thrust::plus<float>());
 

@@ -50,18 +50,9 @@ extern "C" __global__ void __miss__radiance()
 
     // Sky
     {
-        // Map the ray diretcion to uv
-        uv = EqualAreaMap(rayDir);
+        uv = EqualAreaSphereMap(rayDir);
         Float3 skyEmission = SampleBicubicSmoothStep<Load2DFuncFloat4<Float3>, Float3, BoundaryFuncRepeatXClampY>(sysParam.skyBuffer, uv, skyRes);
-
-        // Blend the sky color with mist
-        Float3 mistColor = Float3(accumulatedSkyLuminance / skySize); // Average color of elevation=0
-        float blenderFactor = clampf((rayDir.y + 0.4f) * (1.0f / 0.5f));
-
-        float misWeight = 1.0f;
-
-        // Add sky emission
-        emission += smoothstep3f(mistColor, skyEmission, blenderFactor) * misWeight;
+        emission += skyEmission;
     }
 
     // Is the ray hitting the solar disk, then compute the sun emission
@@ -80,11 +71,7 @@ extern "C" __global__ void __miss__radiance()
             sunIdx.x = sunRes.x - (-sunIdx.x) % sunRes.x;
         }
         Float3 sunEmission = Load2DFloat4(sysParam.sunBuffer, sunIdx).xyz;
-
-        float misWeight = 1.0f;
-
-        // Add sun emission
-        emission += sunEmission * misWeight;
+        emission += sunEmission;
     }
 
     rayData->radiance = emission;

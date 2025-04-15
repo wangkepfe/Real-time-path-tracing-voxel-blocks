@@ -7,6 +7,9 @@
 #include "util/DebugUtils.h"
 #include "util/KernelHelper.h"
 
+#include <thrust/device_ptr.h>
+#include <thrust/reduce.h>
+
 __constant__ float cSkyConfigs[90];
 __constant__ float cSkyRadiances[10];
 __constant__ float cSolarDatasets[1800];
@@ -253,20 +256,44 @@ INL_DEVICE Float3 GetSunRadiance(const Float3 &raydir, const Float3 &sunDir,
     return rgbColor;
 }
 
-__global__ void Sky(SurfObj skyBuffer, float *skyPdf, Int2 size, Float3 sunDir,
-                    SkyParams skyParams)
+__global__ void Sky(SurfObj skyBuffer, float *skyPdf, Int2 size, Float3 sunDir, SkyParams skyParams)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     float u = ((float)x + 0.5f) / size.x;
-    float v = ((float)y + 0.5f) / size.y;
+    float v = ((float)y + 0.5f) / (size.y / 2);
 
-    Float3 rayDir = EqualAreaMap(u, v);
+    y = y + size.y / 2;
+
+    Float3 rayDir = EqualAreaHemisphereMap(u, v);
 
     Float3 color = GetSkyRadiance(rayDir, sunDir, skyParams) * skyParams.skyBrightness;
 
     color = max3f(color, Float3(0.0f));
+
+    Store2DFloat4(Float4(color, 0), skyBuffer, Int2(x, y));
+
+    // sky cdf
+    int i = size.x * y + x;
+    skyPdf[i] = luminance(color);
+}
+
+__global__ void SkyLowerHemisphere(SurfObj skyBuffer, float *skyPdf, Int2 size, float sumSkyPdf)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    float u = ((float)x + 0.5f) / size.x;
+    float v = ((float)y + 0.5f) / (size.y / 2) - 1.0f;
+
+    float rayDirY = v;
+
+    Float3 mistColor = Float3(sumSkyPdf / (size.x * size.y));
+    float blenderFactor = clampf((rayDirY + 0.4f) * (1.0f / 0.5f));
+
+    Float3 skyEmission = Load2DFloat4(skyBuffer, Int2(x, size.y / 2)).xyz;
+    Float3 color = smoothstep3f(mistColor, skyEmission, blenderFactor);
 
     Store2DFloat4(Float4(color, 0), skyBuffer, Int2(x, y));
 
@@ -340,28 +367,25 @@ void SkyModel::update()
         const float angle = fmodf(skyParams.timeOfDay * M_PI, TWO_PI);
         sunDir = rotate3f(axis, angle, cross(Float3(0, 1, 0), axis)).normalized();
 
-        // TODO: Compute sky resolution based on the camera resolution and FOV to
-        // reduce aliasing const auto& renderer = OptixRenderer::Get(); const auto&
-        // camera = renderer.getCamera(); Float2 cameraRes = camera.resolution;
-        // Float2 fov = camera.fov;
-
         // Compute sky state on CPU
         updateSkyState();
 
         // Generate sky on GPU
-        Sky KERNEL_ARGS2(GetGridDim(skyRes.x, skyRes.y, BLOCK_DIM_8x8x1),
-                         GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferManager.GetBuffer2D(SkyBuffer), skyPdf, skyRes, sunDir,
-            skyParams);
+        Sky KERNEL_ARGS2(GetGridDim(skyRes.x, skyRes.y / 2, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+            bufferManager.GetBuffer2D(SkyBuffer), skyPdf, skyRes, sunDir, skyParams);
 
-        skyAliasTable.update(skyPdf, skyRes.x * skyRes.y, accumulatedSkyLuminance);
+        thrust::device_ptr<const float> dSkyPdf(skyPdf);
+        float sumSkyPdf = thrust::reduce(dSkyPdf + skyRes.x * skyRes.y / 2, dSkyPdf + skyRes.x * skyRes.y, 0.0f, thrust::plus<float>());
+
+        SkyLowerHemisphere KERNEL_ARGS2(GetGridDim(skyRes.x, skyRes.y / 2, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+            bufferManager.GetBuffer2D(SkyBuffer), skyPdf, skyRes, sumSkyPdf);
+
+        skyAliasTable.update(skyPdf, skyRes.x * skyRes.y, sumSkyPdf);
         cudaMemcpy(d_skyAliasTable, &skyAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 
         // Generate sun on GPU
-        SkySun KERNEL_ARGS2(GetGridDim(sunRes.x, sunRes.y, BLOCK_DIM_8x8x1),
-                            GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferManager.GetBuffer2D(SunBuffer), sunPdf, sunRes, sunDir,
-            skyParams);
+        SkySun KERNEL_ARGS2(GetGridDim(sunRes.x, sunRes.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+            bufferManager.GetBuffer2D(SunBuffer), sunPdf, sunRes, sunDir, skyParams);
 
         sunAliasTable.update(sunPdf, sunRes.x * sunRes.y, accumulatedSunLuminance);
         cudaMemcpy(d_sunAliasTable, &sunAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);

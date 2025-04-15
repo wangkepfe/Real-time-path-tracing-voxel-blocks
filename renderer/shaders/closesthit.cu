@@ -202,10 +202,10 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool isDiffuse = state.roughness > roughnessThreshold;
 
-    if (OPTIX_CENTER_BLOCK() && !isDiffuse)
-    {
-        OPTIX_DEBUG_PRINT(state.roughness);
-    }
+    // if (OPTIX_CENTER_BLOCK() && !isDiffuse)
+    // {
+    //     OPTIX_DEBUG_PRINT(state.roughness);
+    // }
 
     // Metallic
     state.metallic = parameters.metallic;
@@ -481,7 +481,7 @@ extern "C" __global__ void __closesthit__radiance()
                 else
                 {
                     lightIndex = SkyLightIndex;
-                    uv = EqualAreaMap(sampleDir);
+                    uv = EqualAreaSphereMap(sampleDir);
 
                     Int2 skyIdx((int)(uv.x * sysParam.skyRes.x - 0.5f), (int)(uv.y * sysParam.skyRes.y - 0.5f));
                     clamp2i(skyIdx, Int2(0), sysParam.skyRes - 1);
@@ -616,14 +616,13 @@ extern "C" __global__ void __closesthit__radiance()
         Int2 prevPixelPos = Int2(prevUV.x * sysParam.prevCamera.resolution.x, prevUV.y * sysParam.prevCamera.resolution.y);
         float expectedPrevLinearDepth = distance(prevWorldPos, sysParam.prevCamera.pos);
 
-        constexpr unsigned int numTemporalSamples = 3;
+        constexpr unsigned int numTemporalSamples = 2;
         constexpr float mCap = 20.0f;
-        constexpr float spatialRadius = 32.0f;
+        constexpr float spatialRadius = 64.0f;
 
         Int2 temporalOffsets[numTemporalSamples];
-        temporalOffsets[0] = Int2(0);
+        temporalOffsets[0] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
         temporalOffsets[1] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
-        temporalOffsets[2] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
 
         unsigned int cachedResult = 0;
         int selectedLoopIdx = -1;

@@ -246,10 +246,10 @@ INL_DEVICE LightSample createSkyLightSample(int sampledSkyIdx)
               (skyIdx.y + 0.5f) / float(sysParam.skyRes.y));
 
     // Compute the solid angle PDF.
-    float solidAnglePdf = (sysParam.skyRes.x * sysParam.skyRes.y) / TWO_PI;
+    float solidAnglePdf = (sysParam.skyRes.x * sysParam.skyRes.y) / (4.0f * M_PI);
 
     // Map the UV to a ray direction using an equal-area mapping.
-    Float3 rayDir = EqualAreaMap(uv.x, uv.y);
+    Float3 rayDir = EqualAreaSphereMap(uv.x, uv.y);
 
     // Retrieve the sky emission from the sky buffer.
     Float3 skyEmission = Load2DFloat4(sysParam.skyBuffer, skyIdx).xyz;

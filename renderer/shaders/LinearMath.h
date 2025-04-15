@@ -1670,7 +1670,7 @@ INL_DEVICE Float2 EqualRectMap(Float3 dir)
     return Float2(u, v);
 }
 
-INL_DEVICE Float3 EqualAreaMap(float u, float v)
+INL_DEVICE Float3 EqualAreaHemisphereMap(float u, float v)
 {
     float z = v;
     float r = sqrtf(1.0f - v * v);
@@ -1679,10 +1679,25 @@ INL_DEVICE Float3 EqualAreaMap(float u, float v)
     return Float3(r * cosf(phi), z, r * sinf(phi));
 }
 
-INL_DEVICE Float2 EqualAreaMap(Float3 dir)
+INL_DEVICE Float2 EqualAreaHemisphereMap(Float3 dir)
 {
     float u = atan2f(-dir.z, -dir.x) / TWO_PI + 0.5f;
-    float v = max(dir.y, 0.05f);
+    float v = max(dir.y, 0.001f);
+    return Float2(u, v);
+}
+
+INL_DEVICE Float3 EqualAreaSphereMap(float u, float v)
+{
+    float y = 2.0f * v - 1.0f;
+    float r = sqrtf(1.0f - y * y);
+    float phi = TWO_PI * u;
+    return Float3(r * cosf(phi), y, r * sinf(phi));
+}
+
+INL_DEVICE Float2 EqualAreaSphereMap(Float3 dir)
+{
+    float u = atan2f(-dir.z, -dir.x) / TWO_PI + 0.5f;
+    float v = (dir.y + 1.0f) * 0.5f;
     return Float2(u, v);
 }
 

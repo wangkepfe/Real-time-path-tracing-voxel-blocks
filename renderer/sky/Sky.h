@@ -50,7 +50,7 @@ private:
     float accumulatedSkyLuminance;
     float accumulatedSunLuminance;
 
-    Int2 skyRes{1024, 256};
+    Int2 skyRes{1024, 512};
     Int2 sunRes{32, 32};
 
     int skySize{};
