@@ -13,6 +13,8 @@ struct __align__(16) Camera
     Float3 pos;
     Float3 dir;
 
+    Float3 posDelta;
+
     float yaw;
     float pitch;
 
@@ -39,6 +41,8 @@ struct __align__(16) Camera
 
     INL_HOST_DEVICE void update()
     {
+        pos = pos + posDelta;
+        posDelta = Float3(0.0f, 0.0f, 0.0f);
         dir = YawPitchToDir(yaw, pitch);
 
         // Fixed vertical direction for camera setup

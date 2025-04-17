@@ -254,7 +254,7 @@ void InputHandler::update()
             if (moveX)
                 movingDir -= Float3(0, 1, 0);
 
-            camera.pos += movingDir * deltaTimeMs * moveSpeed;
+            camera.posDelta += movingDir * deltaTimeMs * moveSpeed;
 
             backend.resetAccumulationCounter();
         }
@@ -293,7 +293,7 @@ void InputHandler::update()
 
             if (v0.id == BlockTypeEmpty && v1.id == BlockTypeEmpty)
             {
-                camera.pos = camera.pos + horizontalMove;
+                camera.posDelta += horizontalMove;
             }
         }
 
@@ -302,22 +302,20 @@ void InputHandler::update()
         // Free fall
         float fallAccel = 9.8e-6f;
         fallSpeed += fallAccel * deltaTimeMs;
-        camera.pos.y -= fallSpeed * deltaTimeMs;
+        camera.posDelta.y -= fallSpeed * deltaTimeMs;
 
-        auto v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
+        auto v2 = voxelChunk.get((camera.pos.y + camera.posDelta.y) - Float3(0, height, 0));
 
         if (fallSpeed > 0.0f && v2.id != BlockTypeEmpty)
         {
             while (v2.id != BlockTypeEmpty)
             {
-                camera.pos.y += 1.0f;
-                v2 = voxelChunk.get(camera.pos - Float3(0, height, 0));
+                camera.posDelta.y += 1.0f;
+                v2 = voxelChunk.get((camera.pos.y + camera.posDelta.y) - Float3(0, height, 0));
             }
-            camera.pos.y = static_cast<float>(static_cast<int>(camera.pos.y - height)) + height;
+            camera.posDelta.y += static_cast<float>(static_cast<int>((camera.pos.y + camera.posDelta.y) - height)) + height - (camera.pos.y + camera.posDelta.y);
             fallSpeed = 0.0f;
         }
-
-        // std::cout << "camera.pos.y = " << camera.pos.y << "\n";
 
         // head bump to roof
         auto v3 = voxelChunk.get(camera.pos + Float3(0, 0.49f, 0));

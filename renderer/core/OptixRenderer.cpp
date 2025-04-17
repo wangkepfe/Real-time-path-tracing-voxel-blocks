@@ -132,6 +132,7 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
+    RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
     RenderCamera::Get().camera.update();
 
     m_systemParameter.camera = RenderCamera::Get().camera;
@@ -164,8 +165,6 @@ void OptixRenderer::render()
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(MaterialParameterBuffer), bufferManager.GetBuffer2D(MaterialParameterBuffer), bufferManager.GetBuffer2D(PrevMaterialParameterBuffer));
-
-    RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
 }
 
 #ifdef _WIN32

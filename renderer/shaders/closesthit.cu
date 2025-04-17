@@ -616,13 +616,13 @@ extern "C" __global__ void __closesthit__radiance()
         Int2 prevPixelPos = Int2(prevUV.x * sysParam.prevCamera.resolution.x, prevUV.y * sysParam.prevCamera.resolution.y);
         float expectedPrevLinearDepth = distance(prevWorldPos, sysParam.prevCamera.pos);
 
-        constexpr unsigned int numTemporalSamples = 2;
+        constexpr unsigned int numTemporalSamples = 3;
         constexpr float mCap = 20.0f;
-        constexpr float spatialRadius = 64.0f;
 
         Int2 temporalOffsets[numTemporalSamples];
-        temporalOffsets[0] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
-        temporalOffsets[1] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * spatialRadius);
+        temporalOffsets[0] = prevPixelPos - pixelPosition;
+        temporalOffsets[1] = prevPixelPos - pixelPosition + Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * 64.0f);
+        temporalOffsets[2] = Int2(ConcentricSampleDisk(rand2(sysParam, randIdx)) * 64.0f);
 
         unsigned int cachedResult = 0;
         int selectedLoopIdx = -1;
@@ -630,7 +630,7 @@ extern "C" __global__ void __closesthit__radiance()
         for (unsigned int i = 0; i < numTemporalSamples; ++i)
         {
             Int2 offset = temporalOffsets[i];
-            Int2 idx = prevPixelPos + offset;
+            Int2 idx = pixelPosition + offset;
             idx = ClampSamplePositionIntoView(idx);
 
             Surface temporalSurface;
@@ -686,7 +686,7 @@ extern "C" __global__ void __closesthit__radiance()
                     continue;
 
                 Int2 offset = temporalOffsets[i];
-                Int2 idx = prevPixelPos + offset;
+                Int2 idx = pixelPosition + offset;
                 idx = ClampSamplePositionIntoView(idx);
 
                 Surface temporalSurface;
@@ -696,7 +696,7 @@ extern "C" __global__ void __closesthit__radiance()
 
                 float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
 
-                if (ps > 0)
+                if (ps > 0 && !(i == 0 && i == selectedLoopIdx))
                 {
                     constexpr float rayLengthEpsilon = 0.01f;
                     const float extraRayOffset = 0.01f + 0.01f * temporalSurface.depth;
