@@ -435,16 +435,17 @@ extern "C" __global__ void __closesthit__radiance()
             UInt2 payload = splitPointer(&shadowRayData);
 
             Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
-            optixTrace(sysParam.topObject,
-                       (float3)shadowRayOrig,
-                       (float3)sampleDir,
-                       0.0f,        // tmin
-                       maxDistance, // tmax
-                       0.0f,
-                       OptixVisibilityMask(0xFF),
-                       OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-                       1, 2, 1,
-                       payload.x, payload.y);
+            optixTraverse(sysParam.topObject,
+                          (float3)shadowRayOrig,
+                          (float3)sampleDir,
+                          0.0f,        // tmin
+                          maxDistance, // tmax
+                          0.0f,
+                          OptixVisibilityMask(0xFF),
+                          OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+                          1, 2, 1,
+                          payload.x, payload.y);
+            optixInvoke(payload.x, payload.y);
 
             if (shadowRayData.lightIdx == InvalidLightIndex)
             {
@@ -585,16 +586,17 @@ extern "C" __global__ void __closesthit__radiance()
         UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
         Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
 
-        optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
-                   (float3)shadowRayOrig,
-                   (float3)sampleDir,
-                   extraRayOffset, // tmin
-                   maxDistance,    // tmax
-                   0.0f,
-                   OptixVisibilityMask(0xFE),
-                   OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-                   0, 2, 2,
-                   visibilityRayPayload.x, visibilityRayPayload.y);
+        optixTraverse(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
+                      (float3)shadowRayOrig,
+                      (float3)sampleDir,
+                      extraRayOffset, // tmin
+                      maxDistance,    // tmax
+                      0.0f,
+                      OptixVisibilityMask(0xFE),
+                      OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
+                      0, 2, 2,
+                      visibilityRayPayload.x, visibilityRayPayload.y);
+        optixInvoke(visibilityRayPayload.x, visibilityRayPayload.y);
 
         if (!isLightVisible)
         {
@@ -709,16 +711,17 @@ extern "C" __global__ void __closesthit__radiance()
                     UInt2 visibilityRayPayload = splitPointer(&isNeighborSampleVisible);
                     Float3 shadowRayOrig = temporalSurface.pos;
 
-                    optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
-                               (float3)shadowRayOrig,
-                               (float3)sampleDir,
-                               extraRayOffset, // tmin
-                               maxDistance,    // tmax
-                               0.0f,
-                               OptixVisibilityMask(0xFE),
-                               OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-                               0, 2, 2,
-                               visibilityRayPayload.x, visibilityRayPayload.y);
+                    optixTraverse(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
+                                  (float3)shadowRayOrig,
+                                  (float3)sampleDir,
+                                  extraRayOffset, // tmin
+                                  maxDistance,    // tmax
+                                  0.0f,
+                                  OptixVisibilityMask(0xFE),
+                                  OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
+                                  0, 2, 2,
+                                  visibilityRayPayload.x, visibilityRayPayload.y);
+                    optixInvoke(visibilityRayPayload.x, visibilityRayPayload.y);
 
                     if (!isNeighborSampleVisible)
                     {
@@ -764,16 +767,17 @@ extern "C" __global__ void __closesthit__radiance()
             UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
             Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
 
-            optixTrace(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
-                       (float3)shadowRayOrig,
-                       (float3)sampleDir,
-                       extraRayOffset, // tmin
-                       maxDistance,    // tmax
-                       0.0f,
-                       OptixVisibilityMask(0xFE),
-                       OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-                       0, 2, 2,
-                       visibilityRayPayload.x, visibilityRayPayload.y);
+            optixTraverse(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
+                          (float3)shadowRayOrig,
+                          (float3)sampleDir,
+                          extraRayOffset, // tmin
+                          maxDistance,    // tmax
+                          0.0f,
+                          OptixVisibilityMask(0xFE),
+                          OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
+                          0, 2, 2,
+                          visibilityRayPayload.x, visibilityRayPayload.y);
+            optixInvoke(visibilityRayPayload.x, visibilityRayPayload.y);
 
             if (!isLightVisible)
             {
