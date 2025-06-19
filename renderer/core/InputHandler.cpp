@@ -349,18 +349,41 @@ void InputHandler::SaveSceneToFile()
         }
     }
 
+    // Save multi-chunk voxel data
     {
-        std::string sceneFileName = fileName + "vox.bin";
-        ofstream myfile(sceneFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
-        if (myfile.is_open())
+        auto &voxelEngine = VoxelEngine::Get();
+        auto &voxelChunks = voxelEngine.voxelChunks;
+        auto &chunkConfig = voxelEngine.chunkConfig;
+
+        // Save chunk configuration first
+        std::string configFileName = fileName + "config.bin";
+        ofstream configFile(configFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+        if (configFile.is_open())
         {
-            myfile.write(reinterpret_cast<char *>(VoxelEngine::Get().voxelChunk.data), VoxelEngine::Get().voxelChunk.size());
-            myfile.close();
-            cout << "Successfully saved scene to file \"" << sceneFileName << "\".\n";
+            configFile.write(reinterpret_cast<const char *>(&chunkConfig), sizeof(ChunkConfiguration));
+            configFile.close();
+            cout << "Successfully saved chunk configuration to file \"" << configFileName << "\".\n";
         }
         else
         {
-            cout << "Error: Failed to save scene to file \"" << sceneFileName << "\".\n";
+            cout << "Error: Failed to save chunk configuration to file \"" << configFileName << "\".\n";
+        }
+
+        // Save each chunk individually
+        for (unsigned int chunkIndex = 0; chunkIndex < voxelChunks.size(); ++chunkIndex)
+        {
+            std::string chunkFileName = fileName + "chunk" + std::to_string(chunkIndex) + ".bin";
+            ofstream chunkFile(chunkFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+            if (chunkFile.is_open())
+            {
+                chunkFile.write(reinterpret_cast<char *>(voxelChunks[chunkIndex].data), voxelChunks[chunkIndex].size());
+                chunkFile.close();
+                cout << "Successfully saved chunk " << chunkIndex << " to file \"" << chunkFileName << "\".\n";
+            }
+            else
+            {
+                cout << "Error: Failed to save chunk " << chunkIndex << " to file \"" << chunkFileName << "\".\n";
+            }
         }
     }
 }
@@ -392,24 +415,60 @@ void InputHandler::LoadSceneFromFile()
             cout << "Error: Failed to read camera file \"" << camFileName.c_str() << "\".\n";
         }
     }
+
+    // Load multi-chunk voxel data
     {
-        std::string sceneFileName = fileName + "vox.bin";
-        if (sceneFileName.empty())
+        auto &voxelEngine = VoxelEngine::Get();
+
+        // Load chunk configuration first
+        std::string configFileName = fileName + "config.bin";
+        ifstream configFile(configFileName, std::ifstream::in | std::ifstream::binary);
+        if (configFile.good())
         {
-            cout << "Error: Scene file name " << sceneFileName << " is not valid.\n";
+            ChunkConfiguration loadedConfig;
+            configFile.read(reinterpret_cast<char *>(&loadedConfig), sizeof(ChunkConfiguration));
+            configFile.close();
+
+            // Update the chunk configuration and resize chunks if needed
+            voxelEngine.chunkConfig = loadedConfig;
+            voxelEngine.voxelChunks.resize(loadedConfig.getTotalChunks());
+
+            cout << "Successfully loaded chunk configuration from file \"" << configFileName << "\".\n";
+        }
+        else
+        {
+            cout << "Error: Failed to read chunk configuration file \"" << configFileName.c_str() << "\".\n";
             return;
         }
-        ifstream infile(sceneFileName, std::ifstream::in | std::ifstream::binary);
-        if (infile.good())
-        {
-            infile.read(reinterpret_cast<char *>(VoxelEngine::Get().voxelChunk.data), VoxelEngine::Get().voxelChunk.size());
-            infile.close();
 
+        // Load each chunk individually
+        auto &voxelChunks = voxelEngine.voxelChunks;
+        bool allChunksLoaded = true;
+
+        for (unsigned int chunkIndex = 0; chunkIndex < voxelChunks.size(); ++chunkIndex)
+        {
+            std::string chunkFileName = fileName + "chunk" + std::to_string(chunkIndex) + ".bin";
+            ifstream chunkFile(chunkFileName, std::ifstream::in | std::ifstream::binary);
+            if (chunkFile.good())
+            {
+                chunkFile.read(reinterpret_cast<char *>(voxelChunks[chunkIndex].data), voxelChunks[chunkIndex].size());
+                chunkFile.close();
+                cout << "Successfully loaded chunk " << chunkIndex << " from file \"" << chunkFileName << "\".\n";
+            }
+            else
+            {
+                cout << "Error: Failed to read chunk file \"" << chunkFileName.c_str() << "\".\n";
+                allChunksLoaded = false;
+            }
+        }
+
+        if (allChunksLoaded)
+        {
             VoxelEngine::Get().reload();
         }
         else
         {
-            cout << "Error: Failed to read scene file \"" << sceneFileName.c_str() << "\".\n";
+            cout << "Error: Not all chunks could be loaded. Scene reload aborted.\n";
         }
     }
 }

@@ -347,6 +347,55 @@ void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data)
     // std::cout << std::endl;
 }
 
+// New multi-chunk initialization function
+void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int chunkIndex,
+                         const ChunkConfiguration &chunkConfig)
+{
+    dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
+    dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
+
+    size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
+    size_t noiseMapSize = voxelChunk.width * voxelChunk.width;
+
+    cudaMalloc(d_data, totalVoxels * sizeof(Voxel));
+
+    // Calculate chunk coordinates
+    unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+    unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+    unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+
+    // Calculate global offset for this chunk
+    unsigned int globalOffsetX = chunkX * VoxelChunk::width;
+    unsigned int globalOffsetZ = chunkZ * VoxelChunk::width;
+
+    PerlinNoiseGenerator noiseGenerator;
+    float freq = 1.0f / chunkConfig.getGlobalWidth(); // Use global frequency for continuity
+
+    std::vector<float> noiseMap(noiseMapSize);
+    for (int x = 0; x < voxelChunk.width; ++x)
+    {
+        for (int z = 0; z < voxelChunk.width; ++z)
+        {
+            // Use global coordinates for noise sampling to ensure continuity
+            float globalX = globalOffsetX + x;
+            float globalZ = globalOffsetZ + z;
+            noiseMap[z * voxelChunk.width + x] = noiseGenerator.getNoise(globalX * freq, globalZ * freq);
+        }
+    }
+
+    float *d_noise;
+    cudaMalloc(&d_noise, noiseMapSize * sizeof(float));
+    cudaMemcpy(d_noise, noiseMap.data(), noiseMapSize * sizeof(float), cudaMemcpyHostToDevice);
+
+    GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    cudaMemcpy(voxelChunk.data, *d_data, totalVoxels * sizeof(Voxel), cudaMemcpyDeviceToHost);
+    cudaFree(d_noise);
+}
+
 void freeDeviceVoxelData(Voxel *d_data)
 {
     CUDA_CHECK(cudaFree(d_data));
@@ -688,6 +737,54 @@ void updateSingleVoxel(
     }
 }
 
+void updateSingleVoxelGlobal(
+    unsigned int globalX,
+    unsigned int globalY,
+    unsigned int globalZ,
+    unsigned int newVal,
+    std::vector<VoxelChunk> &voxelChunks,
+    const ChunkConfiguration &chunkConfig,
+    VertexAttributes *attr,
+    unsigned int *indices,
+    std::vector<unsigned int> &faceLocation,
+    unsigned int &attrSize,
+    unsigned int &indicesSize,
+    unsigned int &currentFaceCount,
+    unsigned int &maxFaceCount,
+    std::vector<unsigned int> &freeFaces)
+{
+    // Convert global coordinates to chunk coordinates
+    unsigned int chunkX = globalX / VoxelChunk::width;
+    unsigned int chunkY = globalY / VoxelChunk::width;
+    unsigned int chunkZ = globalZ / VoxelChunk::width;
+
+    unsigned int localX = globalX % VoxelChunk::width;
+    unsigned int localY = globalY % VoxelChunk::width;
+    unsigned int localZ = globalZ % VoxelChunk::width;
+
+    // Check bounds
+    if (chunkX >= chunkConfig.chunksX || chunkY >= chunkConfig.chunksY || chunkZ >= chunkConfig.chunksZ)
+        return;
+
+    // Calculate chunk index
+    unsigned int chunkIndex = chunkX + chunkConfig.chunksX * (chunkZ + chunkConfig.chunksZ * chunkY);
+
+    // Update the voxel in the appropriate chunk
+    VoxelChunk &targetChunk = voxelChunks[chunkIndex];
+    updateSingleVoxel(
+        localX, localY, localZ,
+        newVal,
+        targetChunk,
+        attr,
+        indices,
+        faceLocation,
+        attrSize,
+        indicesSize,
+        currentFaceCount,
+        maxFaceCount,
+        freeFaces);
+}
+
 void generateSea(VertexAttributes **attr,
                  unsigned int **indices,
                  unsigned int &attrSize,
@@ -769,5 +866,140 @@ void generateSea(VertexAttributes **attr,
     if (0)
     {
         dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
+    }
+}
+
+void generateMeshMultiChunk(VertexAttributes **attr,
+                           unsigned int **indices,
+                           std::vector<unsigned int> &faceLocation,
+                           unsigned int &attrSize,
+                           unsigned int &indicesSize,
+                           unsigned int &currentFaceCount,
+                           unsigned int &maxFaceCount,
+                           const std::vector<VoxelChunk> &voxelChunks,
+                           const std::vector<Voxel*> &d_dataChunks,
+                           const ChunkConfiguration &chunkConfig,
+                           int id)
+{
+    // Generate separate meshes for each chunk
+    std::vector<VertexAttributes*> chunkAttributes(chunkConfig.getTotalChunks());
+    std::vector<unsigned int*> chunkIndices(chunkConfig.getTotalChunks());
+    std::vector<unsigned int> chunkAttrSizes(chunkConfig.getTotalChunks(), 0);
+    std::vector<unsigned int> chunkIndicesSizes(chunkConfig.getTotalChunks(), 0);
+    std::vector<unsigned int> chunkCurrentFaceCount(chunkConfig.getTotalChunks(), 0);
+    std::vector<unsigned int> chunkMaxFaceCount(chunkConfig.getTotalChunks(), 0);
+    std::vector<std::vector<unsigned int>> chunkFaceLocations(chunkConfig.getTotalChunks());
+
+    // Generate mesh for each chunk individually (can be parallelized)
+    for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
+    {
+        if (chunkIndex < voxelChunks.size() && chunkIndex < d_dataChunks.size())
+        {
+            generateMesh(
+                &chunkAttributes[chunkIndex],
+                &chunkIndices[chunkIndex],
+                chunkFaceLocations[chunkIndex],
+                chunkAttrSizes[chunkIndex],
+                chunkIndicesSizes[chunkIndex],
+                chunkCurrentFaceCount[chunkIndex],
+                chunkMaxFaceCount[chunkIndex],
+                const_cast<VoxelChunk&>(voxelChunks[chunkIndex]),
+                d_dataChunks[chunkIndex],
+                id);
+        }
+    }
+
+    // Calculate total sizes for combined mesh
+    unsigned int totalAttrSize = 0;
+    unsigned int totalIndicesSize = 0;
+    for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
+    {
+        totalAttrSize += chunkAttrSizes[chunkIndex];
+        totalIndicesSize += chunkIndicesSizes[chunkIndex];
+    }
+
+    // Allocate combined buffers
+    if (totalAttrSize > 0 && totalIndicesSize > 0)
+    {
+        if (*attr != nullptr)
+        {
+            cudaFree(*attr);
+        }
+        if (*indices != nullptr)
+        {
+            cudaFree(*indices);
+        }
+
+        cudaMallocManaged(attr, totalAttrSize * sizeof(VertexAttributes));
+        cudaMallocManaged(indices, totalIndicesSize * sizeof(unsigned int));
+
+        // Combine all chunks into the final buffers
+        unsigned int attrOffset = 0;
+        unsigned int indicesOffset = 0;
+        unsigned int baseVertexOffset = 0;
+
+        for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
+        {
+            if (chunkAttrSizes[chunkIndex] > 0 && chunkIndicesSizes[chunkIndex] > 0)
+            {
+                // Calculate chunk's world offset
+                unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+                unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+                unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+
+                Float3 chunkOffset(chunkX * VoxelChunk::width, chunkY * VoxelChunk::width, chunkZ * VoxelChunk::width);
+
+                // Copy and transform vertices
+                cudaMemcpy(&(*attr)[attrOffset], chunkAttributes[chunkIndex],
+                          chunkAttrSizes[chunkIndex] * sizeof(VertexAttributes),
+                          cudaMemcpyDeviceToDevice);
+
+                // Transform vertex positions to global coordinates
+                for (unsigned int i = 0; i < chunkAttrSizes[chunkIndex]; ++i)
+                {
+                    (*attr)[attrOffset + i].vertex.x += chunkOffset.x;
+                    (*attr)[attrOffset + i].vertex.y += chunkOffset.y;
+                    (*attr)[attrOffset + i].vertex.z += chunkOffset.z;
+                }
+
+                // Copy and adjust indices
+                cudaMemcpy(&(*indices)[indicesOffset], chunkIndices[chunkIndex],
+                          chunkIndicesSizes[chunkIndex] * sizeof(unsigned int),
+                          cudaMemcpyDeviceToDevice);
+
+                // Adjust indices to point to the correct vertices in the combined buffer
+                for (unsigned int i = 0; i < chunkIndicesSizes[chunkIndex]; ++i)
+                {
+                    (*indices)[indicesOffset + i] += baseVertexOffset;
+                }
+
+                attrOffset += chunkAttrSizes[chunkIndex];
+                indicesOffset += chunkIndicesSizes[chunkIndex];
+                baseVertexOffset += chunkAttrSizes[chunkIndex];
+
+                // Free chunk-specific buffers
+                if (chunkAttributes[chunkIndex])
+                {
+                    cudaFree(chunkAttributes[chunkIndex]);
+                }
+                if (chunkIndices[chunkIndex])
+                {
+                    cudaFree(chunkIndices[chunkIndex]);
+                }
+            }
+        }
+
+        attrSize = totalAttrSize;
+        indicesSize = totalIndicesSize;
+        currentFaceCount = totalIndicesSize / 6; // Each face has 6 indices (2 triangles)
+        maxFaceCount = currentFaceCount * 2; // Allow for expansion
+    }
+    else
+    {
+        // No geometry generated
+        attrSize = 0;
+        indicesSize = 0;
+        currentFaceCount = 0;
+        maxFaceCount = 0;
     }
 }
