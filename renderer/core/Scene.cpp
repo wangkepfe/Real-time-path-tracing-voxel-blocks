@@ -15,6 +15,60 @@ Scene::~Scene()
     CUDA_CHECK(cudaFree(m_lights));
 
     CUDA_CHECK(cudaFree(d_instanceLightMapping));
+
+    // Clean up chunk-based geometry buffers
+    for (unsigned int chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
+    {
+        for (unsigned int objectId = 0; objectId < m_chunkGeometryAttributes[chunkIndex].size(); ++objectId)
+        {
+            if (m_chunkGeometryAttributes[chunkIndex][objectId])
+            {
+                CUDA_CHECK(cudaFree(m_chunkGeometryAttributes[chunkIndex][objectId]));
+            }
+            if (m_chunkGeometryIndices[chunkIndex][objectId])
+            {
+                CUDA_CHECK(cudaFree(m_chunkGeometryIndices[chunkIndex][objectId]));
+            }
+        }
+    }
+}
+
+void Scene::initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects)
+{
+    numChunks = numChunksParam;
+
+    m_chunkGeometryAttributes.resize(numChunks);
+    m_chunkGeometryIndices.resize(numChunks);
+    m_chunkGeometryAttributeSize.resize(numChunks);
+    m_chunkGeometryIndicesSize.resize(numChunks);
+
+    for (unsigned int chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
+    {
+        m_chunkGeometryAttributes[chunkIndex].resize(numObjects, nullptr);
+        m_chunkGeometryIndices[chunkIndex].resize(numObjects, nullptr);
+        m_chunkGeometryAttributeSize[chunkIndex].resize(numObjects, 0);
+        m_chunkGeometryIndicesSize[chunkIndex].resize(numObjects, 0);
+    }
+}
+
+VertexAttributes** Scene::getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId)
+{
+    return &m_chunkGeometryAttributes[chunkIndex][objectId];
+}
+
+unsigned int** Scene::getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId)
+{
+    return &m_chunkGeometryIndices[chunkIndex][objectId];
+}
+
+unsigned int& Scene::getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId)
+{
+    return m_chunkGeometryAttributeSize[chunkIndex][objectId];
+}
+
+unsigned int& Scene::getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId)
+{
+    return m_chunkGeometryIndicesSize[chunkIndex][objectId];
 }
 
 OptixTraversableHandle Scene::CreateGeometry(

@@ -61,7 +61,7 @@ __global__ void generateLightInfosKernel(const VertexAttributes *vertices,
     unsigned int idx1 = indices[triangleIdx * 3 + 1];
     unsigned int idx2 = indices[triangleIdx * 3 + 2];
 
-    // Load the triangle’s vertices (assuming "position" is a Float3 member of VertexAttributes).
+    // Load the triangle's vertices (assuming "position" is a Float3 member of VertexAttributes).
     Float3 v0ModelSpace = vertices[idx0].vertex;
     Float3 v1ModelSpace = vertices[idx1].vertex;
     Float3 v2ModelSpace = vertices[idx2].vertex;
@@ -185,6 +185,64 @@ VoxelEngine::~VoxelEngine()
 {
 }
 
+// Coordinate conversion helper functions
+unsigned int VoxelEngine::getChunkIndex(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ) const
+{
+    return chunkX + chunkConfig.chunksX * (chunkZ + chunkConfig.chunksZ * chunkY);
+}
+
+void VoxelEngine::globalToChunkCoords(unsigned int globalX, unsigned int globalY, unsigned int globalZ,
+                                    unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
+                                    unsigned int &localX, unsigned int &localY, unsigned int &localZ) const
+{
+    chunkX = globalX / VoxelChunk::width;
+    chunkY = globalY / VoxelChunk::width;
+    chunkZ = globalZ / VoxelChunk::width;
+
+    localX = globalX % VoxelChunk::width;
+    localY = globalY % VoxelChunk::width;
+    localZ = globalZ % VoxelChunk::width;
+}
+
+void VoxelEngine::chunkToGlobalCoords(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ,
+                                    unsigned int localX, unsigned int localY, unsigned int localZ,
+                                    unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const
+{
+    globalX = chunkX * VoxelChunk::width + localX;
+    globalY = chunkY * VoxelChunk::width + localY;
+    globalZ = chunkZ * VoxelChunk::width + localZ;
+}
+
+Voxel VoxelEngine::getVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ) const
+{
+    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+    globalToChunkCoords(globalX, globalY, globalZ, chunkX, chunkY, chunkZ, localX, localY, localZ);
+
+    // Check bounds
+    if (chunkX >= chunkConfig.chunksX || chunkY >= chunkConfig.chunksY || chunkZ >= chunkConfig.chunksZ)
+    {
+        Voxel emptyVoxel;
+        emptyVoxel.id = BlockTypeEmpty;
+        return emptyVoxel;
+    }
+
+    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+    return voxelChunks[chunkIndex].get(localX, localY, localZ);
+}
+
+void VoxelEngine::setVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ, unsigned int blockId)
+{
+    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+    globalToChunkCoords(globalX, globalY, globalZ, chunkX, chunkY, chunkZ, localX, localY, localZ);
+
+    // Check bounds
+    if (chunkX >= chunkConfig.chunksX || chunkY >= chunkConfig.chunksY || chunkZ >= chunkConfig.chunksZ)
+        return;
+
+    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+    voxelChunks[chunkIndex].set(localX, localY, localZ, blockId);
+}
+
 void VoxelEngine::initInstanceGeometry()
 {
     auto &scene = Scene::Get();
@@ -225,26 +283,28 @@ void VoxelEngine::updateInstances()
 
     // Load geometry of instance object
     unsigned int totalNumTriLights = 0;
+    unsigned int globalWidth = chunkConfig.getGlobalWidth();
+
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
         unsigned int blockId = ObjectIdToBlockId(objectId);
-        for (unsigned int x = 0; x < voxelChunk.width; ++x)
+        for (unsigned int globalX = 0; globalX < chunkConfig.getGlobalWidth(); ++globalX)
         {
-            for (unsigned int y = 0; y < voxelChunk.width; ++y)
+            for (unsigned int globalY = 0; globalY < chunkConfig.getGlobalHeight(); ++globalY)
             {
-                for (unsigned int z = 0; z < voxelChunk.width; ++z)
+                for (unsigned int globalZ = 0; globalZ < chunkConfig.getGlobalDepth(); ++globalZ)
                 {
-                    auto val = voxelChunk.get(x, y, z);
+                    auto val = getVoxelAtGlobal(globalX, globalY, globalZ);
                     bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
                     if (val.id == blockId || specialCase)
                     {
-                        unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, x, y, z, voxelChunk.width);
+                        unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, globalX, globalY, globalZ, globalWidth);
 
                         geometryInstanceIdMap[objectId].insert(instanceId);
 
-                        std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)x,
-                                                           0.0f, 1.0f, 0.0f, (float)y,
-                                                           0.0f, 0.0f, 1.0f, (float)z};
+                        std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)globalX,
+                                                           0.0f, 1.0f, 0.0f, (float)globalY,
+                                                           0.0f, 0.0f, 1.0f, (float)globalZ};
 
                         instanceTransformMatrices[instanceId] = transform;
                     }
@@ -322,35 +382,37 @@ void VoxelEngine::updateInstances()
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 }
 
-void VoxelEngine::updateUninstancedMeshes(Voxel *d_data)
+
+
+// New multi-chunk version
+void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks)
 {
     auto &scene = Scene::Get();
-    auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-    auto &sceneGeometryIndices = scene.m_geometryIndices;
-    auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
-    auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
-    for (int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+    // Process each chunk in parallel for each object type
+    for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
     {
-        int blockId = ObjectIdToBlockId(objectId);
+        for (int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+        {
+            int blockId = ObjectIdToBlockId(objectId);
 
-        sceneGeometryAttributeSize[objectId] = 0;
-        sceneGeometryIndicesSize[objectId] = 0;
+            // Reset chunk-specific geometry data
+            scene.getChunkGeometryAttributeSize(chunkIndex, objectId) = 0;
+            scene.getChunkGeometryIndicesSize(chunkIndex, objectId) = 0;
 
-        currentFaceCount[objectId] = 0;
-        maxFaceCount[objectId] = 0;
-
-        generateMesh(
-            &(sceneGeometryAttributes[objectId]),
-            &(sceneGeometryIndices[objectId]),
-            faceLocation[objectId],
-            sceneGeometryAttributeSize[objectId],
-            sceneGeometryIndicesSize[objectId],
-            currentFaceCount[objectId],
-            maxFaceCount[objectId],
-            voxelChunk,
-            d_data,
-            blockId);
+            // Generate mesh for this specific chunk and object
+            generateMesh(
+                scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                scene.getChunkGeometryIndices(chunkIndex, objectId),
+                faceLocation[objectId], // TODO: Make this chunk-specific
+                scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
+                currentFaceCount[objectId], // TODO: Make this chunk-specific
+                maxFaceCount[objectId], // TODO: Make this chunk-specific
+                voxelChunks[chunkIndex],
+                d_dataChunks[chunkIndex],
+                blockId);
+        }
     }
 }
 
@@ -369,23 +431,38 @@ void VoxelEngine::init()
     scene.uninstancedGeometryCount = GetNumUninstancedBlockTypes();
     scene.instancedGeometryCount = GetNumInstancedBlockTypes();
 
+    // Initialize legacy buffers (kept for compatibility)
     sceneGeometryAttributes.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
     sceneGeometryIndices.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
     sceneGeometryAttributeSize.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
     sceneGeometryIndicesSize.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
+
+    // Initialize chunk-based geometry buffers
+    scene.initChunkGeometry(chunkConfig.getTotalChunks(), GetNumUninstancedBlockTypes());
 
     faceLocation.resize(GetNumUninstancedBlockTypes());
     currentFaceCount.resize(GetNumUninstancedBlockTypes());
     maxFaceCount.resize(GetNumUninstancedBlockTypes());
     freeFaces.resize(GetNumUninstancedBlockTypes());
 
-    // Init voxel
-    Voxel *d_data;
-    initVoxels(voxelChunk, &d_data);
+    // Init multiple voxel chunks
+    voxelChunks.resize(chunkConfig.getTotalChunks());
 
-    // Create geoemetry mesh based on the voxel grid
-    updateUninstancedMeshes(d_data);
-    freeDeviceVoxelData(d_data);
+    // Initialize all chunks
+    std::vector<Voxel*> d_dataChunks(chunkConfig.getTotalChunks());
+    for (unsigned int i = 0; i < chunkConfig.getTotalChunks(); ++i)
+    {
+        initVoxelsMultiChunk(voxelChunks[i], &d_dataChunks[i], i, chunkConfig);
+    }
+
+    // Create geometry mesh based on the voxel grid
+    updateUninstancedMeshes(d_dataChunks);
+
+    // Free device data for all chunks
+    for (auto& d_data : d_dataChunks)
+    {
+        freeDeviceVoxelData(d_data);
+    }
 
     // Init and update instanced meshes
     initInstanceGeometry();
@@ -478,16 +555,16 @@ void VoxelEngine::update()
     // Traverse the voxel grid
     while (iterationCount++ < maxIteration)
     {
-        // Check if the voxel is within bounds
-        if (x < 0 || x >= voxelChunk.width ||
-            y < 0 || y >= voxelChunk.width ||
-            z < 0 || z >= voxelChunk.width)
+        // Check if the voxel is within bounds (global bounds)
+        if (x < 0 || x >= (int)chunkConfig.getGlobalWidth() ||
+            y < 0 || y >= (int)chunkConfig.getGlobalHeight() ||
+            z < 0 || z >= (int)chunkConfig.getGlobalDepth())
         {
             // Out of bounds, stop
             break;
         }
 
-        Voxel voxel = voxelChunk.get(x, y, z);
+        Voxel voxel = getVoxelAtGlobal(x, y, z);
 
         if (voxel.id == 0)
         {
@@ -608,10 +685,11 @@ void VoxelEngine::update()
 
                 if (IsUninstancedBlockType(deleteBlockId))
                 {
-                    updateSingleVoxel(
+                    updateSingleVoxelGlobal(
                         deletePos.x, deletePos.y, deletePos.z,
                         newVal,
-                        voxelChunk,
+                        voxelChunks,
+                        chunkConfig,
                         sceneGeometryAttributes[objectId],
                         sceneGeometryIndices[objectId],
                         faceLocation[objectId],
@@ -627,13 +705,11 @@ void VoxelEngine::update()
                 }
                 else if (IsInstancedBlockType(deleteBlockId))
                 {
-                    unsigned int vid = GetLinearId(deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
-                    Voxel oldVoxel = voxelChunk.data[vid];
-                    voxelChunk.data[vid].id = newVal;
+                    setVoxelAtGlobal(deletePos.x, deletePos.y, deletePos.z, newVal);
 
                     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
 
-                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
                     geometryInstanceIdMap[objectId].erase(instanceId);
 
                     scene.needSceneUpdate = true;
@@ -670,10 +746,11 @@ void VoxelEngine::update()
 
                 if (IsUninstancedBlockType(blockId))
                 {
-                    updateSingleVoxel(
+                    updateSingleVoxelGlobal(
                         createPos.x, createPos.y, createPos.z,
                         newVal,
-                        voxelChunk,
+                        voxelChunks,
+                        chunkConfig,
                         sceneGeometryAttributes[objectId],
                         sceneGeometryIndices[objectId],
                         faceLocation[objectId],
@@ -689,14 +766,12 @@ void VoxelEngine::update()
                 }
                 else if (IsInstancedBlockType(blockId))
                 {
-                    unsigned int vid = GetLinearId(createPos.x, createPos.y, createPos.z, voxelChunk.width);
-                    Voxel oldVoxel = voxelChunk.data[vid];
-                    voxelChunk.data[vid].id = newVal;
+                    setVoxelAtGlobal(createPos.x, createPos.y, createPos.z, newVal);
 
                     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
                     std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
-                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
                     geometryInstanceIdMap[objectId].insert(instanceId);
 
                     std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)createPos.x,

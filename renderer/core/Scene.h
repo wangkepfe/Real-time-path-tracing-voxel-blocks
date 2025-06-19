@@ -39,16 +39,28 @@ public:
     Scene(Scene const &) = delete;
     void operator=(Scene const &) = delete;
 
-    // Scene meshes
+    // Legacy single-chunk scene meshes (kept for compatibility)
     std::vector<VertexAttributes *> m_geometryAttibutes;
     std::vector<unsigned int *> m_geometryIndices;
     std::vector<unsigned int> m_geometryAttibuteSize;
     std::vector<unsigned int> m_geometryIndicesSize;
 
+    // Multi-chunk geometry management
+    // Each chunk has its own list of geometry for each object type
+    // Structure: m_chunkGeometryAttributes[chunkIndex][objectId]
+    std::vector<std::vector<VertexAttributes *>> m_chunkGeometryAttributes;
+    std::vector<std::vector<unsigned int *>> m_chunkGeometryIndices;
+    std::vector<std::vector<unsigned int>> m_chunkGeometryAttributeSize;
+    std::vector<std::vector<unsigned int>> m_chunkGeometryIndicesSize;
+
+    // Chunk configuration
+    unsigned int numChunks = 0;
+
     bool needSceneUpdate = false;
     bool needSceneReloadUpdate = false;
     std::vector<unsigned int> sceneUpdateObjectId;
     std::vector<unsigned int> sceneUpdateInstanceId;
+    std::vector<unsigned int> sceneUpdateChunkId; // New: track which chunks need updates
     Float3 *edgeToHighlight;
 
     int uninstancedGeometryCount;
@@ -65,6 +77,15 @@ public:
     std::vector<InstanceLightMapping> instanceLightMapping;
     InstanceLightMapping *d_instanceLightMapping;
     unsigned int numInstancedLightMesh;
+
+    // Initialize chunk-based geometry buffers
+    void initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects);
+
+    // Get geometry data for a specific chunk and object
+    VertexAttributes** getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId);
+    unsigned int** getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId);
+    unsigned int& getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId);
+    unsigned int& getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId);
 
     static OptixTraversableHandle CreateGeometry(
         OptixFunctionTable &api,
