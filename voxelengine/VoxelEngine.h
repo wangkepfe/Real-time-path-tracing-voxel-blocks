@@ -30,16 +30,18 @@ public:
     int totalNumInstancedGeometries;
     int totalNumGeometries;
 
-        // Multi-chunk support (ChunkConfiguration is defined in VoxelSceneGen.h)
+    // Multi-chunk support (ChunkConfiguration is defined in VoxelSceneGen.h)
     ChunkConfiguration chunkConfig;
     std::vector<VoxelChunk> voxelChunks;
 
     bool leftMouseButtonClicked = false;
 
-    std::vector<unsigned int> currentFaceCount;
-    std::vector<unsigned int> maxFaceCount;
-    std::vector<std::vector<unsigned int>> freeFaces;
-    std::vector<std::vector<unsigned int>> faceLocation;
+    // Chunk-specific face tracking buffers
+    // Structure: [chunkIndex][objectId]
+    std::vector<std::vector<unsigned int>> currentFaceCount;
+    std::vector<std::vector<unsigned int>> maxFaceCount;
+    std::vector<std::vector<std::vector<unsigned int>>> freeFaces;
+    std::vector<std::vector<std::vector<unsigned int>>> faceLocation;
 
     // Helper functions for coordinate conversion
     unsigned int getChunkIndex(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ) const;

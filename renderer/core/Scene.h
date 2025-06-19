@@ -39,12 +39,6 @@ public:
     Scene(Scene const &) = delete;
     void operator=(Scene const &) = delete;
 
-    // Legacy single-chunk scene meshes (kept for compatibility)
-    std::vector<VertexAttributes *> m_geometryAttibutes;
-    std::vector<unsigned int *> m_geometryIndices;
-    std::vector<unsigned int> m_geometryAttibuteSize;
-    std::vector<unsigned int> m_geometryIndicesSize;
-
     // Multi-chunk geometry management
     // Each chunk has its own list of geometry for each object type
     // Structure: m_chunkGeometryAttributes[chunkIndex][objectId]
@@ -60,7 +54,7 @@ public:
     bool needSceneReloadUpdate = false;
     std::vector<unsigned int> sceneUpdateObjectId;
     std::vector<unsigned int> sceneUpdateInstanceId;
-    std::vector<unsigned int> sceneUpdateChunkId; // New: track which chunks need updates
+    std::vector<unsigned int> sceneUpdateChunkId; // Track which chunks need updates
     Float3 *edgeToHighlight;
 
     int uninstancedGeometryCount;

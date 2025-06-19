@@ -384,7 +384,7 @@ void VoxelEngine::updateInstances()
 
 
 
-// New multi-chunk version
+// Multi-chunk version with chunk-specific face tracking
 void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks)
 {
     auto &scene = Scene::Get();
@@ -400,15 +400,19 @@ void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunk
             scene.getChunkGeometryAttributeSize(chunkIndex, objectId) = 0;
             scene.getChunkGeometryIndicesSize(chunkIndex, objectId) = 0;
 
+            // Reset chunk-specific face tracking data
+            currentFaceCount[chunkIndex][objectId] = 0;
+            maxFaceCount[chunkIndex][objectId] = 0;
+
             // Generate mesh for this specific chunk and object
             generateMesh(
                 scene.getChunkGeometryAttributes(chunkIndex, objectId),
                 scene.getChunkGeometryIndices(chunkIndex, objectId),
-                faceLocation[objectId], // TODO: Make this chunk-specific
+                faceLocation[chunkIndex][objectId],
                 scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
                 scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
-                currentFaceCount[objectId], // TODO: Make this chunk-specific
-                maxFaceCount[objectId], // TODO: Make this chunk-specific
+                currentFaceCount[chunkIndex][objectId],
+                maxFaceCount[chunkIndex][objectId],
                 voxelChunks[chunkIndex],
                 d_dataChunks[chunkIndex],
                 blockId);
@@ -423,27 +427,29 @@ void VoxelEngine::init()
     inputHandler.setMouseButtonCallbackFunc(MouseButtonCallback);
 
     auto &scene = Scene::Get();
-    auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-    auto &sceneGeometryIndices = scene.m_geometryIndices;
-    auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
-    auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
 
     scene.uninstancedGeometryCount = GetNumUninstancedBlockTypes();
     scene.instancedGeometryCount = GetNumInstancedBlockTypes();
 
-    // Initialize legacy buffers (kept for compatibility)
-    sceneGeometryAttributes.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
-    sceneGeometryIndices.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
-    sceneGeometryAttributeSize.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
-    sceneGeometryIndicesSize.resize(GetNumUninstancedBlockTypes() + GetNumInstancedBlockTypes());
-
     // Initialize chunk-based geometry buffers
     scene.initChunkGeometry(chunkConfig.getTotalChunks(), GetNumUninstancedBlockTypes());
 
-    faceLocation.resize(GetNumUninstancedBlockTypes());
-    currentFaceCount.resize(GetNumUninstancedBlockTypes());
-    maxFaceCount.resize(GetNumUninstancedBlockTypes());
-    freeFaces.resize(GetNumUninstancedBlockTypes());
+    // Initialize chunk-specific face tracking buffers
+    unsigned int numChunks = chunkConfig.getTotalChunks();
+    unsigned int numObjects = GetNumUninstancedBlockTypes();
+
+    faceLocation.resize(numChunks);
+    currentFaceCount.resize(numChunks);
+    maxFaceCount.resize(numChunks);
+    freeFaces.resize(numChunks);
+
+    for (unsigned int chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
+    {
+        faceLocation[chunkIndex].resize(numObjects);
+        currentFaceCount[chunkIndex].resize(numObjects);
+        maxFaceCount[chunkIndex].resize(numObjects);
+        freeFaces[chunkIndex].resize(numObjects);
+    }
 
     // Init multiple voxel chunks
     voxelChunks.resize(chunkConfig.getTotalChunks());
@@ -685,23 +691,29 @@ void VoxelEngine::update()
 
                 if (IsUninstancedBlockType(deleteBlockId))
                 {
+                    // Determine which chunk this voxel belongs to
+                    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+                    globalToChunkCoords(deletePos.x, deletePos.y, deletePos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
+                    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+
                     updateSingleVoxelGlobal(
                         deletePos.x, deletePos.y, deletePos.z,
                         newVal,
                         voxelChunks,
                         chunkConfig,
-                        sceneGeometryAttributes[objectId],
-                        sceneGeometryIndices[objectId],
-                        faceLocation[objectId],
-                        sceneGeometryAttributeSize[objectId],
-                        sceneGeometryIndicesSize[objectId],
-                        currentFaceCount[objectId],
-                        maxFaceCount[objectId],
-                        freeFaces[objectId]);
+                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                        faceLocation[chunkIndex][objectId],
+                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
+                        currentFaceCount[chunkIndex][objectId],
+                        maxFaceCount[chunkIndex][objectId],
+                        freeFaces[chunkIndex][objectId]);
 
                     scene.needSceneUpdate = true;
                     scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(0);
+                    scene.sceneUpdateChunkId.push_back(chunkIndex);
                 }
                 else if (IsInstancedBlockType(deleteBlockId))
                 {
@@ -746,23 +758,29 @@ void VoxelEngine::update()
 
                 if (IsUninstancedBlockType(blockId))
                 {
+                    // Determine which chunk this voxel belongs to
+                    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+                    globalToChunkCoords(createPos.x, createPos.y, createPos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
+                    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+
                     updateSingleVoxelGlobal(
                         createPos.x, createPos.y, createPos.z,
                         newVal,
                         voxelChunks,
                         chunkConfig,
-                        sceneGeometryAttributes[objectId],
-                        sceneGeometryIndices[objectId],
-                        faceLocation[objectId],
-                        sceneGeometryAttributeSize[objectId],
-                        sceneGeometryIndicesSize[objectId],
-                        currentFaceCount[objectId],
-                        maxFaceCount[objectId],
-                        freeFaces[objectId]);
+                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                        faceLocation[chunkIndex][objectId],
+                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
+                        currentFaceCount[chunkIndex][objectId],
+                        maxFaceCount[chunkIndex][objectId],
+                        freeFaces[chunkIndex][objectId]);
 
                     scene.needSceneUpdate = true;
                     scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(0);
+                    scene.sceneUpdateChunkId.push_back(chunkIndex);
                 }
                 else if (IsInstancedBlockType(blockId))
                 {

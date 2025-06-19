@@ -22,9 +22,7 @@ struct ChunkConfiguration
 // Forward declaration for VoxelEngine
 class VoxelEngine;
 
-void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data);
-
-// New multi-chunk functions
+// Multi-chunk voxel initialization
 void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int chunkIndex,
                          const ChunkConfiguration &chunkConfig);
 
@@ -38,19 +36,6 @@ void generateMesh(VertexAttributes **attr,
                   VoxelChunk &voxelChunk,
                   Voxel *d_data,
                   int id);
-
-// Multi-chunk mesh generation
-void generateMeshMultiChunk(VertexAttributes **attr,
-                           unsigned int **indices,
-                           std::vector<unsigned int> &faceLocation,
-                           unsigned int &attrSize,
-                           unsigned int &indicesSize,
-                           unsigned int &currentFaceCount,
-                           unsigned int &maxFaceCount,
-                           const std::vector<VoxelChunk> &voxelChunks,
-                           const std::vector<Voxel*> &d_dataChunks,
-                           const ChunkConfiguration &chunkConfig,
-                           int id);
 
 void freeDeviceVoxelData(Voxel *d_data);
 
