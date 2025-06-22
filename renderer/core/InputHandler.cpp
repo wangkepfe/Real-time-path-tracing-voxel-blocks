@@ -263,7 +263,6 @@ void InputHandler::update()
     if (appmode == AppMode::Gameplay)
     {
         auto &voxelEngine = VoxelEngine::Get();
-        auto &voxelChunk = voxelEngine.voxelChunk;
 
         // Horizontal
         if (moveW || moveS || moveA || moveD)
@@ -285,11 +284,10 @@ void InputHandler::update()
 
             Float3 horizontalMove = movingDir * deltaTimeMs * moveSpeed;
 
-            auto &voxelEngine = VoxelEngine::Get();
-            auto &voxelChunk = voxelEngine.voxelChunk;
-
-            auto v0 = voxelChunk.get(camera.pos + horizontalMove);
-            auto v1 = voxelChunk.get(camera.pos + horizontalMove - Float3(0, 1, 0));
+            // Use multi-chunk collision detection
+            Float3 newPos = camera.pos + horizontalMove;
+            auto v0 = voxelEngine.getVoxelAtGlobal((unsigned int)newPos.x, (unsigned int)newPos.y, (unsigned int)newPos.z);
+            auto v1 = voxelEngine.getVoxelAtGlobal((unsigned int)newPos.x, (unsigned int)(newPos.y - 1), (unsigned int)newPos.z);
 
             if (v0.id == BlockTypeEmpty && v1.id == BlockTypeEmpty)
             {
@@ -304,21 +302,24 @@ void InputHandler::update()
         fallSpeed += fallAccel * deltaTimeMs;
         camera.posDelta.y -= fallSpeed * deltaTimeMs;
 
-        auto v2 = voxelChunk.get((camera.pos.y + camera.posDelta.y) - Float3(0, height, 0));
+        Float3 fallCheckPos = camera.pos + camera.posDelta - Float3(0, height, 0);
+        auto v2 = voxelEngine.getVoxelAtGlobal((unsigned int)fallCheckPos.x, (unsigned int)fallCheckPos.y, (unsigned int)fallCheckPos.z);
 
         if (fallSpeed > 0.0f && v2.id != BlockTypeEmpty)
         {
             while (v2.id != BlockTypeEmpty)
             {
                 camera.posDelta.y += 1.0f;
-                v2 = voxelChunk.get((camera.pos.y + camera.posDelta.y) - Float3(0, height, 0));
+                fallCheckPos = camera.pos + camera.posDelta - Float3(0, height, 0);
+                v2 = voxelEngine.getVoxelAtGlobal((unsigned int)fallCheckPos.x, (unsigned int)fallCheckPos.y, (unsigned int)fallCheckPos.z);
             }
             camera.posDelta.y += static_cast<float>(static_cast<int>((camera.pos.y + camera.posDelta.y) - height)) + height - (camera.pos.y + camera.posDelta.y);
             fallSpeed = 0.0f;
         }
 
         // head bump to roof
-        auto v3 = voxelChunk.get(camera.pos + Float3(0, 0.49f, 0));
+        Float3 headPos = camera.pos + Float3(0, 0.49f, 0);
+        auto v3 = voxelEngine.getVoxelAtGlobal((unsigned int)headPos.x, (unsigned int)headPos.y, (unsigned int)headPos.z);
         if (fallSpeed < 0.0f && v3.id != BlockTypeEmpty)
         {
             fallSpeed = 0.0f;
@@ -349,18 +350,41 @@ void InputHandler::SaveSceneToFile()
         }
     }
 
+    // Save multi-chunk voxel data
     {
-        std::string sceneFileName = fileName + "vox.bin";
-        ofstream myfile(sceneFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
-        if (myfile.is_open())
+        auto &voxelEngine = VoxelEngine::Get();
+        auto &voxelChunks = voxelEngine.voxelChunks;
+        auto &chunkConfig = voxelEngine.chunkConfig;
+
+        // Save chunk configuration first
+        std::string configFileName = fileName + "config.bin";
+        ofstream configFile(configFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+        if (configFile.is_open())
         {
-            myfile.write(reinterpret_cast<char *>(VoxelEngine::Get().voxelChunk.data), VoxelEngine::Get().voxelChunk.size());
-            myfile.close();
-            cout << "Successfully saved scene to file \"" << sceneFileName << "\".\n";
+            configFile.write(reinterpret_cast<const char *>(&chunkConfig), sizeof(ChunkConfiguration));
+            configFile.close();
+            cout << "Successfully saved chunk configuration to file \"" << configFileName << "\".\n";
         }
         else
         {
-            cout << "Error: Failed to save scene to file \"" << sceneFileName << "\".\n";
+            cout << "Error: Failed to save chunk configuration to file \"" << configFileName << "\".\n";
+        }
+
+        // Save each chunk individually
+        for (unsigned int chunkIndex = 0; chunkIndex < voxelChunks.size(); ++chunkIndex)
+        {
+            std::string chunkFileName = fileName + "chunk" + std::to_string(chunkIndex) + ".bin";
+            ofstream chunkFile(chunkFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
+            if (chunkFile.is_open())
+            {
+                chunkFile.write(reinterpret_cast<char *>(voxelChunks[chunkIndex].data), voxelChunks[chunkIndex].size());
+                chunkFile.close();
+                cout << "Successfully saved chunk " << chunkIndex << " to file \"" << chunkFileName << "\".\n";
+            }
+            else
+            {
+                cout << "Error: Failed to save chunk " << chunkIndex << " to file \"" << chunkFileName << "\".\n";
+            }
         }
     }
 }
@@ -392,24 +416,60 @@ void InputHandler::LoadSceneFromFile()
             cout << "Error: Failed to read camera file \"" << camFileName.c_str() << "\".\n";
         }
     }
+
+    // Load multi-chunk voxel data
     {
-        std::string sceneFileName = fileName + "vox.bin";
-        if (sceneFileName.empty())
+        auto &voxelEngine = VoxelEngine::Get();
+
+        // Load chunk configuration first
+        std::string configFileName = fileName + "config.bin";
+        ifstream configFile(configFileName, std::ifstream::in | std::ifstream::binary);
+        if (configFile.good())
         {
-            cout << "Error: Scene file name " << sceneFileName << " is not valid.\n";
+            ChunkConfiguration loadedConfig;
+            configFile.read(reinterpret_cast<char *>(&loadedConfig), sizeof(ChunkConfiguration));
+            configFile.close();
+
+            // Update the chunk configuration and resize chunks if needed
+            voxelEngine.chunkConfig = loadedConfig;
+            voxelEngine.voxelChunks.resize(loadedConfig.getTotalChunks());
+
+            cout << "Successfully loaded chunk configuration from file \"" << configFileName << "\".\n";
+        }
+        else
+        {
+            cout << "Error: Failed to read chunk configuration file \"" << configFileName.c_str() << "\".\n";
             return;
         }
-        ifstream infile(sceneFileName, std::ifstream::in | std::ifstream::binary);
-        if (infile.good())
-        {
-            infile.read(reinterpret_cast<char *>(VoxelEngine::Get().voxelChunk.data), VoxelEngine::Get().voxelChunk.size());
-            infile.close();
 
+        // Load each chunk individually
+        auto &voxelChunks = voxelEngine.voxelChunks;
+        bool allChunksLoaded = true;
+
+        for (unsigned int chunkIndex = 0; chunkIndex < voxelChunks.size(); ++chunkIndex)
+        {
+            std::string chunkFileName = fileName + "chunk" + std::to_string(chunkIndex) + ".bin";
+            ifstream chunkFile(chunkFileName, std::ifstream::in | std::ifstream::binary);
+            if (chunkFile.good())
+            {
+                chunkFile.read(reinterpret_cast<char *>(voxelChunks[chunkIndex].data), voxelChunks[chunkIndex].size());
+                chunkFile.close();
+                cout << "Successfully loaded chunk " << chunkIndex << " from file \"" << chunkFileName << "\".\n";
+            }
+            else
+            {
+                cout << "Error: Failed to read chunk file \"" << chunkFileName.c_str() << "\".\n";
+                allChunksLoaded = false;
+            }
+        }
+
+        if (allChunksLoaded)
+        {
             VoxelEngine::Get().reload();
         }
         else
         {
-            cout << "Error: Failed to read scene file \"" << sceneFileName.c_str() << "\".\n";
+            cout << "Error: Not all chunks could be loaded. Scene reload aborted.\n";
         }
     }
 }

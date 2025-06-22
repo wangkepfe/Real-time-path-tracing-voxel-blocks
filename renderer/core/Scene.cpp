@@ -9,12 +9,73 @@ Scene::Scene()
 
 Scene::~Scene()
 {
-    CUDA_CHECK(cudaFree(edgeToHighlight));
-    CUDA_CHECK(cudaFree(d_lightAliasTable));
+    if (edgeToHighlight)
+    {
+        CUDA_CHECK(cudaFree(edgeToHighlight));
+    }
+    if (d_lightAliasTable)
+    {
+        CUDA_CHECK(cudaFree(d_lightAliasTable));
+    }
 
-    CUDA_CHECK(cudaFree(m_lights));
+    if (m_lights)
+    {
+        CUDA_CHECK(cudaFree(m_lights));
+    }
 
-    CUDA_CHECK(cudaFree(d_instanceLightMapping));
+    if (d_instanceLightMapping)
+    {
+        CUDA_CHECK(cudaFree(d_instanceLightMapping));
+    }
+
+    // Note: Geometry memory is owned and freed by OptixRenderer::clear()
+    // Scene only holds pointers to this memory, so we don't free it here to avoid double-free errors
+}
+
+void Scene::initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects)
+{
+    numChunks = numChunksParam;
+
+    m_chunkGeometryAttributes.resize(numChunks);
+    m_chunkGeometryIndices.resize(numChunks);
+    m_chunkGeometryAttributeSize.resize(numChunks);
+    m_chunkGeometryIndicesSize.resize(numChunks);
+
+    for (unsigned int chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
+    {
+        m_chunkGeometryAttributes[chunkIndex].resize(numObjects, nullptr);
+        m_chunkGeometryIndices[chunkIndex].resize(numObjects, nullptr);
+        m_chunkGeometryAttributeSize[chunkIndex].resize(numObjects, 0);
+        m_chunkGeometryIndicesSize[chunkIndex].resize(numObjects, 0);
+    }
+}
+
+void Scene::initInstancedGeometry(unsigned int numInstancedObjects)
+{
+    m_instancedGeometryAttributes.resize(numInstancedObjects, nullptr);
+    m_instancedGeometryIndices.resize(numInstancedObjects, nullptr);
+    m_instancedGeometryAttributeSize.resize(numInstancedObjects, 0);
+    m_instancedGeometryIndicesSize.resize(numInstancedObjects, 0);
+}
+
+VertexAttributes** Scene::getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId)
+{
+    return &m_chunkGeometryAttributes[chunkIndex][objectId];
+}
+
+unsigned int** Scene::getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId)
+{
+    return &m_chunkGeometryIndices[chunkIndex][objectId];
+}
+
+unsigned int& Scene::getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId)
+{
+    return m_chunkGeometryAttributeSize[chunkIndex][objectId];
+}
+
+unsigned int& Scene::getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId)
+{
+    return m_chunkGeometryIndicesSize[chunkIndex][objectId];
 }
 
 OptixTraversableHandle Scene::CreateGeometry(

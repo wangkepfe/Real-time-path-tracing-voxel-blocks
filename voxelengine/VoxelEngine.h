@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstring>
 #include <functional>
+#include <vector>
 
 class VoxelEngine
 {
@@ -29,18 +30,36 @@ public:
     int totalNumInstancedGeometries;
     int totalNumGeometries;
 
-    VoxelChunk voxelChunk;
+    // Multi-chunk support (ChunkConfiguration is defined in VoxelSceneGen.h)
+    ChunkConfiguration chunkConfig;
+    std::vector<VoxelChunk> voxelChunks;
+
     bool leftMouseButtonClicked = false;
 
-    std::vector<unsigned int> currentFaceCount;
-    std::vector<unsigned int> maxFaceCount;
-    std::vector<std::vector<unsigned int>> freeFaces;
-    std::vector<std::vector<unsigned int>> faceLocation;
+    // Chunk-specific face tracking buffers
+    // Structure: [chunkIndex][objectId]
+    std::vector<std::vector<unsigned int>> currentFaceCount;
+    std::vector<std::vector<unsigned int>> maxFaceCount;
+    std::vector<std::vector<std::vector<unsigned int>>> freeFaces;
+    std::vector<std::vector<std::vector<unsigned int>>> faceLocation;
+
+    // Helper functions for coordinate conversion
+    unsigned int getChunkIndex(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ) const;
+    void globalToChunkCoords(unsigned int globalX, unsigned int globalY, unsigned int globalZ,
+                           unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
+                           unsigned int &localX, unsigned int &localY, unsigned int &localZ) const;
+    void chunkToGlobalCoords(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ,
+                           unsigned int localX, unsigned int localY, unsigned int localZ,
+                           unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const;
+
+    // Helper to get voxel at global coordinates
+    Voxel getVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ) const;
+    void setVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ, unsigned int blockId);
 
 private:
     void initInstanceGeometry();
     void updateInstances();
-    void updateUninstancedMeshes(Voxel *d_data);
+    void updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks);
 
     VoxelEngine()
     {

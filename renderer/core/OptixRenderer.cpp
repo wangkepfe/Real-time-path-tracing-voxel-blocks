@@ -31,6 +31,7 @@
 #include <filesystem>
 
 #include "voxelengine/Block.h"
+#include "voxelengine/VoxelEngine.h"
 
 namespace
 {
@@ -307,36 +308,67 @@ void OptixRenderer::update()
         m_instances.resize(scene.uninstancedGeometryCount);
         instanceIds.clear();
 
-        // Uninstanced
-        for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+        // Uninstanced - recreate geometry for all chunks
+        m_instances.clear(); // Clear all instances and rebuild them
+        unsigned int instanceIndex = 0;
+
+        for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
-            unsigned int blockId = ObjectIdToBlockId(objectId);
+            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+            {
+                unsigned int blockId = ObjectIdToBlockId(objectId);
+                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-            GeometryData &geometry = m_geometries[objectId];
-            CUDA_CHECK(cudaFree((void *)geometry.gas));
-            OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
-
-            OptixInstance &instance = m_instances[objectId];
-            const float transformMatrix[12] =
+                assert(geometryIndex < m_geometries.size());
+                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
                 {
-                    1.0f, 0.0f, 0.0f, 0.0f,
-                    0.0f, 1.0f, 0.0f, 0.0f,
-                    0.0f, 0.0f, 1.0f, 0.0f};
-            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-            instance.instanceId = objectId;
-            instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
-            instance.sbtOffset = objectId * numTypesOfRays;
-            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = blasHandle;
+                    GeometryData &geometry = m_geometries[geometryIndex];
+                    CUDA_CHECK(cudaFree((void *)geometry.gas));
 
-            // Shader binding table record hit group geometry
-            m_sbtRecordGeometryInstanceData[objectId * 2].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[objectId * 2].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-            m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                        m_api, m_context, Backend::Get().getCudaStream(),
+                        geometry,
+                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+
+                    // Calculate chunk offset
+                    auto &voxelEngine = VoxelEngine::Get();
+                    auto &chunkConfig = voxelEngine.chunkConfig;
+                    unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+                    unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+                    unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+
+                    OptixInstance instance = {};
+                    const float transformMatrix[12] =
+                        {
+                            1.0f, 0.0f, 0.0f, (float)(chunkX * VoxelChunk::width),
+                            0.0f, 1.0f, 0.0f, (float)(chunkY * VoxelChunk::width),
+                            0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
+                    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+                    instance.instanceId = geometryIndex;
+                    instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
+                    instance.sbtOffset = objectId * numTypesOfRays;
+                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                    instance.traversableHandle = blasHandle;
+                    m_instances.push_back(instance);
+
+                    // Shader binding table record hit group geometry
+                    unsigned int sbtIndex = objectId * numTypesOfRays;
+                    assert(sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size());
+
+                    for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                    {
+                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+                    }
+                }
+            }
         }
         // Upload SBT
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
         // Instanced
         for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
@@ -362,31 +394,54 @@ void OptixRenderer::update()
             auto objectId = scene.sceneUpdateObjectId[i];
             unsigned int blockId = ObjectIdToBlockId(objectId);
 
-            // Uninstanced
+                        // Uninstanced
             if (IsUninstancedBlockType(blockId))
             {
-                GeometryData &geometry = m_geometries[objectId];
-                CUDA_CHECK(cudaFree((void *)geometry.gas));
-                OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
+                // Optimized: only update specific chunks that have changed
+                unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
+                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-                OptixInstance &instance = m_instances[objectId];
-                const float transformMatrix[12] =
+                assert(geometryIndex < m_geometries.size());
+                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
+                {
+                    GeometryData &geometry = m_geometries[geometryIndex];
+                    CUDA_CHECK(cudaFree((void *)geometry.gas));
+
+                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                        m_api, m_context, Backend::Get().getCudaStream(),
+                        geometry,
+                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+
+                    // Find and update the corresponding instance, and get its sbtOffset
+                    unsigned int sbtIndex = 0;
+                    bool instanceFound = false;
+                    for (auto &instance : m_instances)
                     {
-                        1.0f, 0.0f, 0.0f, 0.0f,
-                        0.0f, 1.0f, 0.0f, 0.0f,
-                        0.0f, 0.0f, 1.0f, 0.0f};
-                memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-                instance.instanceId = objectId;
-                instance.visibilityMask = 255;
-                instance.sbtOffset = objectId * numTypesOfRays;
-                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                instance.traversableHandle = blasHandle;
+                        if (instance.instanceId == geometryIndex)
+                        {
+                            instance.traversableHandle = blasHandle;
+                            sbtIndex = instance.sbtOffset;
+                            instanceFound = true;
+                            break;
+                        }
+                    }
 
-                // Shader binding table record hit group geometry
-                m_sbtRecordGeometryInstanceData[objectId * 2].data.indices = (Int3 *)m_geometries[objectId].indices;
-                m_sbtRecordGeometryInstanceData[objectId * 2].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-                m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.indices = (Int3 *)m_geometries[objectId].indices;
-                m_sbtRecordGeometryInstanceData[objectId * 2 + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
+                    // Update shader binding table record using the correct SBT index
+                    if (instanceFound)
+                    {
+                        assert(sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size());
+
+                        for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                        {
+                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+                        }
+                    }
+                }
             }
             // Instanced
             else if (IsInstancedBlockType(blockId))
@@ -425,7 +480,7 @@ void OptixRenderer::update()
             }
         }
         // Upload SBT
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Rebuild BVH
@@ -483,6 +538,7 @@ void OptixRenderer::update()
 
     scene.sceneUpdateObjectId.clear();
     scene.sceneUpdateInstanceId.clear();
+    scene.sceneUpdateChunkId.clear();
 
     scene.needSceneUpdate = false;
     scene.needSceneReloadUpdate = false;
@@ -666,53 +722,104 @@ void OptixRenderer::init()
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
-    // Create uninstanced geometry BLAS and track instances
-    for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+    // Create uninstanced geometry BLAS for all chunks and track instances
+    // Also build sbtOffset mapping for proper SBT indexing across chunks
+    unsigned int currentSbtOffset = 0;
+
+    for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
     {
-        unsigned int blockId = ObjectIdToBlockId(objectId);
+        for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+        {
+            unsigned int blockId = ObjectIdToBlockId(objectId);
 
-        // Create BLAS for the geometry
-        GeometryData geometry = {};
-        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
-        m_geometries.push_back(geometry);
-
-        // Create an instance for the geometry
-        OptixInstance instance = {};
-        const float transformMatrix[12] =
+            // Only create geometry if this chunk has data for this object
+            if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
             {
-                1.0f, 0.0f, 0.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f};
-        memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-        instance.instanceId = objectId;
-        instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
-        instance.sbtOffset = objectId * numTypesOfRays;
-        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-        instance.traversableHandle = blasHandle;
-        m_instances.push_back(instance);
+                // Create BLAS for the geometry
+                GeometryData geometry = {};
+                OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                    m_api, m_context, Backend::Get().getCudaStream(),
+                    geometry,
+                    *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                    *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                    scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+                m_geometries.push_back(geometry);
+
+                // Calculate chunk offset for world coordinates
+                auto &voxelEngine = VoxelEngine::Get();
+                auto &chunkConfig = voxelEngine.chunkConfig;
+                unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+                unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+                unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+
+                // Create an instance for the geometry with chunk offset
+                OptixInstance instance = {};
+                const float transformMatrix[12] =
+                    {
+                        1.0f, 0.0f, 0.0f, (float)(chunkX * VoxelChunk::width),
+                        0.0f, 1.0f, 0.0f, (float)(chunkY * VoxelChunk::width),
+                        0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
+                memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+                instance.instanceId = chunkIndex * scene.uninstancedGeometryCount + objectId;
+                instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
+                instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset to match SBT creation
+                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                instance.traversableHandle = blasHandle;
+                m_instances.push_back(instance);
+
+                // Advance sbtOffset for next geometry instance
+                currentSbtOffset += numTypesOfRays;
+            }
+        }
     }
 
-    // Create instanced geometry and track instances
+    // Create instanced geometry BLAS
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        // Create BLAS for the geometry
-        GeometryData geometry = {};
-        OptixTraversableHandle blasHandle = Scene::CreateGeometry(m_api, m_context, Backend::Get().getCudaStream(), geometry, scene.m_geometryAttibutes[objectId], scene.m_geometryIndices[objectId], scene.m_geometryAttibuteSize[objectId], scene.m_geometryIndicesSize[objectId]);
-        m_geometries.push_back(geometry);
-        objectIdxToBlasHandleMap[objectId] = blasHandle;
+        // Convert objectId to array index (0-based)
+        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
 
+        // Create BLAS for instanced geometry using the loaded geometry data
+        if (scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0)
+        {
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                m_api, m_context, Backend::Get().getCudaStream(),
+                geometry,
+                scene.m_instancedGeometryAttributes[arrayIndex],
+                scene.m_instancedGeometryIndices[arrayIndex],
+                scene.m_instancedGeometryAttributeSize[arrayIndex],
+                scene.m_instancedGeometryIndicesSize[arrayIndex]);
+
+            m_geometries.push_back(geometry);
+            objectIdxToBlasHandleMap[objectId] = blasHandle;
+        }
+        else
+        {
+            // Create empty geometry if no data available
+            GeometryData geometry = {};
+            m_geometries.push_back(geometry);
+            objectIdxToBlasHandleMap[objectId] = 0;
+        }
+
+        // Create instances for this object type
         for (int instanceId : scene.geometryInstanceIdMap[objectId])
         {
             OptixInstance instance = {};
             memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
             instance.instanceId = instanceId;
             instance.visibilityMask = 255;
-            instance.sbtOffset = objectId * numTypesOfRays;
+            instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset continuing from uninstanced geometry
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = blasHandle;
+            instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
             m_instances.push_back(instance);
             instanceIds.insert(instanceId);
         }
+
+        // Advance sbtOffset for next instanced geometry type
+        currentSbtOffset += numTypesOfRays;
     }
 
     // Build BVH
@@ -971,27 +1078,86 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[4], &m_sbtRecordHitRadiance));
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[5], &m_sbtRecordHitShadow));
 
-        m_sbtRecordGeometryInstanceData.resize(numObjects * numTypesOfRays);
-
-        for (int objectId = 0; objectId < numObjects; ++objectId)
+                // Calculate total instances needed for all chunks
+        unsigned int totalInstances = 0;
+        for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
-            int idx = objectId * numTypesOfRays;
+            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+            {
+                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
+                {
+                    totalInstances++;
+                }
+            }
+        }
+        // Add space for instanced objects
+        totalInstances += scene.instancedGeometryCount;
 
-            memcpy(m_sbtRecordGeometryInstanceData[idx].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+        m_sbtRecordGeometryInstanceData.resize(totalInstances * numTypesOfRays);
 
-            m_sbtRecordGeometryInstanceData[idx].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[idx].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-            m_sbtRecordGeometryInstanceData[idx].data.materialIndex = objectId;
+        // Initialize SBT records for all geometry instances
+        unsigned int sbtRecordIndex = 0;
 
-            memcpy(m_sbtRecordGeometryInstanceData[idx + 1].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+        // Setup SBT records for chunk-based uninstanced geometry
+        for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
+        {
+            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+            {
+                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
+                {
+                    unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-            m_sbtRecordGeometryInstanceData[idx + 1].data.indices = (Int3 *)m_geometries[objectId].indices;
-            m_sbtRecordGeometryInstanceData[idx + 1].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-            m_sbtRecordGeometryInstanceData[idx + 1].data.materialIndex = objectId;
+                    for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                    {
+                        if (rayType == 0)
+                        {
+                            memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                        }
+                        else
+                        {
+                            memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                        }
+
+                        assert(geometryIndex < m_geometries.size());
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
+                        sbtRecordIndex++;
+                    }
+                }
+            }
         }
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * numTypesOfRays * numObjects, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+                // Setup SBT records for instanced geometry
+        for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+        {
+            // Calculate the correct geometry index for instanced objects
+            // Instanced geometries are stored after all chunk-based geometries
+            unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
+
+            for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+            {
+                if (rayType == 0)
+                {
+                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                }
+                else
+                {
+                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                }
+
+                assert(geometryIndex < m_geometries.size());
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
+                sbtRecordIndex++;
+            }
+        }
+
+        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Direct callables
@@ -1018,7 +1184,7 @@ void OptixRenderer::init()
 
         m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
         m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
-        m_sbt.hitgroupRecordCount = numObjects * numTypesOfRays;
+        m_sbt.hitgroupRecordCount = m_sbtRecordGeometryInstanceData.size();
 
         // m_sbt.callablesRecordBase = m_d_sbtRecordCallables;
         // m_sbt.callablesRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);

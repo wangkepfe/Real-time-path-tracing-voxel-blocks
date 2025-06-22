@@ -193,6 +193,8 @@ void Backend::clear()
     glDeleteBuffers(1, &m_vboIndices);
     glDeleteProgram(m_glslProgram);
 
+    // Clear the error callback before terminating GLFW to prevent shutdown errors
+    glfwSetErrorCallback(nullptr);
     glfwTerminate();
 }
 

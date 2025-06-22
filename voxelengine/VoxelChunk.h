@@ -36,7 +36,7 @@ struct VoxelChunk
         return width * width * width * sizeof(Voxel);
     }
 
-    Voxel get(unsigned int x, unsigned int y, unsigned int z)
+    Voxel get(unsigned int x, unsigned int y, unsigned int z) const
     {
         return data[GetLinearId(x, y, z, width)];
     }
@@ -46,7 +46,7 @@ struct VoxelChunk
         data[GetLinearId(x, y, z, width)].id = id;
     }
 
-    Voxel get(Float3 pos)
+    Voxel get(Float3 pos) const
     {
         return data[GetLinearId((unsigned int)pos.x, (unsigned int)pos.y, (unsigned int)pos.z, width)];
     }

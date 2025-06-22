@@ -304,7 +304,11 @@ namespace
     }
 }
 
-void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data)
+
+
+// New multi-chunk initialization function
+void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int chunkIndex,
+                         const ChunkConfiguration &chunkConfig)
 {
     dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
     dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
@@ -314,15 +318,27 @@ void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data)
 
     cudaMalloc(d_data, totalVoxels * sizeof(Voxel));
 
+    // Calculate chunk coordinates
+    unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+    unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+    unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+
+    // Calculate global offset for this chunk
+    unsigned int globalOffsetX = chunkX * VoxelChunk::width;
+    unsigned int globalOffsetZ = chunkZ * VoxelChunk::width;
+
     PerlinNoiseGenerator noiseGenerator;
-    float freq = 1.0f / voxelChunk.width;
+    float freq = 1.0f / chunkConfig.getGlobalWidth(); // Use global frequency for continuity
 
     std::vector<float> noiseMap(noiseMapSize);
     for (int x = 0; x < voxelChunk.width; ++x)
     {
-        for (int y = 0; y < voxelChunk.width; ++y)
+        for (int z = 0; z < voxelChunk.width; ++z)
         {
-            noiseMap[y * voxelChunk.width + x] = noiseGenerator.getNoise(x * freq, y * freq);
+            // Use global coordinates for noise sampling to ensure continuity
+            float globalX = globalOffsetX + x;
+            float globalZ = globalOffsetZ + z;
+            noiseMap[z * voxelChunk.width + x] = noiseGenerator.getNoise(globalX * freq, globalZ * freq);
         }
     }
 
@@ -337,14 +353,6 @@ void initVoxels(VoxelChunk &voxelChunk, Voxel **d_data)
 
     cudaMemcpy(voxelChunk.data, *d_data, totalVoxels * sizeof(Voxel), cudaMemcpyDeviceToHost);
     cudaFree(d_noise);
-
-    // std::cout << "voxel:" << std::endl;
-    // for (int i = 0; i < totalVoxels; ++i)
-    // {
-    //     auto val = voxelChunk.data[i];
-    //     std::cout << (int)(val.id) << " ";
-    // }
-    // std::cout << std::endl;
 }
 
 void freeDeviceVoxelData(Voxel *d_data)
@@ -688,6 +696,54 @@ void updateSingleVoxel(
     }
 }
 
+void updateSingleVoxelGlobal(
+    unsigned int globalX,
+    unsigned int globalY,
+    unsigned int globalZ,
+    unsigned int newVal,
+    std::vector<VoxelChunk> &voxelChunks,
+    const ChunkConfiguration &chunkConfig,
+    VertexAttributes *attr,
+    unsigned int *indices,
+    std::vector<unsigned int> &faceLocation,
+    unsigned int &attrSize,
+    unsigned int &indicesSize,
+    unsigned int &currentFaceCount,
+    unsigned int &maxFaceCount,
+    std::vector<unsigned int> &freeFaces)
+{
+    // Convert global coordinates to chunk coordinates
+    unsigned int chunkX = globalX / VoxelChunk::width;
+    unsigned int chunkY = globalY / VoxelChunk::width;
+    unsigned int chunkZ = globalZ / VoxelChunk::width;
+
+    unsigned int localX = globalX % VoxelChunk::width;
+    unsigned int localY = globalY % VoxelChunk::width;
+    unsigned int localZ = globalZ % VoxelChunk::width;
+
+    // Check bounds
+    if (chunkX >= chunkConfig.chunksX || chunkY >= chunkConfig.chunksY || chunkZ >= chunkConfig.chunksZ)
+        return;
+
+    // Calculate chunk index
+    unsigned int chunkIndex = chunkX + chunkConfig.chunksX * (chunkZ + chunkConfig.chunksZ * chunkY);
+
+    // Update the voxel in the appropriate chunk
+    VoxelChunk &targetChunk = voxelChunks[chunkIndex];
+    updateSingleVoxel(
+        localX, localY, localZ,
+        newVal,
+        targetChunk,
+        attr,
+        indices,
+        faceLocation,
+        attrSize,
+        indicesSize,
+        currentFaceCount,
+        maxFaceCount,
+        freeFaces);
+}
+
 void generateSea(VertexAttributes **attr,
                  unsigned int **indices,
                  unsigned int &attrSize,
@@ -771,3 +827,4 @@ void generateSea(VertexAttributes **attr,
         dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
     }
 }
+
