@@ -319,8 +319,8 @@ void OptixRenderer::update()
                 unsigned int blockId = ObjectIdToBlockId(objectId);
                 unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-                if (geometryIndex < m_geometries.size() &&
-                    scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                assert(geometryIndex < m_geometries.size());
+                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
                     scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
                 {
                     GeometryData &geometry = m_geometries[geometryIndex];
@@ -401,8 +401,8 @@ void OptixRenderer::update()
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
                 unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-                if (geometryIndex < m_geometries.size() &&
-                    scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                assert(geometryIndex < m_geometries.size());
+                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
                     scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
                 {
                     GeometryData &geometry = m_geometries[geometryIndex];
@@ -763,20 +763,33 @@ void OptixRenderer::init()
         }
     }
 
-    // Create instanced geometry BLAS (still uses combined mesh for now)
-    // TODO: This could also be made chunk-specific in the future
+    // Create instanced geometry BLAS
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        // For instanced geometry, we still use a combined mesh approach for now
-        // We could combine all chunks into a single mesh for instanced objects
-        // or create separate BLAS per chunk if needed
+        // Create BLAS for instanced geometry using the loaded geometry data
+        if (scene.m_instancedGeometryAttributeSize[objectId] > 0 && scene.m_instancedGeometryIndicesSize[objectId] > 0)
+        {
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                m_api, m_context, Backend::Get().getCudaStream(),
+                geometry,
+                scene.m_instancedGeometryAttributes[objectId],
+                scene.m_instancedGeometryIndices[objectId],
+                scene.m_instancedGeometryAttributeSize[objectId],
+                scene.m_instancedGeometryIndicesSize[objectId]);
 
-        // Create empty geometry for now - this will be populated when instances are created
-        GeometryData geometry = {};
-        // Note: No BLAS creation here since instanced objects are handled differently
-        m_geometries.push_back(geometry);
-        objectIdxToBlasHandleMap[objectId] = 0; // Will be set when geometry is available
+            m_geometries.push_back(geometry);
+            objectIdxToBlasHandleMap[objectId] = blasHandle;
+        }
+        else
+        {
+            // Create empty geometry if no data available
+            GeometryData geometry = {};
+            m_geometries.push_back(geometry);
+            objectIdxToBlasHandleMap[objectId] = 0;
+        }
 
+        // Create instances for this object type
         for (int instanceId : scene.geometryInstanceIdMap[objectId])
         {
             OptixInstance instance = {};
@@ -785,7 +798,7 @@ void OptixRenderer::init()
             instance.visibilityMask = 255;
             instance.sbtOffset = objectId * numTypesOfRays;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = 0; // Will be set when geometry is available
+            instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
             m_instances.push_back(instance);
             instanceIds.insert(instanceId);
         }
@@ -1089,11 +1102,9 @@ void OptixRenderer::init()
                             memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                         }
 
-                        if (geometryIndex < m_geometries.size())
-                        {
-                            m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                            m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                        }
+                        assert(geometryIndex < m_geometries.size());
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
                         m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
                         sbtRecordIndex++;
                     }
@@ -1104,6 +1115,10 @@ void OptixRenderer::init()
         // Setup SBT records for instanced geometry
         for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
         {
+            // Calculate the correct geometry index for instanced objects
+            // Instanced geometries are stored after all chunk-based geometries
+            unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
+
             for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
             {
                 if (rayType == 0)
@@ -1115,11 +1130,9 @@ void OptixRenderer::init()
                     memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                 }
 
-                if (objectId < m_geometries.size())
-                {
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[objectId].indices;
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[objectId].attributes;
-                }
+                assert(geometryIndex < m_geometries.size());
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
                 m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
                 sbtRecordIndex++;
             }

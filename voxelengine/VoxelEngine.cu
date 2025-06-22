@@ -246,10 +246,10 @@ void VoxelEngine::setVoxelAtGlobal(unsigned int globalX, unsigned int globalY, u
 void VoxelEngine::initInstanceGeometry()
 {
     auto &scene = Scene::Get();
-    auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-    auto &sceneGeometryIndices = scene.m_geometryIndices;
-    auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
-    auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+    auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
+    auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
+    auto &sceneGeometryAttributeSize = scene.m_instancedGeometryAttributeSize;
+    auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
 
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
@@ -271,9 +271,9 @@ void VoxelEngine::initInstanceGeometry()
 void VoxelEngine::updateInstances()
 {
     auto &scene = Scene::Get();
-    auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-    auto &sceneGeometryIndices = scene.m_geometryIndices;
-    auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+    auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
+    auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
+    auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
 
     // Load models for the instanced meshes
     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
@@ -431,8 +431,11 @@ void VoxelEngine::init()
     scene.uninstancedGeometryCount = GetNumUninstancedBlockTypes();
     scene.instancedGeometryCount = GetNumInstancedBlockTypes();
 
-    // Initialize chunk-based geometry buffers
+    // Initialize chunk-based geometry buffers for uninstanced objects
     scene.initChunkGeometry(chunkConfig.getTotalChunks(), GetNumUninstancedBlockTypes());
+
+    // Initialize instanced geometry buffers
+    scene.initInstancedGeometry(GetNumInstancedBlockTypes());
 
     // Initialize chunk-specific face tracking buffers
     unsigned int numChunks = chunkConfig.getTotalChunks();
@@ -477,27 +480,43 @@ void VoxelEngine::init()
 
 void VoxelEngine::reload()
 {
-    // A hack to make sure all materials have a valid geometry
-    for (int blockId = 1; blockId < BlockTypeNum; ++blockId)
+    auto &scene = Scene::Get();
+
+    // A hack to make sure all materials have a valid geometry across all chunks
+    for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
     {
-        voxelChunk.data[GetLinearId(1, 1, blockId, voxelChunk.width)] = blockId;
+        for (int blockId = 1; blockId < BlockTypeNum; ++blockId)
+        {
+            if (blockId < voxelChunks[chunkIndex].width)
+            {
+                voxelChunks[chunkIndex].data[GetLinearId(1, 1, blockId, voxelChunks[chunkIndex].width)] = blockId;
+            }
+        }
     }
 
-    // Upload voxel data from disk load
-    Voxel *d_data;
-    size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
-    cudaMalloc(&d_data, totalVoxels * sizeof(Voxel));
-    cudaMemcpy(d_data, voxelChunk.data, totalVoxels * sizeof(Voxel), cudaMemcpyHostToDevice);
+    // Upload voxel data from disk load for all chunks
+    std::vector<Voxel*> d_dataChunks(chunkConfig.getTotalChunks());
+    for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
+    {
+        size_t totalVoxels = VoxelChunk::width * VoxelChunk::width * VoxelChunk::width;
+        cudaMalloc(&d_dataChunks[chunkIndex], totalVoxels * sizeof(Voxel));
+        cudaMemcpy(d_dataChunks[chunkIndex], voxelChunks[chunkIndex].data, totalVoxels * sizeof(Voxel), cudaMemcpyHostToDevice);
+    }
 
-    // Generate uninstanced meshes
-    updateUninstancedMeshes(d_data);
-    freeDeviceVoxelData(d_data);
+    // Generate uninstanced meshes for all chunks
+    updateUninstancedMeshes(d_dataChunks);
+
+    // Free device data for all chunks
+    for (auto& d_data : d_dataChunks)
+    {
+        freeDeviceVoxelData(d_data);
+    }
 
     // Update instances
     updateInstances();
 
-    Scene::Get().needSceneUpdate = true;
-    Scene::Get().needSceneReloadUpdate = true;
+    scene.needSceneUpdate = true;
+    scene.needSceneReloadUpdate = true;
 }
 
 void VoxelEngine::update()
@@ -681,10 +700,10 @@ void VoxelEngine::update()
         {
             if (hitSurface)
             {
-                auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-                auto &sceneGeometryIndices = scene.m_geometryIndices;
-                auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
-                auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+                auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
+                auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
+                auto &sceneGeometryAttributeSize = scene.m_instancedGeometryAttributeSize;
+                auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
 
                 unsigned int newVal = 0;
                 int objectId = BlockIdToObjectId(deleteBlockId);
@@ -733,7 +752,7 @@ void VoxelEngine::update()
                         int childBlockId = BlockTypeTestLight;
                         int childObjectIdx = BlockIdToObjectId(childBlockId);
 
-                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, voxelChunk.width);
+                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
                         geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
 
                         scene.sceneUpdateObjectId.push_back(childObjectIdx);
@@ -748,10 +767,10 @@ void VoxelEngine::update()
             {
                 auto &scene = Scene::Get();
 
-                auto &sceneGeometryAttributes = scene.m_geometryAttibutes;
-                auto &sceneGeometryIndices = scene.m_geometryIndices;
-                auto &sceneGeometryAttributeSize = scene.m_geometryAttibuteSize;
-                auto &sceneGeometryIndicesSize = scene.m_geometryIndicesSize;
+                auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
+                auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
+                auto &sceneGeometryAttributeSize = scene.m_instancedGeometryAttributeSize;
+                auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
 
                 unsigned int newVal = blockId;
                 int objectId = BlockIdToObjectId(blockId);
@@ -806,7 +825,7 @@ void VoxelEngine::update()
                         int childBlockId = BlockTypeTestLight;
                         int childObjectIdx = childBlockId - 1;
 
-                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, voxelChunk.width);
+                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
                         geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
 
                         instanceTransformMatrices[childInstanceId] = transform;

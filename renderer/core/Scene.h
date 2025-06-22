@@ -39,13 +39,20 @@ public:
     Scene(Scene const &) = delete;
     void operator=(Scene const &) = delete;
 
-    // Multi-chunk geometry management
+    // Multi-chunk geometry management for uninstanced objects
     // Each chunk has its own list of geometry for each object type
     // Structure: m_chunkGeometryAttributes[chunkIndex][objectId]
     std::vector<std::vector<VertexAttributes *>> m_chunkGeometryAttributes;
     std::vector<std::vector<unsigned int *>> m_chunkGeometryIndices;
     std::vector<std::vector<unsigned int>> m_chunkGeometryAttributeSize;
     std::vector<std::vector<unsigned int>> m_chunkGeometryIndicesSize;
+
+    // Instanced geometry arrays (shared across all chunks)
+    // These have fixed geometry and are used to create BLAS once per object type
+    std::vector<VertexAttributes *> m_instancedGeometryAttributes;
+    std::vector<unsigned int *> m_instancedGeometryIndices;
+    std::vector<unsigned int> m_instancedGeometryAttributeSize;
+    std::vector<unsigned int> m_instancedGeometryIndicesSize;
 
     // Chunk configuration
     unsigned int numChunks = 0;
@@ -74,6 +81,9 @@ public:
 
     // Initialize chunk-based geometry buffers
     void initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects);
+
+    // Initialize instanced geometry buffers
+    void initInstancedGeometry(unsigned int numInstancedObjects);
 
     // Get geometry data for a specific chunk and object
     VertexAttributes** getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId);

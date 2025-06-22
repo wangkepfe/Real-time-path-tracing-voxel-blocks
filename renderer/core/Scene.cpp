@@ -31,6 +31,19 @@ Scene::~Scene()
             }
         }
     }
+
+    // Clean up instanced geometry buffers
+    for (unsigned int objectId = 0; objectId < m_instancedGeometryAttributes.size(); ++objectId)
+    {
+        if (m_instancedGeometryAttributes[objectId])
+        {
+            CUDA_CHECK(cudaFree(m_instancedGeometryAttributes[objectId]));
+        }
+        if (m_instancedGeometryIndices[objectId])
+        {
+            CUDA_CHECK(cudaFree(m_instancedGeometryIndices[objectId]));
+        }
+    }
 }
 
 void Scene::initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects)
@@ -49,6 +62,14 @@ void Scene::initChunkGeometry(unsigned int numChunksParam, unsigned int numObjec
         m_chunkGeometryAttributeSize[chunkIndex].resize(numObjects, 0);
         m_chunkGeometryIndicesSize[chunkIndex].resize(numObjects, 0);
     }
+}
+
+void Scene::initInstancedGeometry(unsigned int numInstancedObjects)
+{
+    m_instancedGeometryAttributes.resize(numInstancedObjects, nullptr);
+    m_instancedGeometryIndices.resize(numInstancedObjects, nullptr);
+    m_instancedGeometryAttributeSize.resize(numInstancedObjects, 0);
+    m_instancedGeometryIndicesSize.resize(numInstancedObjects, 0);
 }
 
 VertexAttributes** Scene::getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId)

@@ -263,7 +263,6 @@ void InputHandler::update()
     if (appmode == AppMode::Gameplay)
     {
         auto &voxelEngine = VoxelEngine::Get();
-        auto &voxelChunk = voxelEngine.voxelChunk;
 
         // Horizontal
         if (moveW || moveS || moveA || moveD)
@@ -285,11 +284,10 @@ void InputHandler::update()
 
             Float3 horizontalMove = movingDir * deltaTimeMs * moveSpeed;
 
-            auto &voxelEngine = VoxelEngine::Get();
-            auto &voxelChunk = voxelEngine.voxelChunk;
-
-            auto v0 = voxelChunk.get(camera.pos + horizontalMove);
-            auto v1 = voxelChunk.get(camera.pos + horizontalMove - Float3(0, 1, 0));
+            // Use multi-chunk collision detection
+            Float3 newPos = camera.pos + horizontalMove;
+            auto v0 = voxelEngine.getVoxelAtGlobal((unsigned int)newPos.x, (unsigned int)newPos.y, (unsigned int)newPos.z);
+            auto v1 = voxelEngine.getVoxelAtGlobal((unsigned int)newPos.x, (unsigned int)(newPos.y - 1), (unsigned int)newPos.z);
 
             if (v0.id == BlockTypeEmpty && v1.id == BlockTypeEmpty)
             {
@@ -304,21 +302,24 @@ void InputHandler::update()
         fallSpeed += fallAccel * deltaTimeMs;
         camera.posDelta.y -= fallSpeed * deltaTimeMs;
 
-        auto v2 = voxelChunk.get((camera.pos.y + camera.posDelta.y) - Float3(0, height, 0));
+        Float3 fallCheckPos = camera.pos + camera.posDelta - Float3(0, height, 0);
+        auto v2 = voxelEngine.getVoxelAtGlobal((unsigned int)fallCheckPos.x, (unsigned int)fallCheckPos.y, (unsigned int)fallCheckPos.z);
 
         if (fallSpeed > 0.0f && v2.id != BlockTypeEmpty)
         {
             while (v2.id != BlockTypeEmpty)
             {
                 camera.posDelta.y += 1.0f;
-                v2 = voxelChunk.get((camera.pos.y + camera.posDelta.y) - Float3(0, height, 0));
+                fallCheckPos = camera.pos + camera.posDelta - Float3(0, height, 0);
+                v2 = voxelEngine.getVoxelAtGlobal((unsigned int)fallCheckPos.x, (unsigned int)fallCheckPos.y, (unsigned int)fallCheckPos.z);
             }
             camera.posDelta.y += static_cast<float>(static_cast<int>((camera.pos.y + camera.posDelta.y) - height)) + height - (camera.pos.y + camera.posDelta.y);
             fallSpeed = 0.0f;
         }
 
         // head bump to roof
-        auto v3 = voxelChunk.get(camera.pos + Float3(0, 0.49f, 0));
+        Float3 headPos = camera.pos + Float3(0, 0.49f, 0);
+        auto v3 = voxelEngine.getVoxelAtGlobal((unsigned int)headPos.x, (unsigned int)headPos.y, (unsigned int)headPos.z);
         if (fallSpeed < 0.0f && v3.id != BlockTypeEmpty)
         {
             fallSpeed = 0.0f;
