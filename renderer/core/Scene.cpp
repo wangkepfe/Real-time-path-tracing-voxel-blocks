@@ -9,41 +9,27 @@ Scene::Scene()
 
 Scene::~Scene()
 {
-    CUDA_CHECK(cudaFree(edgeToHighlight));
-    CUDA_CHECK(cudaFree(d_lightAliasTable));
-
-    CUDA_CHECK(cudaFree(m_lights));
-
-    CUDA_CHECK(cudaFree(d_instanceLightMapping));
-
-    // Clean up chunk-based geometry buffers
-    for (unsigned int chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
+    if (edgeToHighlight)
     {
-        for (unsigned int objectId = 0; objectId < m_chunkGeometryAttributes[chunkIndex].size(); ++objectId)
-        {
-            if (m_chunkGeometryAttributes[chunkIndex][objectId])
-            {
-                CUDA_CHECK(cudaFree(m_chunkGeometryAttributes[chunkIndex][objectId]));
-            }
-            if (m_chunkGeometryIndices[chunkIndex][objectId])
-            {
-                CUDA_CHECK(cudaFree(m_chunkGeometryIndices[chunkIndex][objectId]));
-            }
-        }
+        CUDA_CHECK(cudaFree(edgeToHighlight));
+    }
+    if (d_lightAliasTable)
+    {
+        CUDA_CHECK(cudaFree(d_lightAliasTable));
     }
 
-    // Clean up instanced geometry buffers
-    for (unsigned int objectId = 0; objectId < m_instancedGeometryAttributes.size(); ++objectId)
+    if (m_lights)
     {
-        if (m_instancedGeometryAttributes[objectId])
-        {
-            CUDA_CHECK(cudaFree(m_instancedGeometryAttributes[objectId]));
-        }
-        if (m_instancedGeometryIndices[objectId])
-        {
-            CUDA_CHECK(cudaFree(m_instancedGeometryIndices[objectId]));
-        }
+        CUDA_CHECK(cudaFree(m_lights));
     }
+
+    if (d_instanceLightMapping)
+    {
+        CUDA_CHECK(cudaFree(d_instanceLightMapping));
+    }
+
+    // Note: Geometry memory is owned and freed by OptixRenderer::clear()
+    // Scene only holds pointers to this memory, so we don't free it here to avoid double-free errors
 }
 
 void Scene::initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects)

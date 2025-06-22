@@ -253,17 +253,20 @@ void VoxelEngine::initInstanceGeometry()
 
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        sceneGeometryAttributeSize[objectId] = 0;
-        sceneGeometryIndicesSize[objectId] = 0;
+        // Convert objectId to array index (0-based)
+        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+
+        sceneGeometryAttributeSize[arrayIndex] = 0;
+        sceneGeometryIndicesSize[arrayIndex] = 0;
 
         unsigned int blockId = ObjectIdToBlockId(objectId);
 
         std::string modelFileName = GetModelFileName(blockId);
 
-        loadModel(&(sceneGeometryAttributes[objectId]),
-                  &(sceneGeometryIndices[objectId]),
-                  sceneGeometryAttributeSize[objectId],
-                  sceneGeometryIndicesSize[objectId],
+        loadModel(&(sceneGeometryAttributes[arrayIndex]),
+                  &(sceneGeometryIndices[arrayIndex]),
+                  sceneGeometryAttributeSize[arrayIndex],
+                  sceneGeometryIndicesSize[arrayIndex],
                   modelFileName);
     }
 }
@@ -287,6 +290,9 @@ void VoxelEngine::updateInstances()
 
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
+        // Convert objectId to array index (0-based)
+        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+
         unsigned int blockId = ObjectIdToBlockId(objectId);
         for (unsigned int globalX = 0; globalX < chunkConfig.getGlobalWidth(); ++globalX)
         {
@@ -316,9 +322,8 @@ void VoxelEngine::updateInstances()
         if (IsBlockEmissive(blockId))
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
-            unsigned int numTriPerInstance = sceneGeometryIndicesSize[objectId] / 3;
-            unsigned int numTriLight = numTriPerInstance * numInstances;
-            totalNumTriLights += numTriLight;
+            unsigned int numTriPerInstance = sceneGeometryIndicesSize[arrayIndex] / 3;
+            totalNumTriLights += numTriPerInstance * numInstances;
         }
     }
 
@@ -334,11 +339,14 @@ void VoxelEngine::updateInstances()
     scene.instanceLightMapping.clear();
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
+        // Convert objectId to array index (0-based)
+        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+
         unsigned int blockId = ObjectIdToBlockId(objectId);
         if (IsBlockEmissive(blockId))
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
-            unsigned int numTriPerInstance = sceneGeometryIndicesSize[objectId] / 3;
+            unsigned int numTriPerInstance = sceneGeometryIndicesSize[arrayIndex] / 3;
             unsigned int numTriLight = numTriPerInstance * numInstances;
 
             std::vector<std::array<float, 12>> transforms;
@@ -357,7 +365,7 @@ void VoxelEngine::updateInstances()
             cudaMalloc((void **)&d_transforms, transformsSizeInBytes);
             cudaMemcpy(d_transforms, &(transforms[0][0]), transformsSizeInBytes, cudaMemcpyHostToDevice);
 
-            launchGenerateLightInfos(sceneGeometryAttributes[objectId], sceneGeometryIndices[objectId], sceneGeometryIndicesSize[objectId], d_transforms, numInstances, radiance, scene.m_lights, currentGlobalOffset);
+            launchGenerateLightInfos(sceneGeometryAttributes[arrayIndex], sceneGeometryIndices[arrayIndex], sceneGeometryIndicesSize[arrayIndex], d_transforms, numInstances, radiance, scene.m_lights, currentGlobalOffset);
 
             cudaFree(d_transforms);
         }
@@ -700,11 +708,6 @@ void VoxelEngine::update()
         {
             if (hitSurface)
             {
-                auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
-                auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
-                auto &sceneGeometryAttributeSize = scene.m_instancedGeometryAttributeSize;
-                auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
-
                 unsigned int newVal = 0;
                 int objectId = BlockIdToObjectId(deleteBlockId);
 
@@ -766,11 +769,6 @@ void VoxelEngine::update()
             if (hasSpaceToCreate && hitSurface)
             {
                 auto &scene = Scene::Get();
-
-                auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
-                auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
-                auto &sceneGeometryAttributeSize = scene.m_instancedGeometryAttributeSize;
-                auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
 
                 unsigned int newVal = blockId;
                 int objectId = BlockIdToObjectId(blockId);
