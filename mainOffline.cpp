@@ -129,12 +129,23 @@ int main(int argc, char *argv[])
         // Set camera from scene configuration
         camera.pos = sceneConfig.camera.position;
 
-        // Convert direction vector to yaw/pitch if needed
+        // Convert direction vector to yaw/pitch like the GUI does
         Float3 dir = normalize(sceneConfig.camera.direction);
-        camera.dir = dir;  // Set direction directly for now
+        Float2 yawPitch = DirToYawPitch(dir);
+        camera.yaw = yawPitch.x;
+        camera.pitch = yawPitch.y;
 
-        // Note: Camera class calculates its own up vector internally
+        // Apply FOV from scene configuration
+        float fovX = sceneConfig.camera.fov * Pi_over_180;
+        float fovY = fovX * (camera.resolution.y / camera.resolution.x);
+        camera.tanHalfFov = Float2(tanf(fovX * 0.5f), tanf(fovY * 0.5f));
+
+        // Update camera to recalculate matrices with correct yaw/pitch and FOV
         camera.update();
+
+        std::cout << "Camera setup - Position: (" << camera.pos.x << ", " << camera.pos.y << ", " << camera.pos.z << ")" << std::endl;
+        std::cout << "Camera setup - Direction: (" << camera.dir.x << ", " << camera.dir.y << ", " << camera.dir.z << ")" << std::endl;
+        std::cout << "Camera setup - FOV: " << sceneConfig.camera.fov << " degrees" << std::endl;
 
         std::cout << "Starting rendering..." << std::endl;
 
