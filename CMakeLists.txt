@@ -45,6 +45,7 @@ set( IMGUI
 
 set( HEADERS
     renderer/core/Backend.h
+    renderer/core/OfflineBackend.h
     renderer/core/OptixRenderer.h
     renderer/core/Scene.h
     renderer/core/UI.h
@@ -52,6 +53,7 @@ set( HEADERS
     renderer/core/GlobalSettings.h
     renderer/core/BufferManager.h
     renderer/core/RenderCamera.h
+    renderer/core/SceneConfig.h
     renderer/postprocessing/BicubicFilter.h
     renderer/postprocessing/ScalingFilter.h
     renderer/postprocessing/PostProcessor.h
@@ -92,6 +94,7 @@ set( SOURCES
     renderer/core/UI.cpp
     renderer/core/InputHandler.cpp
     renderer/core/BufferManager.cpp
+    renderer/core/SceneConfig.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
     renderer/util/TextureUtils.cu
@@ -157,6 +160,7 @@ add_executable(voxelgame
 target_include_directories( voxelgame PUBLIC
     "."
     "renderer"
+    "renderer/ext"
     "renderer/ext/imgui"
     "renderer/ext/imgui/backends"
     "voxelengine"
@@ -181,3 +185,59 @@ set_property(TARGET voxelgame PROPERTY CUDA_ARCHITECTURES 89)
 
 # target_compile_options(voxelgame PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G -rdc=true>)
 # set_property(TARGET voxelgame PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
+# Offline renderer sources (excluding OpenGL/GLFW dependencies)
+set( OFFLINE_SOURCES
+    mainOffline.cpp
+    renderer/core/OfflineBackend.cpp
+    renderer/core/SceneConfig.cpp
+    renderer/core/OptixRenderer.cpp
+    renderer/core/Scene.cpp
+    renderer/core/BufferManager.cpp
+    renderer/postprocessing/PostProcessor.cu
+    renderer/denoising/Denoiser.cu
+    renderer/util/TextureUtils.cu
+    renderer/util/RandGenHost.cpp
+    renderer/sky/Sky.cu
+    renderer/util/BufferUtils.cu
+    renderer/util/ModelUtils.cpp
+    voxelengine/VoxelEngine.cu
+    voxelengine/VoxelSceneGen.cu
+    voxelengine/Noise.cpp
+    renderer/shaders/AliasTable.cu
+)
+
+# Create offline renderer executable
+add_executable(voxelgame_offline
+    ${OFFLINE_SOURCES}
+    ${HEADERS}
+    ${SHADERS_HEADERS}
+    ${PTX_SOURCES}
+)
+
+target_include_directories( voxelgame_offline PUBLIC
+    "."
+    "renderer"
+    "voxelengine"
+    ${OPTIX_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
+    ${NVTT_INCLUDE_DIR}
+)
+
+target_compile_definitions( voxelgame_offline PRIVATE
+    OFFLINE_MODE
+)
+
+target_link_libraries( voxelgame_offline
+    ${NVTT_LIBRARIES}
+    CUDA::cudart
+    CUDA::cuda_driver
+    cudadevrt.lib
+)
+
+set_property(TARGET voxelgame_offline PROPERTY CUDA_ARCHITECTURES 89)
+
+# Separate include for stb_image_write.h since it's in renderer/ext/stb/
+target_include_directories( voxelgame_offline PRIVATE
+    "renderer/ext"
+)

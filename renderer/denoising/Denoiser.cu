@@ -13,6 +13,7 @@
 #include "core/GlobalSettings.h"
 #include "core/BufferManager.h"
 #include "core/Backend.h"
+#include "core/OfflineBackend.h"
 #include "core/RenderCamera.h"
 
 #include "util/KernelHelper.h"
@@ -36,10 +37,20 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
 
     auto &bufferManager = BufferManager::Get();
-    auto &backend = Backend::Get();
 
-    int frameNum = backend.getFrameNum();
-    int accuCounter = backend.getAccumulationCounter();
+    int frameNum, accuCounter;
+    if (GlobalSettings::IsOfflineMode())
+    {
+        auto &offlineBackend = OfflineBackend::Get();
+        frameNum = offlineBackend.getFrameNum();
+        accuCounter = offlineBackend.getAccumulationCounter();
+    }
+    else
+    {
+        auto &backend = Backend::Get();
+        frameNum = backend.getFrameNum();
+        accuCounter = backend.getAccumulationCounter();
+    }
 
     if (0)
     {

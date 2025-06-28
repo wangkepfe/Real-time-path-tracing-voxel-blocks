@@ -168,6 +168,10 @@ public:
     }
     static SkyParams &GetSkyParams() { return Get().skyParams; }
 
+    // Offline rendering flag
+    static bool IsOfflineMode() { return Get().offlineMode; }
+    static void SetOfflineMode(bool offline) { Get().offlineMode = offline; }
+
     RenderPassSettings renderPassSettings{};
     DenoisingParams denoisingParams{};
     PostProcessParams postProcessParams{};
@@ -178,4 +182,6 @@ public:
 
 private:
     GlobalSettings() {}
+
+    bool offlineMode = false;
 };
