@@ -1,4 +1,5 @@
 #include "core/Backend.h"
+#include "core/OfflineBackend.h"
 #include "util/DebugUtils.h"
 #include "OptixRenderer.h"
 #include "core/Scene.h"
@@ -9,6 +10,19 @@
 #include "core/RenderCamera.h"
 
 #include "util/BufferUtils.h"
+
+// Helper function to get CUDA stream from either backend
+CUstream getCurrentCudaStream()
+{
+    if (GlobalSettings::IsOfflineMode())
+    {
+        return OfflineBackend::Get().getCudaStream();
+    }
+    else
+    {
+        return Backend::Get().getCudaStream();
+    }
+}
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -485,8 +499,8 @@ void OptixRenderer::update()
 
     // Rebuild BVH
     {
-        auto &backend = Backend::Get();
-        CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+        CUstream cudaStream = getCurrentCudaStream();
+        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
         m_systemParameter.prevTopObject = m_systemParameter.topObject;
 
@@ -501,7 +515,7 @@ void OptixRenderer::update()
         const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
         CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
         CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, backend.getCudaStream()));
+                                   cudaMemcpyHostToDevice, cudaStream));
 
         OptixBuildInput instanceInput = {};
         instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
@@ -521,14 +535,14 @@ void OptixRenderer::update()
         CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
         // Build the acceleration structure into the new buffer.
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
+        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
                                           &accelBuildOptions, &instanceInput, 1,
                                           d_tmp, iasBufferSizes.tempSizeInBytes,
                                           m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
                                           &m_systemParameter.topObject, nullptr, 0));
 
         // Synchronize and clean up temporary allocations.
-        CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
         CUDA_CHECK(cudaFree((void *)d_tmp));
         CUDA_CHECK(cudaFree((void *)d_instances));
 

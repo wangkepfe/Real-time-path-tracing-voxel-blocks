@@ -15,6 +15,7 @@
 #include <windows.h>
 #endif
 
+#ifndef OFFLINE_MODE
 #ifndef __APPLE__
 #include <GL/glew.h>
 #if defined(_WIN32)
@@ -26,6 +27,7 @@
 #include <cuda_gl_interop.h>
 
 #include <GLFW/glfw3.h>
+#endif // OFFLINE_MODE
 #include <vector>
 #include <functional>
 
@@ -46,7 +48,9 @@ public:
     void mainloop();
     void clear();
     CUstream getCudaStream() const { return m_cudaStream; }
+#ifndef OFFLINE_MODE
     GLFWwindow *getWindow() { return m_window; }
+#endif
     CUcontext getCudaContext() const { return m_cudaContext; }
     float *getToneMapGain() { return &m_toneMapGain; }
     float *getToneMapMaxWhite() { return &m_toneMapMaxWhite; }
@@ -97,11 +101,14 @@ private:
 
     int m_accumulationCounter = 1;
 
+#ifndef OFFLINE_MODE
     // Window
     GLFWwindow *m_window;
+#endif
     int m_width;
     int m_height;
 
+#ifndef OFFLINE_MODE
     // OpenGL variables
     GLuint m_pbo;
     GLuint m_hdrTexture;
@@ -114,14 +121,17 @@ private:
     GLuint m_glslVS;
     GLuint m_glslFS;
     GLuint m_glslProgram;
+#endif
 
     // CUDA stuffs
     CUcontext m_cudaContext;
     CUstream m_cudaStream;
+#ifndef OFFLINE_MODE
     cudaGraphicsResource *m_cudaGraphicsResource;
 
     // buffer
     Float4 *m_interopBuffer;
+#endif
 
     // tone mapping
     float m_toneMapGain = 1.0f;

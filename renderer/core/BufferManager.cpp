@@ -1,5 +1,7 @@
 #include "core/BufferManager.h"
 #include "core/Backend.h"
+#include "core/OfflineBackend.h"
+#include "core/GlobalSettings.h"
 #include "util/KernelHelper.h"
 #include "util/DebugUtils.h"
 #include "sky/Sky.h"
@@ -104,9 +106,25 @@ BufferManager::~BufferManager()
 
 void BufferManager::init()
 {
-    auto &backend = Backend::Get();
-    unsigned int renderWidth = backend.getMaxRenderWidth();
-    unsigned int renderHeight = backend.getMaxRenderHeight();
+    unsigned int renderWidth, renderHeight;
+    unsigned int outputWidth, outputHeight;
+
+    if (GlobalSettings::IsOfflineMode())
+    {
+        auto &offlineBackend = OfflineBackend::Get();
+        renderWidth = offlineBackend.getMaxRenderWidth();
+        renderHeight = offlineBackend.getMaxRenderHeight();
+        outputWidth = offlineBackend.getWidth();
+        outputHeight = offlineBackend.getHeight();
+    }
+    else
+    {
+        auto &backend = Backend::Get();
+        renderWidth = backend.getMaxRenderWidth();
+        renderHeight = backend.getMaxRenderHeight();
+        outputWidth = backend.getWidth();
+        outputHeight = backend.getHeight();
+    }
 
     Int2 bufferSize = Int2(renderWidth, renderHeight);
     Int2 bufferSize4 = Int2(DivRoundUp(renderWidth, 4u), DivRoundUp(renderHeight, 4u));
@@ -115,7 +133,7 @@ void BufferManager::init()
     Int2 bufferSize8x8 = Int2(DivRoundUp(renderWidth, 8u), DivRoundUp(renderHeight, 8u));
     Int2 bufferSize16x16 = Int2(DivRoundUp(renderWidth, 16u), DivRoundUp(renderHeight, 16u));
 
-    Int2 outputSize = Int2(backend.getWidth(), backend.getHeight());
+    Int2 outputSize = Int2(outputWidth, outputHeight);
 
     const auto &skyModel = SkyModel::Get();
     Int2 skySize = (Int2)skyModel.getSkyRes();

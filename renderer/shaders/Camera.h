@@ -28,8 +28,8 @@ struct __align__(16) Camera
 
     INL_HOST_DEVICE void init(int width, int height)
     {
-        pos = Float3(16.0f, 17.0f, 16.0f);
-        dir = normalize(Float3(-1.0f, -1.0f, -1.0f)); // Example default direction
+        pos = Float3(16.0f, 25.0f, 16.0f);
+        dir = normalize(Float3(1.0f, -1.0f, 1.0f));
 
         resolution = Float2((float)width, (float)height);
         inversedResolution = 1.0f / resolution;

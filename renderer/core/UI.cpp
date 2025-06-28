@@ -4,6 +4,7 @@
 #include "core/InputHandler.h"
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
+#include "core/SceneConfig.h"
 
 void UI::init()
 {
@@ -105,6 +106,59 @@ void UI::update()
                 skyParams.needRegenerate = true;
             }
         }
+    }
+
+    if (ImGui::CollapsingHeader("Scene Management", ImGuiTreeNodeFlags_None))
+    {
+        static char sceneFileName[256] = "scene_export.yaml";
+
+        ImGui::Text("Save Current Camera as YAML Scene");
+        ImGui::InputText("Filename", sceneFileName, sizeof(sceneFileName));
+
+        if (ImGui::Button("Save Scene"))
+        {
+            // Create scene config from current camera
+            SceneConfig currentScene;
+            currentScene.camera.position = camera.pos;
+            currentScene.camera.direction = camera.dir;
+            currentScene.camera.up = Float3(0.0f, 1.0f, 0.0f); // Standard up vector
+            currentScene.camera.fov = 45.0f; // Default FOV, could be made configurable
+
+            // Save to file
+            SceneConfigParser::SaveToFile(std::string(sceneFileName), currentScene);
+        }
+
+        ImGui::Separator();
+
+        static char loadFileName[256] = "scene_export.yaml";
+        ImGui::Text("Load YAML Scene");
+        ImGui::InputText("Load File", loadFileName, sizeof(loadFileName));
+
+                if (ImGui::Button("Load Scene"))
+        {
+            SceneConfig loadedScene;
+            if (SceneConfigParser::LoadFromFile(std::string(loadFileName), loadedScene))
+            {
+                // Apply loaded scene to current camera
+                auto &currentCamera = RenderCamera::Get().camera;
+                currentCamera.pos = loadedScene.camera.position;
+
+                // Convert direction to yaw/pitch for proper camera handling
+                Float2 yawPitch = DirToYawPitch(loadedScene.camera.direction.normalize());
+                currentCamera.yaw = yawPitch.x;
+                currentCamera.pitch = yawPitch.y;
+
+                currentCamera.update();
+
+                // Reset accumulation for new view
+                backend.resetAccumulationCounter();
+            }
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Current Camera Info:");
+        ImGui::Text("Position: (%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
+        ImGui::Text("Direction: (%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
     }
 
     ImGui::End();
