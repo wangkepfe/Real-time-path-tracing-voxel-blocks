@@ -45,12 +45,13 @@ void UI::update()
 
     auto &camera = RenderCamera::Get().camera;
 
-    ImGui::Text("ms/frame: %.2f FPS: %.1f", 1000.0f / backend.getCurrentFPS(), backend.getCurrentFPS());
+    ImGui::Text("Frame = %d", backend.getFrameNum());
+    ImGui::Text("Current FPS = %.1f", backend.getCurrentFPS());
+    ImGui::Text("Current Render Width = %d", backend.getCurrentRenderWidth());
     ImGui::Text("Resolution: (%d, %d)", backend.getCurrentRenderWidth(), backend.getCurrentRenderWidth() / 16 * 9);
     ImGui::Text("Scale: %.1f %%", backend.getCurrentRenderWidth() / (float)backend.getWidth() * 100.0f);
     ImGui::Text("Camera pos=(%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
     ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
-    ImGui::Text("Accumulation Counter = %d", backend.getAccumulationCounter());
     ImGui::Text("Current selected block ID = %d", inputHandler.currentSelectedBlockId);
 
     if (ImGui::CollapsingHeader("Render Passes", 0))
@@ -149,9 +150,6 @@ void UI::update()
                 currentCamera.pitch = yawPitch.y;
 
                 currentCamera.update();
-
-                // Reset accumulation for new view
-                backend.resetAccumulationCounter();
             }
         }
 

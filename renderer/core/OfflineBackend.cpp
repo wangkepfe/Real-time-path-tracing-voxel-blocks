@@ -62,12 +62,6 @@ void OfflineBackend::renderFrame(const std::string &outputPath)
     writeFrameBufferToPNG(outputPath);
 
     m_frameNum++;
-    m_accumulationCounter++;
-
-    float deltaTime = m_timer.getDeltaTime();
-    m_currentFPS = 1000.0f / deltaTime;
-
-    std::cout << "Frame " << m_frameNum << " rendered. Time: " << deltaTime << "ms, FPS: " << m_currentFPS << std::endl;
 }
 
 void OfflineBackend::clear()

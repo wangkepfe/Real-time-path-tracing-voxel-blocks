@@ -35,8 +35,6 @@ public:
     float getCurrentFPS() const { return m_currentFPS; }
     int getCurrentRenderWidth() const { return m_width; }
     int getFrameNum() const { return m_frameNum; }
-    void resetAccumulationCounter() { m_accumulationCounter = 1; }
-    int getAccumulationCounter() const { return m_accumulationCounter; }
 
     // Frame buffer for offline rendering
     Float4 *getFrameBuffer() const { return m_frameBuffer; }
@@ -64,6 +62,5 @@ private:
     Timer m_timer;
 
     int m_frameNum = 0;
-    int m_accumulationCounter = 1;
     float m_currentFPS = 0.0f;
 };
