@@ -5,10 +5,7 @@ PerlinNoiseGenerator::PerlinNoiseGenerator(int octaves, unsigned int seed)
     : octaves{octaves}
 {
     noiseGenerator = new siv::BasicPerlinNoise<float>();
-
-    static int iter = 0;
-    noiseGenerator->reseed(seed + iter * 7);
-    ++iter;
+    noiseGenerator->reseed(seed); // Use the exact seed provided, no auto-increment
 }
 
 PerlinNoiseGenerator::~PerlinNoiseGenerator()

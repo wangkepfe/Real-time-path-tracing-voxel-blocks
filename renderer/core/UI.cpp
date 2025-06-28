@@ -122,7 +122,7 @@ void UI::update()
             currentScene.camera.position = camera.pos;
             currentScene.camera.direction = camera.dir;
             currentScene.camera.up = Float3(0.0f, 1.0f, 0.0f); // Standard up vector
-            currentScene.camera.fov = 45.0f; // Default FOV, could be made configurable
+            currentScene.camera.fov = 90.0f; // Default FOV, should match camera default
 
             // Save to file
             SceneConfigParser::SaveToFile(std::string(sceneFileName), currentScene);

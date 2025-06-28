@@ -71,7 +71,7 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
     Voxel val;
     val.id = BlockTypeEmpty;
 
-    float noiseVal = noise[idx.x * width + idx.z];
+            float noiseVal = noise[idx.z * width + idx.x];
 
     float terrainHeight = max(0.1f, (noiseVal * 1.4f - 0.7f + 0.25f) * width);
     terrainHeight = min(terrainHeight, width * 0.9f);
@@ -327,10 +327,10 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
     unsigned int globalOffsetX = chunkX * VoxelChunk::width;
     unsigned int globalOffsetZ = chunkZ * VoxelChunk::width;
 
-    PerlinNoiseGenerator noiseGenerator;
+    PerlinNoiseGenerator noiseGenerator(4, 124); // Use same seed for all chunks
     float freq = 1.0f / chunkConfig.getGlobalWidth(); // Use global frequency for continuity
 
-    std::vector<float> noiseMap(noiseMapSize);
+        std::vector<float> noiseMap(noiseMapSize);
     for (int x = 0; x < voxelChunk.width; ++x)
     {
         for (int z = 0; z < voxelChunk.width; ++z)
@@ -338,7 +338,10 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
             // Use global coordinates for noise sampling to ensure continuity
             float globalX = globalOffsetX + x;
             float globalZ = globalOffsetZ + z;
-            noiseMap[z * voxelChunk.width + x] = noiseGenerator.getNoise(globalX * freq, globalZ * freq);
+            float noiseValue = noiseGenerator.getNoise(globalX * freq, globalZ * freq);
+            noiseMap[z * voxelChunk.width + x] = noiseValue;
+
+
         }
     }
 
