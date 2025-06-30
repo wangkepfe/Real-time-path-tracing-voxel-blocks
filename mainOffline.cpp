@@ -18,6 +18,9 @@
 
 int main(int argc, char *argv[])
 {
+    // Movement parameters for multi-frame animation
+    constexpr float tangentialMovementSpeed = 0.0f;
+
     // Parse command line arguments
     int width = 1920;
     int height = 1080;
@@ -143,16 +146,39 @@ int main(int argc, char *argv[])
         // Update camera to recalculate matrices with correct yaw/pitch and FOV
         camera.update();
 
+        // Store the target final position (from scene config) for multi-frame animation
+        Float3 targetFinalPosition = sceneConfig.camera.position;
+
+        // Calculate camera's right vector for tangential movement
+        Float3 up = Float3(0.0f, 1.0f, 0.0f);  // Assuming Y is up
+        Float3 cameraDir = normalize(sceneConfig.camera.direction);
+        Float3 rightVector = normalize(cross(cameraDir, up));
+
+        // For multi-frame rendering, adjust initial camera position to start left of target
+        if (numFrames > 1)
+        {
+            // Start position: move left from target by total movement distance
+            float totalMovement = (numFrames - 1) * tangentialMovementSpeed;
+            camera.pos = targetFinalPosition - rightVector * totalMovement;
+            camera.update();
+        }
+
         std::cout << "Camera setup - Position: (" << camera.pos.x << ", " << camera.pos.y << ", " << camera.pos.z << ")" << std::endl;
         std::cout << "Camera setup - Direction: (" << camera.dir.x << ", " << camera.dir.y << ", " << camera.dir.z << ")" << std::endl;
         std::cout << "Camera setup - FOV: " << sceneConfig.camera.fov << " degrees" << std::endl;
 
+        if (numFrames > 1)
+        {
+            std::cout << "Multi-frame animation: tangential movement with speed " << tangentialMovementSpeed << std::endl;
+            std::cout << "Target final position: (" << targetFinalPosition.x << ", " << targetFinalPosition.y << ", " << targetFinalPosition.z << ")" << std::endl;
+        }
+
         std::cout << "Starting rendering..." << std::endl;
 
-        // Render frames
+        // Render frames (batched - no immediate writes)
         for (int frame = 0; frame < numFrames; frame++)
         {
-            std::cout << "\n=== Rendering Frame " << (frame + 1) << "/" << numFrames << " ===" << std::endl;
+            // std::cout << "Rendering Frame " << (frame + 1) << "/" << numFrames << std::endl;
 
             // Generate output filename
             std::stringstream filename;
@@ -163,28 +189,20 @@ int main(int argc, char *argv[])
             }
             filename << ".png";
 
-            // Render and save frame
+            // Render frame (stores in memory, doesn't write to disk yet)
             offlineBackend.renderFrame(filename.str());
 
-            // Optional: Move camera slightly for animation
-            if (numFrames > 1)
-            {
-                float angle = (frame + 1) * (2.0f * 3.14159f / numFrames);
-                float radius = 25.0f;
-                camera.pos = Float3(
-                    radius * cos(angle),
-                    15.0f,
-                    radius * sin(angle)
-                );
-                camera.dir = normalize(Float3(-camera.pos.x, -camera.pos.y * 0.3f, -camera.pos.z));
-                camera.update();
-
-                // Reset accumulation for new view
-                offlineBackend.resetAccumulationCounter();
-            }
+            // Move camera tangentially for multi-frame animation
+            // Move camera tangentially to the right, approaching target final position
+            camera.pos = targetFinalPosition - rightVector * tangentialMovementSpeed * (numFrames - 1 - frame);
+            camera.update();
         }
 
-        std::cout << "\n=== Rendering Complete ===" << std::endl;
+        std::cout << "\n=== Rendering Complete - Writing all frames to disk ===" << std::endl;
+
+        // Write all batched frames at once
+        offlineBackend.writeAllBatchedFrames();
+
         std::cout << "Output files saved with prefix: " << outputPrefix << std::endl;
     }
     catch (const std::exception &e)
@@ -195,6 +213,7 @@ int main(int argc, char *argv[])
 
     // Cleanup
     renderer.clear();
+    offlineBackend.clearBatchedFrames();
     offlineBackend.clear();
 
     return 0;

@@ -129,7 +129,6 @@ void Backend::mainloop()
         glfwSwapBuffers(m_window);
 
         m_frameNum++;
-        m_accumulationCounter++;
     }
 }
 

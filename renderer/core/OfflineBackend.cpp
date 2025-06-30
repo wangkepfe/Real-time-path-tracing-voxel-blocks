@@ -13,6 +13,10 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <execution>
+#include <thread>
+#include <future>
+#include <atomic>
 
 #ifdef OFFLINE_MODE
 #include "stb/stb_image_write.h"
@@ -58,16 +62,10 @@ void OfflineBackend::renderFrame(const std::string &outputPath)
 
     postProcessor.run(m_frameBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height);
 
-    // Write frame buffer to PNG using stb_image_write
-    writeFrameBufferToPNG(outputPath);
+    // Store frame buffer in batch instead of writing immediately
+    storeFrameInBatch(outputPath);
 
     m_frameNum++;
-    m_accumulationCounter++;
-
-    float deltaTime = m_timer.getDeltaTime();
-    m_currentFPS = 1000.0f / deltaTime;
-
-    std::cout << "Frame " << m_frameNum << " rendered. Time: " << deltaTime << "ms, FPS: " << m_currentFPS << std::endl;
 }
 
 void OfflineBackend::clear()
@@ -96,14 +94,82 @@ void OfflineBackend::initFrameBuffer()
     CUDA_CHECK(cudaMemset(m_frameBuffer, 0, bufferSize));
 }
 
-void OfflineBackend::writeFrameBufferToPNG(const std::string &outputPath)
+void OfflineBackend::storeFrameInBatch(const std::string &outputPath)
 {
-    // Copy frame buffer from GPU to CPU
+    // Copy frame buffer from GPU to CPU and store in batch
     const size_t bufferSize = m_width * m_height * sizeof(Float4);
     std::vector<Float4> hostBuffer(m_width * m_height);
 
     CUDA_CHECK(cudaMemcpy(hostBuffer.data(), m_frameBuffer, bufferSize, cudaMemcpyDeviceToHost));
 
+    // Store the frame data for later batch writing
+    BatchedFrame frame;
+    frame.hostBuffer = std::move(hostBuffer);
+    frame.outputPath = outputPath;
+
+    m_batchedFrames.push_back(std::move(frame));
+}
+
+void OfflineBackend::writeAllBatchedFrames()
+{
+    std::cout << "Writing " << m_batchedFrames.size() << " batched frames in parallel..." << std::endl;
+
+    // Get the number of CPU threads to use
+    const unsigned int numThreads = std::thread::hardware_concurrency();
+    std::cout << "Using " << numThreads << " CPU threads for parallel PNG writing" << std::endl;
+
+    // Use parallel execution to write PNG files
+    std::atomic<size_t> completedFrames{0};
+
+    try {
+        // Try to use C++17 parallel algorithms first
+        std::for_each(std::execution::par, m_batchedFrames.begin(), m_batchedFrames.end(),
+            [this, &completedFrames](const BatchedFrame &frame) {
+                writeFrameBufferToPNG(frame.hostBuffer, frame.outputPath);
+                completedFrames.fetch_add(1);
+            });
+    }
+    catch (const std::exception&) {
+        // Fallback to manual threading if parallel algorithms not available
+        std::cout << "Parallel algorithms not available, using manual threading..." << std::endl;
+
+        const size_t numFrames = m_batchedFrames.size();
+        const size_t framesPerThread = std::max(size_t(1), numFrames / numThreads);
+
+        std::vector<std::future<void>> futures;
+        futures.reserve(numThreads);
+
+        for (size_t threadId = 0; threadId < numThreads; ++threadId) {
+            size_t startIdx = threadId * framesPerThread;
+            size_t endIdx = (threadId == numThreads - 1) ? numFrames : std::min(startIdx + framesPerThread, numFrames);
+
+            if (startIdx >= numFrames) break;
+
+            futures.emplace_back(std::async(std::launch::async, [this, startIdx, endIdx, &completedFrames]() {
+                for (size_t i = startIdx; i < endIdx; ++i) {
+                    const auto &frame = m_batchedFrames[i];
+                    writeFrameBufferToPNG(frame.hostBuffer, frame.outputPath);
+                    completedFrames.fetch_add(1);
+                }
+            }));
+        }
+
+        // Wait for all threads to complete
+        for (auto &future : futures) {
+            future.wait();
+        }
+    }
+
+    std::cout << "Successfully written all " << m_batchedFrames.size() << " frames in parallel" << std::endl;
+}
+
+void OfflineBackend::clearBatchedFrames()
+{
+    m_batchedFrames.clear();
+}
+
+void OfflineBackend::writeFrameBufferToPNG(const std::vector<Float4> &hostBuffer, const std::string &outputPath)
+{
     // Convert Float4 to RGB bytes
     std::vector<unsigned char> imageData(m_width * m_height * 3);
 
@@ -121,23 +187,14 @@ void OfflineBackend::writeFrameBufferToPNG(const std::string &outputPath)
             float g = std::min(1.0f, std::max(0.0f, pixel.y));
             float b = std::min(1.0f, std::max(0.0f, pixel.z));
 
-            // Simple gamma correction
-            r = std::pow(r, 1.0f / 2.2f);
-            g = std::pow(g, 1.0f / 2.2f);
-            b = std::pow(b, 1.0f / 2.2f);
-
             imageData[dstIdx + 0] = (unsigned char)(r * 255.0f);
             imageData[dstIdx + 1] = (unsigned char)(g * 255.0f);
             imageData[dstIdx + 2] = (unsigned char)(b * 255.0f);
         }
     }
 
-    // Use stb_image_write to save PNG
-    if (stbi_write_png(outputPath.c_str(), m_width, m_height, 3, imageData.data(), m_width * 3))
-    {
-        std::cout << "Successfully saved image to: " << outputPath << std::endl;
-    }
-    else
+    // Use stb_image_write to save PNG (no per-frame logging)
+    if (!stbi_write_png(outputPath.c_str(), m_width, m_height, 3, imageData.data(), m_width * 3))
     {
         std::cerr << "Failed to save image to: " << outputPath << std::endl;
     }

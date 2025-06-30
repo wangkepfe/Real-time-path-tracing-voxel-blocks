@@ -62,8 +62,6 @@ public:
     float getCurrentFPS() const { return m_currentFPS; }
     int getCurrentRenderWidth() const { return m_currentRenderWidth; }
     int getFrameNum() const { return m_frameNum; }
-    void resetAccumulationCounter() { m_accumulationCounter = 1; }
-    int getAccumulationCounter() const { return m_accumulationCounter; }
 
     const std::string GlslVersion{"#version 330"};
 
@@ -98,8 +96,6 @@ private:
     // For UI display
     float m_currentFPS;
     float m_currentRenderWidth;
-
-    int m_accumulationCounter = 1;
 
 #ifndef OFFLINE_MODE
     // Window

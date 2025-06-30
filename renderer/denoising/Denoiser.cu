@@ -38,18 +38,16 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     auto &bufferManager = BufferManager::Get();
 
-    int frameNum, accuCounter;
+    int frameNum;
     if (GlobalSettings::IsOfflineMode())
     {
         auto &offlineBackend = OfflineBackend::Get();
         frameNum = offlineBackend.getFrameNum();
-        accuCounter = offlineBackend.getAccumulationCounter();
     }
     else
     {
         auto &backend = Backend::Get();
         frameNum = backend.getFrameNum();
-        accuCounter = backend.getAccumulationCounter();
     }
 
     if (0)

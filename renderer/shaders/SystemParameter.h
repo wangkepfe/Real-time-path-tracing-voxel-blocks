@@ -90,7 +90,6 @@ struct SystemParameter
     int iterationIndex;
 
     BlueNoiseRandGenerator randGen;
-    int accumulationCounter;
     float timeInSecond;
 
     uint32_t reservoirBlockRowPitch;

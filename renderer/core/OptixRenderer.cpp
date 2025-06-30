@@ -152,7 +152,6 @@ void OptixRenderer::render()
 
     m_systemParameter.camera = RenderCamera::Get().camera;
     m_systemParameter.prevCamera = RenderCamera::Get().historyCamera;
-    m_systemParameter.accumulationCounter = backend.getAccumulationCounter();
     m_systemParameter.timeInSecond = backend.getTimer().getTimeInSecond();
 
     const auto &skyModel = SkyModel::Get();

@@ -204,8 +204,6 @@ void InputHandler::CursorPosCallback(GLFWwindow *window, double xpos, double ypo
         camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
         camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
         camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
-
-        backend.resetAccumulationCounter();
     }
 }
 
@@ -223,7 +221,6 @@ void InputHandler::MouseButtonCallback(GLFWwindow *window, int button, int actio
         else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
         {
         }
-        backend.resetAccumulationCounter();
     }
 }
 
@@ -255,8 +252,6 @@ void InputHandler::update()
                 movingDir -= Float3(0, 1, 0);
 
             camera.posDelta += movingDir * deltaTimeMs * moveSpeed;
-
-            backend.resetAccumulationCounter();
         }
     }
 
@@ -324,9 +319,9 @@ void InputHandler::update()
         {
             fallSpeed = 0.0f;
         }
-
-        backend.resetAccumulationCounter();
     }
+
+
 }
 
 void InputHandler::SaveSceneToFile()
