@@ -175,10 +175,10 @@ int main(int argc, char *argv[])
 
         std::cout << "Starting rendering..." << std::endl;
 
-        // Render frames
+        // Render frames (batched - no immediate writes)
         for (int frame = 0; frame < numFrames; frame++)
         {
-            std::cout << "\n=== Rendering Frame " << (frame + 1) << "/" << numFrames << " ===" << std::endl;
+            // std::cout << "Rendering Frame " << (frame + 1) << "/" << numFrames << std::endl;
 
             // Generate output filename
             std::stringstream filename;
@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
             }
             filename << ".png";
 
-            // Render and save frame
+            // Render frame (stores in memory, doesn't write to disk yet)
             offlineBackend.renderFrame(filename.str());
 
             // Move camera tangentially for multi-frame animation
@@ -198,7 +198,11 @@ int main(int argc, char *argv[])
             camera.update();
         }
 
-        std::cout << "\n=== Rendering Complete ===" << std::endl;
+        std::cout << "\n=== Rendering Complete - Writing all frames to disk ===" << std::endl;
+
+        // Write all batched frames at once
+        offlineBackend.writeAllBatchedFrames();
+
         std::cout << "Output files saved with prefix: " << outputPrefix << std::endl;
     }
     catch (const std::exception &e)
@@ -209,6 +213,7 @@ int main(int argc, char *argv[])
 
     // Cleanup
     renderer.clear();
+    offlineBackend.clearBatchedFrames();
     offlineBackend.clear();
 
     return 0;

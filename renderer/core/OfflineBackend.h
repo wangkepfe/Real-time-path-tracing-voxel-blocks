@@ -10,6 +10,12 @@
 #include <vector>
 #include <string>
 
+struct BatchedFrame
+{
+    std::vector<Float4> hostBuffer;
+    std::string outputPath;
+};
+
 class OfflineBackend
 {
 public:
@@ -24,6 +30,8 @@ public:
     void init(int width = 1920, int height = 1080);
     void clear();
     void renderFrame(const std::string &outputPath = "output.png");
+    void writeAllBatchedFrames();
+    void clearBatchedFrames();
 
     CUstream getCudaStream() const { return m_cudaStream; }
     CUcontext getCudaContext() const { return m_cudaContext; }
@@ -45,7 +53,8 @@ private:
     void dumpSystemInformation();
     void initCuda();
     void initFrameBuffer();
-    void writeFrameBufferToPNG(const std::string &outputPath);
+    void storeFrameInBatch(const std::string &outputPath);
+    void writeFrameBufferToPNG(const std::vector<Float4> &hostBuffer, const std::string &outputPath);
 
     int m_width;
     int m_height;
@@ -63,4 +72,7 @@ private:
 
     int m_frameNum = 0;
     float m_currentFPS = 0.0f;
+
+    // Batched frame storage
+    std::vector<BatchedFrame> m_batchedFrames;
 };
