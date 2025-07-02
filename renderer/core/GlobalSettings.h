@@ -5,51 +5,6 @@
 #include <utility>
 #include <vector>
 
-#define ENABLE_DENOISING_NOISE_CALCULATION 0
-
-struct RenderPassSettings
-{
-    std::vector<std::pair<bool *, std::string>> GetValueList()
-    {
-        return {
-            {&enableTemporalDenoising, "Enable Temporal Denoising"},
-            {&enableLocalSpatialFilter, "Enable Local SpatialFilter "},
-            {&enableNoiseLevelVisualize, "Enable Noise Level Visualize"},
-            {&enableWideSpatialFilter, "Enable Wide Spatial Filter"},
-            {&enableTemporalDenoising2, "Enable Temporal Denoising 2"},
-            {&enableBilateralFilter, "Enable Bilateral Filter"},
-
-            {&enablePostProcess, "Enable Post Process"},
-            {&enableDownScalePasses, "Enable Down Scale Passes"},
-            {&enableHistogram, "Enable Histogram"},
-            {&enableAutoExposure, "Enable Auto Exposure"},
-            {&enableBloomEffect, "Enable Bloom Effect"},
-            {&enableLensFlare, "Enable Lens Flare"},
-            {&enableToneMapping, "Enable Tone Mapping"},
-            {&enableSharpening, "Enable Sharpening"},
-
-            {&enableEASU, "Enable EASU"},
-        };
-    }
-
-    bool enableTemporalDenoising = false;
-    bool enableLocalSpatialFilter = false;
-    bool enableNoiseLevelVisualize = false;
-    bool enableWideSpatialFilter = false;
-    bool enableTemporalDenoising2 = false;
-    bool enableBilateralFilter = false;
-
-    bool enablePostProcess = false;
-    bool enableDownScalePasses = false;
-    bool enableHistogram = false;
-    bool enableAutoExposure = false;
-    bool enableBloomEffect = false;
-    bool enableLensFlare = false;
-    bool enableToneMapping = false;
-    bool enableSharpening = false;
-
-    bool enableEASU = false;
-};
 
 // Based on NRD ReLaX denoiser settings with comprehensive parameter coverage
 struct DenoisingParams
@@ -228,10 +183,7 @@ public:
     GlobalSettings(GlobalSettings const &) = delete;
     void operator=(GlobalSettings const &) = delete;
 
-    static RenderPassSettings &GetRenderPassSettings()
-    {
-        return Get().renderPassSettings;
-    }
+
     static DenoisingParams &GetDenoisingParams() { return Get().denoisingParams; }
     static PostProcessParams &GetPostProcessParams()
     {
@@ -243,7 +195,6 @@ public:
     static bool IsOfflineMode() { return Get().offlineMode; }
     static void SetOfflineMode(bool offline) { Get().offlineMode = offline; }
 
-    RenderPassSettings renderPassSettings{};
     DenoisingParams denoisingParams{};
     PostProcessParams postProcessParams{};
     SkyParams skyParams{};

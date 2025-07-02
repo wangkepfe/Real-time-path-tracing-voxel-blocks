@@ -35,31 +35,11 @@ void PostProcessor::run(Float4 *interopBuffer, int inputWidthIn, int inputHeight
 
     auto &bufferManager = BufferManager::Get();
     const auto &postProcessParams = GlobalSettings::GetPostProcessParams();
-    const auto &renderPassSettings = GlobalSettings::GetRenderPassSettings();
 
     ToneMappingReinhardExtended KERNEL_ARGS2(GetGridDim(inputWidth, inputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
         bufferManager.GetBuffer2D(IlluminationOutputBuffer),
         Int2(inputWidth, inputHeight),
         postProcessParams);
-
-    // if (renderPassSettings.enableSharpening)
-    // {
-    //     SharpeningFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(RenderColorBuffer), Int2(inputWidth, inputHeight));
-    // }
-
-    // if (renderPassSettings.enableEASU)
-    // {
-    //     EdgeAdaptiveSpatialUpsampling KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(bufferManager.GetBuffer2D(OutputColorBuffer), bufferManager.GetBuffer2D(RenderColorBuffer),
-    //                                                                                                                                      inputWidth, inputHeight, inputWidth, inputHeight, outputWidth, outputHeight);
-    // }
-    // else
-    // {
-    // BicubicFilter KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-    //     bufferManager.GetBuffer2D(OutputColorBuffer),
-    //     bufferManager.GetBuffer2D(IlluminationPingBuffer),
-    //     Int2(inputWidth, inputHeight),
-    //     Int2(outputWidth, outputHeight));
-    // }
 
     CopyToInteropBuffer KERNEL_ARGS2(GetGridDim(outputWidth, outputHeight, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(interopBuffer, bufferManager.GetBuffer2D(IlluminationOutputBuffer), Int2(outputWidth, outputHeight));
 

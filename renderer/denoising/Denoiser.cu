@@ -31,7 +31,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     assert(bufferDim.x != 0 && historyDim.x != 0);
 
-    RenderPassSettings &renderPassSettings = GlobalSettings::GetRenderPassSettings();
+
     DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();
 
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
