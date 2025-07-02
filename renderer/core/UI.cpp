@@ -66,18 +66,43 @@ void UI::update()
     if (ImGui::CollapsingHeader("Temporal Denoising", 0))
     {
         DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();
-        for (auto &item : denoisingParams.GetValueList())
+
+        // Boolean parameters (pass controls)
+        if (ImGui::TreeNode("Pass Controls"))
         {
-            if (ImGui::InputFloat(item.second.c_str(), item.first))
+            for (auto &itempair : denoisingParams.GetBooleanValueList())
             {
-                *item.first = max(*item.first, 0.00001f);
+                ImGui::Checkbox(itempair.second.c_str(), itempair.first);
             }
+            ImGui::TreePop();
         }
-        for (auto &itempair : denoisingParams.GetBooleanValueList())
+
+        // Float parameters
+        if (ImGui::TreeNode("Float Parameters"))
         {
-            ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+            for (auto &item : denoisingParams.GetValueList())
+            {
+                if (ImGui::InputFloat(item.second.c_str(), item.first))
+                {
+                    *item.first = max(*item.first, 0.00001f);
+                }
+            }
+            ImGui::TreePop();
+        }
+
+        // Integer parameters
+        if (ImGui::TreeNode("Integer Parameters"))
+        {
+            for (auto &item : denoisingParams.GetIntValueList())
+            {
+                ImGui::InputInt(item.second.c_str(), item.first);
+                *item.first = max(*item.first, 0);
+            }
+            ImGui::TreePop();
         }
     }
+
+
 
     if (ImGui::CollapsingHeader("Post Processing", ImGuiTreeNodeFlags_None))
     {
