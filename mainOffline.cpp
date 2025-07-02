@@ -7,6 +7,7 @@
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
+#include "util/ImageDiff.h"
 
 #include "voxelengine.h"
 
@@ -15,18 +16,26 @@
 #include <iomanip>
 #include <sstream>
 #include <filesystem>
+#include <vector>
+#include <algorithm>
 
 int main(int argc, char *argv[])
 {
-    // Movement parameters for multi-frame animation
+    // Movement parameters for multi-frame animation (disabled)
     constexpr float tangentialMovementSpeed = 0.0f;
 
     // Parse command line arguments
-    int width = 1920;
-    int height = 1080;
-    int numFrames = 1;
+    int width = 3840;
+    int height = 2160;
     std::string outputPrefix = "offline_render";
-    std::string sceneFile = "";
+    std::string sceneFile = "scene_export.yaml";
+    bool testCanonical = false;
+    bool updateCanonical = false;
+    std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
+
+    // Hardcoded frame configuration
+    constexpr int totalFrames = 64;
+    const std::vector<int> savedFrames = {1, 4, 16, 64}; // 1-indexed frame numbers to save
 
     for (int i = 1; i < argc; i++)
     {
@@ -39,10 +48,7 @@ int main(int argc, char *argv[])
         {
             height = std::atoi(argv[++i]);
         }
-        else if (arg == "--frames" && i + 1 < argc)
-        {
-            numFrames = std::atoi(argv[++i]);
-        }
+
         else if (arg == "--output" && i + 1 < argc)
         {
             outputPrefix = argv[++i];
@@ -51,24 +57,38 @@ int main(int argc, char *argv[])
         {
             sceneFile = argv[++i];
         }
+        else if (arg == "--test-canonical" || arg == "--test")
+        {
+            testCanonical = true;
+        }
+        else if (arg == "--update-canonical")
+        {
+            updateCanonical = true;
+        }
+        else if (arg == "--canonical-image" && i + 1 < argc)
+        {
+            canonicalImagePath = argv[++i];
+        }
         else if (arg == "--help" || arg == "-h")
         {
             std::cout << "Offline Voxel Path Tracer\n";
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "Options:\n";
-            std::cout << "  --width <int>     Output width (default: 1920)\n";
-            std::cout << "  --height <int>    Output height (default: 1080)\n";
-            std::cout << "  --frames <int>    Number of frames to render (default: 1)\n";
-            std::cout << "  --output <string> Output filename prefix (default: offline_render)\n";
-            std::cout << "  --scene <file>    Scene configuration YAML file (optional)\n";
-            std::cout << "  --help, -h        Show this help message\n";
+            std::cout << "  --width <int>        Output width (default: 1920)\n";
+            std::cout << "  --height <int>       Output height (default: 1080)\n";
+            std::cout << "  --output <string>    Output filename prefix (default: offline_render)\n";
+            std::cout << "  --scene <file>       Scene configuration YAML file (optional)\n";
+            std::cout << "  --test-canonical     Compare output with canonical image\n";
+            std::cout << "  --update-canonical   Update the canonical reference image\n";
+            std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
+            std::cout << "  --help, -h           Show this help message\n";
             return 0;
         }
     }
 
     std::cout << "=== Offline Voxel Path Tracer ===" << std::endl;
     std::cout << "Resolution: " << width << "x" << height << std::endl;
-    std::cout << "Frames to render: " << numFrames << std::endl;
+    std::cout << "Frames to render: " << totalFrames << " (saving frames: 1, 4, 16, 64)" << std::endl;
     std::cout << "Output prefix: " << outputPrefix << std::endl;
 
     // Set offline mode
@@ -146,56 +166,41 @@ int main(int argc, char *argv[])
         // Update camera to recalculate matrices with correct yaw/pitch and FOV
         camera.update();
 
-        // Store the target final position (from scene config) for multi-frame animation
-        Float3 targetFinalPosition = sceneConfig.camera.position;
-
-        // Calculate camera's right vector for tangential movement
-        Float3 up = Float3(0.0f, 1.0f, 0.0f);  // Assuming Y is up
-        Float3 cameraDir = normalize(sceneConfig.camera.direction);
-        Float3 rightVector = normalize(cross(cameraDir, up));
-
-        // For multi-frame rendering, adjust initial camera position to start left of target
-        if (numFrames > 1)
-        {
-            // Start position: move left from target by total movement distance
-            float totalMovement = (numFrames - 1) * tangentialMovementSpeed;
-            camera.pos = targetFinalPosition - rightVector * totalMovement;
-            camera.update();
-        }
+        // Camera movement disabled - keep camera static
+        Float3 staticCameraPosition = sceneConfig.camera.position;
 
         std::cout << "Camera setup - Position: (" << camera.pos.x << ", " << camera.pos.y << ", " << camera.pos.z << ")" << std::endl;
         std::cout << "Camera setup - Direction: (" << camera.dir.x << ", " << camera.dir.y << ", " << camera.dir.z << ")" << std::endl;
         std::cout << "Camera setup - FOV: " << sceneConfig.camera.fov << " degrees" << std::endl;
-
-        if (numFrames > 1)
-        {
-            std::cout << "Multi-frame animation: tangential movement with speed " << tangentialMovementSpeed << std::endl;
-            std::cout << "Target final position: (" << targetFinalPosition.x << ", " << targetFinalPosition.y << ", " << targetFinalPosition.z << ")" << std::endl;
-        }
+        std::cout << "Camera movement: DISABLED (static camera)" << std::endl;
 
         std::cout << "Starting rendering..." << std::endl;
 
-        // Render frames (batched - no immediate writes)
-        for (int frame = 0; frame < numFrames; frame++)
+        // Render frames (selective saving - only save specific frames)
+        for (int frame = 0; frame < totalFrames; frame++)
         {
-            // std::cout << "Rendering Frame " << (frame + 1) << "/" << numFrames << std::endl;
+            int frameNumber = frame + 1; // Convert to 1-indexed
 
-            // Generate output filename
-            std::stringstream filename;
-            filename << outputPrefix;
-            if (numFrames > 1)
+            // Check if this frame should be saved
+            bool shouldSave = std::find(savedFrames.begin(), savedFrames.end(), frameNumber) != savedFrames.end();
+
+            if (shouldSave)
             {
-                filename << "_" << std::setfill('0') << std::setw(4) << frame;
+                // Generate output filename for saved frames
+                std::stringstream filename;
+                filename << outputPrefix << "_" << std::setfill('0') << std::setw(4) << frame << ".png";
+
+                // Render and save frame
+                offlineBackend.renderFrame(filename.str());
             }
-            filename << ".png";
+            else
+            {
+                // Render frame but don't save (for convergence)
+                offlineBackend.renderFrame("");
+            }
 
-            // Render frame (stores in memory, doesn't write to disk yet)
-            offlineBackend.renderFrame(filename.str());
-
-            // Move camera tangentially for multi-frame animation
-            // Move camera tangentially to the right, approaching target final position
-            camera.pos = targetFinalPosition - rightVector * tangentialMovementSpeed * (numFrames - 1 - frame);
-            camera.update();
+            // Camera stays static (no movement)
+            // camera.pos remains unchanged
         }
 
         std::cout << "\n=== Rendering Complete - Writing all frames to disk ===" << std::endl;
@@ -204,6 +209,84 @@ int main(int argc, char *argv[])
         offlineBackend.writeAllBatchedFrames();
 
         std::cout << "Output files saved with prefix: " << outputPrefix << std::endl;
+
+        // Handle canonical image testing/updating
+        if (testCanonical || updateCanonical)
+        {
+            // Use the 64th frame (frame index 63) for canonical testing
+            std::stringstream canonicalFramePath;
+            canonicalFramePath << outputPrefix << "_" << std::setfill('0') << std::setw(4) << (totalFrames - 1) << ".png";
+            std::string testImagePath = canonicalFramePath.str();
+
+            if (updateCanonical)
+            {
+                std::cout << "\n=== Updating Canonical Image ===" << std::endl;
+                try
+                {
+                    if (std::filesystem::copy_file(testImagePath, canonicalImagePath, std::filesystem::copy_options::overwrite_existing))
+                    {
+                        std::cout << "Canonical image updated: " << canonicalImagePath << std::endl;
+                    }
+                    else
+                    {
+                        std::cerr << "Failed to update canonical image" << std::endl;
+                    }
+                }
+                catch (const std::exception& e)
+                {
+                    std::cerr << "Error updating canonical image: " << e.what() << std::endl;
+                }
+            }
+
+            if (testCanonical)
+            {
+                std::cout << "\n=== Canonical Image Testing ===" << std::endl;
+
+                if (!std::filesystem::exists(canonicalImagePath))
+                {
+                    std::cout << "Warning: Canonical image not found at " << canonicalImagePath << std::endl;
+                    std::cout << "Use --update-canonical to create it from current render" << std::endl;
+                }
+                else if (!std::filesystem::exists(testImagePath))
+                {
+                    std::cerr << "Error: Test image not found at " << testImagePath << std::endl;
+                }
+                else
+                {
+                    std::cout << "Comparing: " << testImagePath << " vs " << canonicalImagePath << std::endl;
+
+                    // Perform image comparison
+                    ImageDiffResult result = ImageDiff::compare(testImagePath, canonicalImagePath);
+                    result.print();
+
+                    // Generate diff image
+                    std::string diffImagePath = outputPrefix + "_diff.png";
+                    if (ImageDiff::generateDiffImage(testImagePath, canonicalImagePath, diffImagePath))
+                    {
+                        std::cout << "Difference visualization saved to: " << diffImagePath << std::endl;
+                    }
+                    else
+                    {
+                        std::cerr << "Failed to generate difference image" << std::endl;
+                    }
+
+                    // Return appropriate exit code based on results
+                    if (!result.isIdentical && !result.isVeryClose)
+                    {
+                        std::cout << "\nWarning: Significant differences detected from canonical image!" << std::endl;
+                        std::cout << "This may indicate a regression or intentional change." << std::endl;
+                        if (!result.isClose)
+                        {
+                            std::cout << "Consider investigating the differences." << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "\nImage matches canonical reference within acceptable tolerance." << std::endl;
+                    }
+                }
+            }
+        }
     }
     catch (const std::exception &e)
     {

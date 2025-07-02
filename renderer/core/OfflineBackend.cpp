@@ -62,8 +62,11 @@ void OfflineBackend::renderFrame(const std::string &outputPath)
 
     postProcessor.run(m_frameBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height);
 
-    // Store frame buffer in batch instead of writing immediately
-    storeFrameInBatch(outputPath);
+    // Only store frame in batch if outputPath is provided (not empty)
+    if (!outputPath.empty())
+    {
+        storeFrameInBatch(outputPath);
+    }
 
     m_frameNum++;
 }

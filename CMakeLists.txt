@@ -65,6 +65,7 @@ set( HEADERS
     renderer/util/RandGenData.h
     renderer/util/RandGenHost.h
     renderer/util/ModelUtils.h
+    renderer/util/ImageDiff.h
     renderer/shaders/LinearMath.h
     renderer/shaders/Common.h
     renderer/shaders/Camera.h
@@ -102,6 +103,7 @@ set( SOURCES
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
     renderer/util/ModelUtils.cpp
+    renderer/util/ImageDiff.cpp
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp
@@ -201,6 +203,7 @@ set( OFFLINE_SOURCES
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
     renderer/util/ModelUtils.cpp
+    renderer/util/ImageDiff.cpp
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp
