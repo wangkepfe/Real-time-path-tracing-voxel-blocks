@@ -8,6 +8,7 @@
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
 #include "util/ImageDiff.h"
+#include "util/PerformanceTracker.h"
 
 #include "voxelengine.h"
 
@@ -32,6 +33,7 @@ int main(int argc, char *argv[])
     bool testCanonical = false;
     bool updateCanonical = false;
     std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
+    std::string runComment = "default run";
 
     // Hardcoded frame configuration
     constexpr int totalFrames = 64;
@@ -69,6 +71,10 @@ int main(int argc, char *argv[])
         {
             canonicalImagePath = argv[++i];
         }
+        else if (arg == "--comment" && i + 1 < argc)
+        {
+            runComment = argv[++i];
+        }
         else if (arg == "--help" || arg == "-h")
         {
             std::cout << "Offline Voxel Path Tracer\n";
@@ -81,6 +87,7 @@ int main(int argc, char *argv[])
             std::cout << "  --test-canonical     Compare output with canonical image\n";
             std::cout << "  --update-canonical   Update the canonical reference image\n";
             std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
+            std::cout << "  --comment <text>     Comment for performance report (default: default run)\n";
             std::cout << "  --help, -h           Show this help message\n";
             return 0;
         }
@@ -176,6 +183,8 @@ int main(int argc, char *argv[])
 
         std::cout << "Starting rendering..." << std::endl;
 
+        auto &perfTracker = PerformanceTracker::Get();
+
         // Render frames (selective saving - only save specific frames)
         for (int frame = 0; frame < totalFrames; frame++)
         {
@@ -183,6 +192,20 @@ int main(int argc, char *argv[])
 
             // Check if this frame should be saved
             bool shouldSave = std::find(savedFrames.begin(), savedFrames.end(), frameNumber) != savedFrames.end();
+
+            // Generate comment for this frame
+            std::string frameComment;
+            if (shouldSave)
+            {
+                frameComment = "Saved frame " + std::to_string(frameNumber) + "/" + std::to_string(totalFrames);
+            }
+            else
+            {
+                frameComment = "Convergence frame " + std::to_string(frameNumber) + "/" + std::to_string(totalFrames);
+            }
+
+            // Begin performance tracking for this frame
+            perfTracker.beginFrame(frameNumber, width, height, frameComment);
 
             if (shouldSave)
             {
@@ -199,6 +222,17 @@ int main(int argc, char *argv[])
                 offlineBackend.renderFrame("");
             }
 
+            // End performance tracking and print stats
+            perfTracker.endFrame();
+
+            // Print performance stats for saved frames or every 16th frame
+            if (shouldSave || (frameNumber % 16 == 0))
+            {
+                std::cout << "Frame " << frameNumber << "/" << totalFrames << " completed";
+                if (shouldSave) std::cout << " (SAVED)";
+                std::cout << std::endl;
+            }
+
             // Camera stays static (no movement)
             // camera.pos remains unchanged
         }
@@ -209,6 +243,11 @@ int main(int argc, char *argv[])
         offlineBackend.writeAllBatchedFrames();
 
         std::cout << "Output files saved with prefix: " << outputPrefix << std::endl;
+
+        // Save performance report
+        std::cout << "\n=== Performance Report ===" << std::endl;
+        perfTracker.saveReport("../../data/perf/performance_report.txt", runComment);
+        std::cout << "Performance data saved to: data/perf/performance_report.txt" << std::endl;
 
         // Handle canonical image testing/updating
         if (testCanonical || updateCanonical)

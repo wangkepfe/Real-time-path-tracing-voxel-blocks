@@ -66,6 +66,7 @@ set( HEADERS
     renderer/util/RandGenHost.h
     renderer/util/ModelUtils.h
     renderer/util/ImageDiff.h
+    renderer/util/PerformanceTracker.h
     renderer/shaders/LinearMath.h
     renderer/shaders/Common.h
     renderer/shaders/Camera.h

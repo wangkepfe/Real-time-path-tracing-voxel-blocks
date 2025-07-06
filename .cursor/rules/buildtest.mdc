@@ -6,4 +6,4 @@ alwaysApply: true
 At the end of task, build and test.
 Build in /d/cmder/Real-time-path-tracing-voxel-blocks/build do "cmake --build . --config Release --parallel"
 
-Test in /d/cmder/Real-time-path-tracing-voxel-blocks/build/Release do "./voxelgame_offline.exe --scene scene_export.yaml --width 1920 --height 1080 --frames 32"
+Test in /d/cmder/Real-time-path-tracing-voxel-blocks/build/Release do "./voxelgame_offline.exe"
