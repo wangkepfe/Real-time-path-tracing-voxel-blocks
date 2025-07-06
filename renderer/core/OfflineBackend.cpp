@@ -7,6 +7,7 @@
 #include "core/RenderCamera.h"
 #include "voxelengine/VoxelEngine.h"
 #include "core/GlobalSettings.h"
+#include "util/PerformanceTracker.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -48,22 +49,41 @@ void OfflineBackend::renderFrame(const std::string &outputPath)
     auto &postProcessor = PostProcessor::Get();
     auto &denoiser = Denoiser::Get();
     auto &voxelengine = VoxelEngine::Get();
+    auto &perfTracker = PerformanceTracker::Get();
 
     m_timer.update();
 
+    // Scene preparation timing
+    perfTracker.startTiming("scenePrep");
     SkyModel::Get().update();
+    perfTracker.setScenePreparationTime(perfTracker.endTiming("scenePrep"));
 
+    // Renderer update timing
+    perfTracker.startTiming("rendererUpdate");
     renderer.update();
     voxelengine.update();
+    perfTracker.setRendererUpdateTime(perfTracker.endTiming("rendererUpdate"));
 
+    // Path tracing timing
+    perfTracker.startTiming("pathTracing");
     renderer.render();
+    perfTracker.setPathTracingTime(perfTracker.endTiming("pathTracing"));
 
+    // Denoiser timing
+    perfTracker.startTiming("denoiser");
     denoiser.run(renderer.getWidth(), renderer.getHeight(), renderer.getWidth(), renderer.getHeight());
+    perfTracker.setDenoiserTime(perfTracker.endTiming("denoiser"));
 
+    // Post processing timing
+    perfTracker.startTiming("postProcessing");
     postProcessor.run(m_frameBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height);
+    perfTracker.setPostProcessingTime(perfTracker.endTiming("postProcessing"));
 
-    // Store frame buffer in batch instead of writing immediately
-    storeFrameInBatch(outputPath);
+    // Only store frame in batch if outputPath is provided (not empty)
+    if (!outputPath.empty())
+    {
+        storeFrameInBatch(outputPath);
+    }
 
     m_frameNum++;
 }

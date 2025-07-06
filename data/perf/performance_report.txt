@@ -1,0 +1,5 @@
+# Performance Report - Real-time Path Tracing Voxel Renderer (Run Summary)
+# Format: Timestamp         | Frames | Resolution | WholeFrame | StdDev | ScenePrep | RendererUpd | PathTrace | Denoiser | PostProc | Comment
+# ===============================================================================================================================
+2025-07-02 01:09:00.678 |     64 | 1920x1080  |       5.18 |   3.11 |      0.21 |        0.00 |      1.36 |     0.07 |     3.12 | new format test
+2025-07-02 01:09:09.353 |     64 | 3840x2160  |      20.33 |   7.74 |      0.24 |        0.00 |      4.49 |     0.09 |    13.83 | RTX 4090 4K baseline performance test

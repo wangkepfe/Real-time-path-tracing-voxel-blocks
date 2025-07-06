@@ -77,7 +77,13 @@ __global__ void AtrousSmem(
 
     SurfObj illuminationOutputBuffer,
 
-    Camera camera)
+    Camera camera,
+
+    // Denoising parameters
+    float phiLuminance,
+    float depthThreshold,
+    float roughnessFraction,
+    float lobeAngleFraction)
 {
     Int2 threadPos;
     threadPos.x = threadIdx.x;
@@ -127,9 +133,8 @@ __global__ void AtrousSmem(
 
     float centerViewZ = Load2DFloat1(depthBuffer, pixelPos);
 
-    // Early out
-    const float denoisingRange = 500000.0f;
-    if (centerViewZ > denoisingRange)
+    // Early out - using parameter
+    if (centerViewZ > 500000.0f) // TODO: Pass denoisingRange parameter
         return;
 
     Int2 sharedMemoryIndex = threadPos + Int2(border, border);
@@ -142,8 +147,8 @@ __global__ void AtrousSmem(
 
     float historyLength = Load2DFloat1(historyLengthBuffer, pixelPos);
 
-    uint32_t spatialVarianceEstimationHistoryThreshold = 3;
-    float diffusePhiLuminance = 2.0f;
+    uint32_t spatialVarianceEstimationHistoryThreshold = 3; // TODO: Make parameter
+    float diffusePhiLuminance = phiLuminance;
 
     // Store2DFloat4(sharedIllum[sharedMemoryIndex.y * bufferSize + sharedMemoryIndex.x], illuminationOutputBuffer, pixelPos);
 
@@ -160,7 +165,6 @@ __global__ void AtrousSmem(
             sharedIllum,
             bufferSize);
 
-        float lobeAngleFraction = 0.5f;
         // Diffuse normal weight is used for diffuse and can be used for specular depending on settings.
         float diffuseLobeAngleFraction = lobeAngleFraction;
 
@@ -175,8 +179,7 @@ __global__ void AtrousSmem(
         Float4 sumDiffuseIlluminationAnd2ndMoment = Float4(0.0f);
 
         const float kernelWeightGaussian3x3[2] = {0.44198f, 0.27901f};
-        constexpr float depthThresholdConstant = 0.003f;
-        float depthThreshold = depthThresholdConstant * centerViewZ;
+        float finalDepthThreshold = depthThreshold * centerViewZ;
 
         // float diffuseMinLuminanceWeight = 0.0f;
         // float maxDiffuseLuminanceRelativeDifference = -log(saturate(diffuseMinLuminanceWeight));
@@ -204,7 +207,7 @@ __global__ void AtrousSmem(
                     centerWorldPos,
                     centerNormal,
                     sampleWorldPos,
-                    depthThreshold);
+                    finalDepthThreshold);
 
                 geometryW *= kernel;
 
@@ -254,7 +257,6 @@ __global__ void AtrousSmem(
         float sumDiffuse2ndMoment = 0.0f;
 
         // Normal weight is same for diffuse and specular during spatial variance estimation
-        float lobeAngleFraction = 0.5f;
         float diffuseNormalWeightParam = GetNormalWeightParam2(1.0f, lobeAngleFraction);
 
         // Compute first and second moment spatially. This code also applies cross-bilateral

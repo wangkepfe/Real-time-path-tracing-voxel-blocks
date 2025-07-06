@@ -18,7 +18,13 @@ __global__ void Atrous(
 
     Camera camera,
     unsigned int frameIndex,
-    unsigned int stepSize)
+    unsigned int stepSize,
+
+    // Denoising parameters
+    float phiLuminance,
+    float depthThreshold,
+    float roughnessFraction,
+    float lobeAngleFraction)
 {
     Int2 threadPos;
     threadPos.x = threadIdx.x;
@@ -34,9 +40,8 @@ __global__ void Atrous(
 
     float centerViewZ = Load2DFloat1(depthBuffer, pixelPos);
 
-    // Early out
-    const float denoisingRange = 500000.0f;
-    if (centerViewZ > denoisingRange)
+    // Early out - using hardcoded value for now
+    if (centerViewZ > 500000.0f) // TODO: Pass denoisingRange parameter
         return;
 
     float centerMaterialID = Load2DUshort1(materialBuffer, pixelPos);
@@ -49,7 +54,6 @@ __global__ void Atrous(
 
     // Diffuse normal weight is used for diffuse and can be used for specular depending on settings.
     // Weight strictness is higher as the Atrous step size increases.
-    float lobeAngleFraction = 0.5f;
     float diffuseLobeAngleFraction = lobeAngleFraction / sqrtf((float)stepSize);
 
     diffuseLobeAngleFraction = lerp(0.99f, diffuseLobeAngleFraction, saturate(historyLength / 5.0f));
@@ -57,8 +61,7 @@ __global__ void Atrous(
     Float4 centerDiffuseIlluminationAndVariance = Load2DFloat4(illuminationInputBuffer, pixelPos);
     float centerDiffuseLuminance = luminance(centerDiffuseIlluminationAndVariance.xyz);
     float centerDiffuseVar = centerDiffuseIlluminationAndVariance.w;
-    float diffusePhiLuminance = 2.0f;
-    float diffusePhiLIlluminationInv = 1.0f / max(1.0e-4f, diffusePhiLuminance * sqrt(centerDiffuseVar));
+    float diffusePhiLIlluminationInv = 1.0f / max(1.0e-4f, phiLuminance * sqrt(centerDiffuseVar));
 
     //float diffuseLuminanceWeightRelaxation = 1.0f;
     float diffuseNormalWeightParam = GetNormalWeightParam2(1.0f, diffuseLobeAngleFraction);
@@ -68,8 +71,7 @@ __global__ void Atrous(
 
     const float kernelWeightGaussian3x3[2] = {0.44198f, 0.27901f};
 
-    constexpr float depthThresholdConstant = 0.003f;
-    float depthThreshold = depthThresholdConstant * centerViewZ;
+    float finalDepthThreshold = depthThreshold * centerViewZ;
 
     // Adding random offsets to minimize "ringing" at large A-Trous steps
     unsigned int rngHashState;
@@ -113,9 +115,9 @@ __global__ void Atrous(
             Float3 sampleWorldPos = GetCurrentWorldPosFromPixelPos(camera, p, sampleViewZ);
 
             // Calculating geometry weight for diffuse and specular
-            float geometryW = GetPlaneDistanceWeight_Atrous(centerWorldPos, centerNormal, sampleWorldPos, depthThreshold);
+            float geometryW = GetPlaneDistanceWeight_Atrous(centerWorldPos, centerNormal, sampleWorldPos, finalDepthThreshold);
             geometryW *= kernel;
-            geometryW *= float(isInside && sampleViewZ < denoisingRange);
+            geometryW *= float(isInside && sampleViewZ < 500000.0f); // TODO: Use denoisingRange parameter
 
             // Calculating weights for diffuse
             float angled = AcosApprox(dot(centerNormal, sampleNormal));

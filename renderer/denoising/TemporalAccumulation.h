@@ -3,6 +3,7 @@
 #include "denoising/DenoiserCommon.h"
 #include "shaders/Sampler.h"
 #include "shaders/ShaderDebugUtils.h"
+#include "core/GlobalSettings.h"
 
 __device__ float ComputeParallaxInPixels(Float3 X, Float2 uvForZeroParallax, Camera camera, Float2 rectSize)
 {
@@ -248,7 +249,14 @@ __global__ void TemporalAccumulation(
     SurfObj debugBuffer,
 
     Camera camera,
-    Camera prevCamera)
+    Camera prevCamera,
+
+    // Denoising parameters
+    float denoisingRange,
+    float disocclusionThreshold,
+    float disocclusionThresholdAlternate,
+    float maxAccumulatedFrameNum,
+    float maxFastAccumulatedFrameNum)
 {
     Int2 threadPos;
     threadPos.x = threadIdx.x;
@@ -286,8 +294,7 @@ __global__ void TemporalAccumulation(
 
     float currentLinearZ = Load2DFloat1(depthBuffer, pixelPos);
 
-    // Early out
-    const float denoisingRange = 500000.0f;
+    // Early out - use parameter passed to kernel
     if (currentLinearZ > denoisingRange)
         return;
 
@@ -346,16 +353,13 @@ __global__ void TemporalAccumulation(
     float smbParallaxInPixelsMax = max(smbParallaxInPixels1, smbParallaxInPixels2);
     float smbParallaxInPixelsMin = min(smbParallaxInPixels1, smbParallaxInPixels2);
 
-    // Calculating disocclusion threshold
+    // Calculating disocclusion threshold using passed parameters
     float disocclusionThresholdMix = 0.0f;
 
-    constexpr float disocclusionThresholdConstant = 0.01f;
-    constexpr float disocclusionThresholdAlternateConstant = 0.05f;
+    float disocclusionThresholdBonus = disocclusionThreshold + (1.5f / screenResolution.y);
+    float disocclusionThresholdAlternateBonus = disocclusionThresholdAlternate + (1.5f / screenResolution.y);
 
-    float disocclusionThresholdBonus = disocclusionThresholdConstant + (1.5f / screenResolution.y);
-    float disocclusionThresholdAlternateBonus = disocclusionThresholdAlternateConstant + (1.5f / screenResolution.y);
-
-    float disocclusionThreshold = lerp(disocclusionThresholdBonus, disocclusionThresholdAlternateBonus, disocclusionThresholdMix);
+    float finalDisocclusionThreshold = lerp(disocclusionThresholdBonus, disocclusionThresholdAlternateBonus, disocclusionThresholdMix);
 
     // Loading previous data based on surface motion vectors
     float footprintQuality;
@@ -389,7 +393,7 @@ __global__ void TemporalAccumulation(
         NoV,
         smbParallaxInPixelsMax,
         currentMaterialID,
-        disocclusionThreshold,
+        finalDisocclusionThreshold,
 
         footprintQuality,
         historyLength,
@@ -418,10 +422,11 @@ __global__ void TemporalAccumulation(
     }
 
     // Limiting history length: HistoryFix must be invoked if history length <= gHistoryFixFrameNum
-    float diffMaxAccumulatedFrameNum = 30.0f;
+    // Use parameters passed to kernel instead of hardcoded values
+    float diffMaxAccumulatedFrameNum = maxAccumulatedFrameNum;
 
     // Temporal accumulation of diffuse illumination
-    float diffMaxFastAccumulatedFrameNum = 6.0f;
+    float diffMaxFastAccumulatedFrameNum = maxFastAccumulatedFrameNum;
 
     historyLength = min(historyLength, diffMaxAccumulatedFrameNum);
 

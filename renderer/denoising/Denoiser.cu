@@ -31,7 +31,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     assert(bufferDim.x != 0 && historyDim.x != 0);
 
-    RenderPassSettings &renderPassSettings = GlobalSettings::GetRenderPassSettings();
+
     DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();
 
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
@@ -50,7 +50,11 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         frameNum = backend.getFrameNum();
     }
 
-    if (0)
+    // Track which buffer contains the final result
+    int finalResultBuffer = 0; // 0 = IlluminationBuffer, 1 = IlluminationPingBuffer, 2 = IlluminationPongBuffer
+
+    // Hit distance reconstruction pass (controlled by parameter)
+    if (denoisingParams.enableHitDistanceReconstruction)
     {
         HitDistReconstruction<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
@@ -59,6 +63,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferManager.GetBuffer2D(DepthBuffer),
             bufferManager.GetBuffer2D(IlluminationBuffer),
             bufferManager.GetBuffer2D(IlluminationPingBuffer));
+        finalResultBuffer = 1; // Result in IlluminationPingBuffer
     }
 
     BufferCopySky KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
@@ -67,7 +72,8 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         bufferManager.GetBuffer2D(DepthBuffer),
         bufferManager.GetBuffer2D(IlluminationOutputBuffer));
 
-    if (0)
+    // Pre-pass (controlled by parameter)
+    if (denoisingParams.enablePrePass)
     {
         PrePass KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
@@ -84,6 +90,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
             camera,
             iterationIndex);
+        // Pre-pass typically doesn't change the final result buffer
     }
 
     if (frameNum == 0)
@@ -109,7 +116,8 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             0.0f);
     }
 
-    if (1)
+    // Temporal accumulation pass (controlled by parameter)
+    if (denoisingParams.enableTemporalAccumulation)
     {
         if (frameNum > 0)
         {
@@ -136,9 +144,19 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(DebugBuffer),
 
                 camera,
-                historyCamera);
+                historyCamera,
 
-            if (0)
+                // Pass denoising parameters to kernel
+                denoisingParams.denoisingRange,
+                denoisingParams.disocclusionThreshold,
+                denoisingParams.disocclusionThresholdAlternate,
+                denoisingParams.maxAccumulatedFrameNum,
+                denoisingParams.maxFastAccumulatedFrameNum);
+
+            finalResultBuffer = 1; // Temporal accumulation outputs to IlluminationPingBuffer
+
+            // Optional buffer copy (controlled by parameter - currently disabled)
+            if (false)  // This was originally if (0), keeping disabled for now
             {
                 BufferCopyFloat4(
                     bufferDim,
@@ -156,44 +174,57 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
             }
 
-            HistoryFix KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-                bufferDim,
-                invBufferDim,
+            // History fix pass (controlled by parameter)
+            if (denoisingParams.enableHistoryFix)
+            {
+                HistoryFix KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
 
-                bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(MaterialBuffer),
-                bufferManager.GetBuffer2D(NormalRoughnessBuffer),
-                bufferManager.GetBuffer2D(HistoryLengthBuffer),
-                bufferManager.GetBuffer2D(IlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(MaterialBuffer),
+                    bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+                    bufferManager.GetBuffer2D(HistoryLengthBuffer),
+                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
 
-                bufferManager.GetBuffer2D(IlluminationPongBuffer),
+                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
 
-                camera);
+                    camera);
+                finalResultBuffer = 2; // History fix outputs to IlluminationPongBuffer
+            }
 
-            HistoryClamping<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-                bufferDim,
-                invBufferDim,
+            // History clamping pass (controlled by parameter)
+            if (denoisingParams.enableHistoryClamping)
+            {
+                HistoryClamping<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
 
-                bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
 
-                bufferManager.GetBuffer2D(IlluminationBuffer),
-                bufferManager.GetBuffer2D(IlluminationPingBuffer),
-                bufferManager.GetBuffer2D(IlluminationPongBuffer),
-                bufferManager.GetBuffer2D(HistoryLengthBuffer),
+                    bufferManager.GetBuffer2D(IlluminationBuffer),
+                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
+                    bufferManager.GetBuffer2D(HistoryLengthBuffer),
 
-                bufferManager.GetBuffer2D(PrevIlluminationBuffer),
-                bufferManager.GetBuffer2D(PrevFastIlluminationBuffer),
-                bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
+                    bufferManager.GetBuffer2D(PrevIlluminationBuffer),
+                    bufferManager.GetBuffer2D(PrevFastIlluminationBuffer),
+                    bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
+                // History clamping outputs the current frame data to PrevIlluminationBuffer
+                finalResultBuffer = 3; // 3 = PrevIlluminationBuffer (after history clamping)
+            }
         }
     }
 
-    if (0)
+    // Spatial filtering (A-trous) pass (controlled by parameter)
+    if (denoisingParams.enableSpatialFiltering)
     {
+        // According to NRD ReLaX implementation, A-trous always takes PrevIlluminationBuffer as input
+        // This is because History Clamping writes the temporally denoised result to PrevIlluminationBuffer
         AtrousSmem<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
             invBufferDim,
 
-            // bufferManager.GetBuffer2D(IlluminationBuffer),
             bufferManager.GetBuffer2D(PrevIlluminationBuffer),
 
             bufferManager.GetBuffer2D(NormalRoughnessBuffer),
@@ -203,76 +234,124 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
             bufferManager.GetBuffer2D(IlluminationPingBuffer),
 
-            camera);
-
-        int atrousIndex = 1;
-        int atrousStep = 1 << atrousIndex;
-        while (atrousIndex < 7)
-        {
-            Atrous KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-                bufferDim,
-                invBufferDim,
-
-                bufferManager.GetBuffer2D(IlluminationPingBuffer),
-
-                bufferManager.GetBuffer2D(NormalRoughnessBuffer),
-                bufferManager.GetBuffer2D(MaterialBuffer),
-                bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(HistoryLengthBuffer),
-
-                bufferManager.GetBuffer2D(IlluminationPongBuffer),
-
-                camera,
-                iterationIndex,
-                atrousStep);
-
-            ++atrousIndex;
-            atrousStep = 1 << atrousIndex;
-
-            Atrous KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-                bufferDim,
-                invBufferDim,
-
-                bufferManager.GetBuffer2D(IlluminationPongBuffer),
-
-                bufferManager.GetBuffer2D(NormalRoughnessBuffer),
-                bufferManager.GetBuffer2D(MaterialBuffer),
-                bufferManager.GetBuffer2D(DepthBuffer),
-                bufferManager.GetBuffer2D(HistoryLengthBuffer),
-
-                bufferManager.GetBuffer2D(IlluminationPingBuffer),
-
-                camera,
-                iterationIndex,
-                atrousStep);
-
-            ++atrousIndex;
-            atrousStep = 1 << atrousIndex;
-        }
-
-        Atrous KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
-            bufferDim,
-            invBufferDim,
-
-            bufferManager.GetBuffer2D(IlluminationPingBuffer),
-
-            bufferManager.GetBuffer2D(NormalRoughnessBuffer),
-            bufferManager.GetBuffer2D(MaterialBuffer),
-            bufferManager.GetBuffer2D(DepthBuffer),
-            bufferManager.GetBuffer2D(HistoryLengthBuffer),
-
-            bufferManager.GetBuffer2D(IlluminationPongBuffer),
-
             camera,
-            iterationIndex,
-            atrousStep);
+
+            // Pass denoising parameters to kernel
+            denoisingParams.phiLuminance,
+            denoisingParams.depthThreshold,
+            denoisingParams.roughnessFraction,
+            denoisingParams.lobeAngleFraction);
+
+        finalResultBuffer = 1; // AtrousSmem outputs to IlluminationPingBuffer
+
+        // A-trous iterations (controlled by parameter)
+        if (denoisingParams.atrousIterationNum > 0)
+        {
+            int atrousIndex = 1;
+            int atrousStep = 1 << atrousIndex;
+            int maxIterations = denoisingParams.atrousIterationNum * 2; // Each iteration does two passes
+
+            while (atrousIndex < maxIterations)
+            {
+                Atrous KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
+
+                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
+
+                    bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+                    bufferManager.GetBuffer2D(MaterialBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(HistoryLengthBuffer),
+
+                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
+
+                    camera,
+                    iterationIndex,
+                    atrousStep,
+
+                    // Pass denoising parameters to kernel
+                    denoisingParams.phiLuminance,
+                    denoisingParams.depthThreshold,
+                    denoisingParams.roughnessFraction,
+                    denoisingParams.lobeAngleFraction);
+
+                finalResultBuffer = 2; // First A-trous outputs to IlluminationPongBuffer
+                ++atrousIndex;
+                atrousStep = 1 << atrousIndex;
+
+                Atrous KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
+
+                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
+
+                    bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+                    bufferManager.GetBuffer2D(MaterialBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(HistoryLengthBuffer),
+
+                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
+
+                    camera,
+                    iterationIndex,
+                    atrousStep,
+
+                    // Pass denoising parameters to kernel
+                    denoisingParams.phiLuminance,
+                    denoisingParams.depthThreshold,
+                    denoisingParams.roughnessFraction,
+                    denoisingParams.lobeAngleFraction);
+
+                finalResultBuffer = 1; // Second A-trous outputs back to IlluminationPingBuffer
+                ++atrousIndex;
+                atrousStep = 1 << atrousIndex;
+            }
+
+            Atrous KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                bufferDim,
+                invBufferDim,
+
+                bufferManager.GetBuffer2D(IlluminationPingBuffer),
+
+                bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+                bufferManager.GetBuffer2D(MaterialBuffer),
+                bufferManager.GetBuffer2D(DepthBuffer),
+                bufferManager.GetBuffer2D(HistoryLengthBuffer),
+
+                bufferManager.GetBuffer2D(IlluminationPongBuffer),
+
+                camera,
+                iterationIndex,
+                atrousStep,
+
+                // Pass denoising parameters to kernel
+                denoisingParams.phiLuminance,
+                denoisingParams.depthThreshold,
+                denoisingParams.roughnessFraction,
+                denoisingParams.lobeAngleFraction);
+
+            finalResultBuffer = 2; // Final A-trous outputs to IlluminationPongBuffer
+        }
     }
+
+    // Use the correct final result buffer based on which passes were enabled
+    SurfObj finalOutputBuffer;
+    if (finalResultBuffer == 1)
+        finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationPingBuffer);
+    else if (finalResultBuffer == 2)
+        finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationPongBuffer);
+    else if (finalResultBuffer == 3)
+        finalOutputBuffer = bufferManager.GetBuffer2D(PrevIlluminationBuffer);
+    else
+        finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
 
     BufferCopyNonSky KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
         bufferDim,
 
-        // bufferManager.GetBuffer2D(IlluminationPongBuffer),
-        bufferManager.GetBuffer2D(PrevIlluminationBuffer),
+        finalOutputBuffer,
+
+        // bufferManager.GetBuffer2D(PrevIlluminationBuffer),
         // bufferManager.GetBuffer2D(IlluminationBuffer),
         // bufferManager.GetBuffer2D(IlluminationPingBuffer),
 

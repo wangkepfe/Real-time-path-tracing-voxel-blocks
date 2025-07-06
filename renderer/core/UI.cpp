@@ -35,8 +35,6 @@ void UI::update()
     auto &renderer = OptixRenderer::Get();
     auto &inputHandler = InputHandler::Get();
 
-    auto &renderPassSettings = GlobalSettings::GetRenderPassSettings();
-
     if (!ImGui::Begin("Render Settings", nullptr, 0))
     {
         ImGui::End();
@@ -54,30 +52,46 @@ void UI::update()
     ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
     ImGui::Text("Current selected block ID = %d", inputHandler.currentSelectedBlockId);
 
-    if (ImGui::CollapsingHeader("Render Passes", 0))
-    {
-        auto &list = renderPassSettings.GetValueList();
-        for (auto &itempair : list)
-        {
-            ImGui::Checkbox(itempair.second.c_str(), itempair.first);
-        }
-    }
-
     if (ImGui::CollapsingHeader("Temporal Denoising", 0))
     {
         DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();
-        for (auto &item : denoisingParams.GetValueList())
+
+        // Boolean parameters (pass controls)
+        if (ImGui::TreeNode("Pass Controls"))
         {
-            if (ImGui::InputFloat(item.second.c_str(), item.first))
+            for (auto &itempair : denoisingParams.GetBooleanValueList())
             {
-                *item.first = max(*item.first, 0.00001f);
+                ImGui::Checkbox(itempair.second.c_str(), itempair.first);
             }
+            ImGui::TreePop();
         }
-        for (auto &itempair : denoisingParams.GetBooleanValueList())
+
+        // Float parameters
+        if (ImGui::TreeNode("Float Parameters"))
         {
-            ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+            for (auto &item : denoisingParams.GetValueList())
+            {
+                if (ImGui::InputFloat(item.second.c_str(), item.first))
+                {
+                    *item.first = max(*item.first, 0.00001f);
+                }
+            }
+            ImGui::TreePop();
+        }
+
+        // Integer parameters
+        if (ImGui::TreeNode("Integer Parameters"))
+        {
+            for (auto &item : denoisingParams.GetIntValueList())
+            {
+                ImGui::InputInt(item.second.c_str(), item.first);
+                *item.first = max(*item.first, 0);
+            }
+            ImGui::TreePop();
         }
     }
+
+
 
     if (ImGui::CollapsingHeader("Post Processing", ImGuiTreeNodeFlags_None))
     {

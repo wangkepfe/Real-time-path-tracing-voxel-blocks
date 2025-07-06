@@ -5,110 +5,136 @@
 #include <utility>
 #include <vector>
 
-#define ENABLE_DENOISING_NOISE_CALCULATION 0
 
-struct RenderPassSettings
-{
-    std::vector<std::pair<bool *, std::string>> GetValueList()
-    {
-        return {
-            {&enableTemporalDenoising, "Enable Temporal Denoising"},
-            {&enableLocalSpatialFilter, "Enable Local SpatialFilter "},
-            {&enableNoiseLevelVisualize, "Enable Noise Level Visualize"},
-            {&enableWideSpatialFilter, "Enable Wide Spatial Filter"},
-            {&enableTemporalDenoising2, "Enable Temporal Denoising 2"},
-            {&enableBilateralFilter, "Enable Bilateral Filter"},
-
-            {&enablePostProcess, "Enable Post Process"},
-            {&enableDownScalePasses, "Enable Down Scale Passes"},
-            {&enableHistogram, "Enable Histogram"},
-            {&enableAutoExposure, "Enable Auto Exposure"},
-            {&enableBloomEffect, "Enable Bloom Effect"},
-            {&enableLensFlare, "Enable Lens Flare"},
-            {&enableToneMapping, "Enable Tone Mapping"},
-            {&enableSharpening, "Enable Sharpening"},
-
-            {&enableEASU, "Enable EASU"},
-        };
-    }
-
-    bool enableTemporalDenoising = false;
-    bool enableLocalSpatialFilter = false;
-    bool enableNoiseLevelVisualize = false;
-    bool enableWideSpatialFilter = false;
-    bool enableTemporalDenoising2 = false;
-    bool enableBilateralFilter = false;
-
-    bool enablePostProcess = false;
-    bool enableDownScalePasses = false;
-    bool enableHistogram = false;
-    bool enableAutoExposure = false;
-    bool enableBloomEffect = false;
-    bool enableLensFlare = false;
-    bool enableToneMapping = false;
-    bool enableSharpening = false;
-
-    bool enableEASU = false;
-};
-
+// Based on NRD ReLaX denoiser settings with comprehensive parameter coverage
 struct DenoisingParams
 {
-    std::vector<std::pair<float *, std::string>> GetValueList()
-    {
-        return {
-            {&local_denoise_sigma_normal, "local_denoise_sigma_normal"},
-            {&local_denoise_sigma_depth, "local_denoise_sigma_depth"},
-            {&local_denoise_sigma_material, "local_denoise_sigma_material"},
-
-            {&large_denoise_sigma_normal, "large_denoise_sigma_normal"},
-            {&large_denoise_sigma_depth, "large_denoise_sigma_depth"},
-            {&large_denoise_sigma_material, "large_denoise_sigma_material"},
-
-            {&temporal_denoise_sigma_normal, "temporal_denoise_sigma_normal"},
-            {&temporal_denoise_sigma_depth, "temporal_denoise_sigma_depth"},
-            {&temporal_denoise_sigma_material, "temporal_denoise_sigma_material"},
-            {&temporal_denoise_depth_diff_threshold,
-             "temporal_denoise_depth_diff_threshold"},
-            {&temporal_denoise_baseBlendingFactor,
-             "temporal_denoise_baseBlendingFactor"},
-            {&temporal_denoise_antiFlickeringWeight,
-             "temporal_denoise_antiFlickeringWeight"},
-
-            {&noise_threshold_local, "noise_threshold_local"},
-            {&noise_threshold_large, "noise_threshold_large"},
-
-            {&noiseBlend, "noiseBlend"},
-        };
-    }
-
     std::vector<std::pair<bool *, std::string>> GetBooleanValueList()
     {
         return {
-            {&temporal_denoise_use_softmax, "temporal_denoise_use_softmax"},
+            {&enableHitDistanceReconstruction, "Enable Hit Distance Reconstruction"},
+            {&enablePrePass, "Enable Pre-Pass"},
+            {&enableTemporalAccumulation, "Enable Temporal Accumulation"},
+            {&enableHistoryFix, "Enable History Fix"},
+            {&enableHistoryClamping, "Enable History Clamping"},
+            {&enableSpatialFiltering, "Enable Spatial Filtering (A-trous)"},
+            {&enableAntiFirefly, "Enable Anti-Firefly"},
+            {&enableRoughnessEdgeStopping, "Enable Roughness Edge Stopping"},
         };
     }
 
-    float local_denoise_sigma_normal = 100.0f;
-    float local_denoise_sigma_depth = 0.1f;
-    float local_denoise_sigma_material = 100.0f;
+    std::vector<std::pair<float *, std::string>> GetValueList()
+    {
+        return {
+            // Temporal accumulation parameters
+            {&maxAccumulatedFrameNum, "Max Accumulated Frame Num"},
+            {&maxFastAccumulatedFrameNum, "Max Fast Accumulated Frame Num"},
+            {&historyFixFrameNum, "History Fix Frame Num"},
 
-    float large_denoise_sigma_normal = 100.0f;
-    float large_denoise_sigma_depth = 0.01f;
-    float large_denoise_sigma_material = 100.0f;
+            // Pre-pass blur settings
+            {&prepassBlurRadius, "Pre-pass Blur Radius"},
+            {&minHitDistanceWeight, "Min Hit Distance Weight"},
 
-    float temporal_denoise_sigma_normal = 100.0f;
-    float temporal_denoise_sigma_depth = 0.1f;
-    float temporal_denoise_sigma_material = 100.0f;
-    float temporal_denoise_depth_diff_threshold = 0.1f;
-    float temporal_denoise_baseBlendingFactor = 1.0f / 2.0f;
-    float temporal_denoise_antiFlickeringWeight = 0.8f;
+            // A-trous spatial filtering
+            {&phiLuminance, "Phi Luminance"},
+            {&lobeAngleFraction, "Lobe Angle Fraction"},
+            {&roughnessFraction, "Roughness Fraction"},
+            {&depthThreshold, "Depth Threshold"},
+            {&minLuminanceWeight, "Min Luminance Weight"},
 
-    float noise_threshold_local = 0.001f;
-    float noise_threshold_large = 0.001f;
+            // Edge stopping relaxation
+            {&luminanceEdgeStoppingRelaxation, "Luminance Edge Stopping Relaxation"},
+            {&normalEdgeStoppingRelaxation, "Normal Edge Stopping Relaxation"},
+            {&roughnessEdgeStoppingRelaxation, "Roughness Edge Stopping Relaxation"},
 
-    float noiseBlend = 0.0f;
+            // Antilag settings
+            {&antilagAccelerationAmount, "Antilag Acceleration Amount"},
+            {&antilagSpatialSigmaScale, "Antilag Spatial Sigma Scale"},
+            {&antilagTemporalSigmaScale, "Antilag Temporal Sigma Scale"},
+            {&antilagResetAmount, "Antilag Reset Amount"},
 
-    bool temporal_denoise_use_softmax = true;
+            // History clamping
+            {&historyClampingColorBoxSigmaScale, "History Clamping Color Box Sigma Scale"},
+
+            // Disocclusion
+            {&disocclusionThreshold, "Disocclusion Threshold"},
+            {&disocclusionThresholdAlternate, "Disocclusion Threshold Alternate"},
+
+            // Confidence driven parameters
+            {&confidenceDrivenRelaxationMultiplier, "Confidence Driven Relaxation Multiplier"},
+            {&confidenceDrivenLuminanceEdgeStoppingRelaxation, "Confidence Driven Luminance Edge Stopping Relaxation"},
+            {&confidenceDrivenNormalEdgeStoppingRelaxation, "Confidence Driven Normal Edge Stopping Relaxation"},
+        };
+    }
+
+    std::vector<std::pair<int *, std::string>> GetIntValueList()
+    {
+        return {
+            {&atrousIterationNum, "A-trous Iteration Number"},
+            {&historyFixBasePixelStride, "History Fix Base Pixel Stride"},
+            {&spatialVarianceEstimationHistoryThreshold, "Spatial Variance Estimation History Threshold"},
+        };
+    }
+
+    // Pass control flags (replace hardcoded if statements)
+    bool enableHitDistanceReconstruction = false;
+    bool enablePrePass = false;
+    bool enableTemporalAccumulation = true;
+    bool enableHistoryFix = true;
+    bool enableHistoryClamping = true;
+    bool enableSpatialFiltering = true;
+    bool enableAntiFirefly = false;
+    bool enableRoughnessEdgeStopping = true;
+
+    // Temporal accumulation parameters (based on NRD ReLaX defaults)
+    float maxAccumulatedFrameNum = 30.0f;
+    float maxFastAccumulatedFrameNum = 6.0f;
+    float historyFixFrameNum = 3.0f;
+
+    // Pre-pass settings
+    float prepassBlurRadius = 30.0f;
+    float minHitDistanceWeight = 0.1f;
+
+    // A-trous spatial filtering parameters
+    float phiLuminance = 2.0f;
+    float lobeAngleFraction = 0.5f;
+    float roughnessFraction = 0.15f;
+    float depthThreshold = 0.003f;
+    float minLuminanceWeight = 0.0f;
+    int atrousIterationNum = 5;
+
+    // Edge stopping relaxation parameters
+    float luminanceEdgeStoppingRelaxation = 0.5f;
+    float normalEdgeStoppingRelaxation = 0.3f;
+    float roughnessEdgeStoppingRelaxation = 1.0f;
+
+    // Antilag settings (based on NRD ReLaX defaults)
+    float antilagAccelerationAmount = 0.3f;
+    float antilagSpatialSigmaScale = 4.5f;
+    float antilagTemporalSigmaScale = 0.5f;
+    float antilagResetAmount = 0.5f;
+
+    // History clamping
+    float historyClampingColorBoxSigmaScale = 2.0f;
+
+    // History fix parameters
+    int historyFixBasePixelStride = 14;
+    float historyFixEdgeStoppingNormalPower = 8.0f;
+
+    // Spatial variance estimation
+    int spatialVarianceEstimationHistoryThreshold = 3;
+
+    // Disocclusion parameters
+    float disocclusionThreshold = 0.01f;
+    float disocclusionThresholdAlternate = 0.05f;
+
+    // Confidence driven parameters
+    float confidenceDrivenRelaxationMultiplier = 0.0f;
+    float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
+    float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
+
+    // Denoising range
+    float denoisingRange = 500000.0f;
 };
 
 struct PostProcessParams
@@ -157,10 +183,7 @@ public:
     GlobalSettings(GlobalSettings const &) = delete;
     void operator=(GlobalSettings const &) = delete;
 
-    static RenderPassSettings &GetRenderPassSettings()
-    {
-        return Get().renderPassSettings;
-    }
+
     static DenoisingParams &GetDenoisingParams() { return Get().denoisingParams; }
     static PostProcessParams &GetPostProcessParams()
     {
@@ -172,7 +195,6 @@ public:
     static bool IsOfflineMode() { return Get().offlineMode; }
     static void SetOfflineMode(bool offline) { Get().offlineMode = offline; }
 
-    RenderPassSettings renderPassSettings{};
     DenoisingParams denoisingParams{};
     PostProcessParams postProcessParams{};
     SkyParams skyParams{};
