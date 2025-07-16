@@ -1,4 +1,5 @@
 #include "ModelUtils.h"
+#include "GLTFUtils.h"
 
 #include "util/DebugUtils.h"
 
@@ -10,13 +11,13 @@
 #include <cuda_runtime.h>
 
 /**
- * \brief Loads a minimal .obj file into device memory buffers.
+ * \brief Loads a model file (.obj or .gltf) into device memory buffers.
  *
  * \param[out] d_attr      Pointer to the device memory for VertexAttributes (allocated inside).
  * \param[out] d_indices   Pointer to the device memory for index data (allocated inside).
  * \param[out] attrSize    Number of VertexAttributes (i.e., how many vertices).
  * \param[out] indicesSize Number of indices (usually 3 * number_of_triangles).
- * \param[in]  filename    Path to the .obj file.
+ * \param[in]  filename    Path to the model file (.obj or .gltf).
  *
  * After calling, you get:
  *     - d_attr:    device buffer containing [attrSize] VertexAttributes
@@ -29,6 +30,30 @@ void loadModel(VertexAttributes **d_attr,
                unsigned int &indicesSize,
                const std::string &filename)
 {
+    std::cout << "[ModelUtils] Loading model: " << filename << std::endl;
+
+    // Check if this is a GLTF file and use appropriate loader
+    bool isGLTF = GLTFUtils::isGLTFFile(filename);
+    std::cout << "[ModelUtils] isGLTFFile result: " << (isGLTF ? "true" : "false") << std::endl;
+
+    if (isGLTF) {
+        std::cout << "[ModelUtils] Calling GLTFUtils::loadGLTFModel..." << std::endl;
+        if (GLTFUtils::loadGLTFModel(d_attr, d_indices, attrSize, indicesSize, filename)) {
+            std::cout << "[ModelUtils] GLTF loading succeeded" << std::endl;
+            return; // Successfully loaded GLTF file
+        } else {
+            std::cerr << "[ModelUtils] Failed to load GLTF file: " << filename << std::endl;
+            attrSize = 0;
+            indicesSize = 0;
+            *d_attr = nullptr;
+            *d_indices = nullptr;
+            return;
+        }
+    }
+
+    std::cout << "[ModelUtils] Loading as OBJ file instead" << std::endl;
+
+    // Load as OBJ file
     // 1) Temporary storage for reading .obj data
     std::vector<Float3> tempPositions; // from "v x y z"
     std::vector<Float2> tempTexcoords; // from "vt u v"

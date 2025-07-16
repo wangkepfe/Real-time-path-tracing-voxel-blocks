@@ -74,6 +74,18 @@ extern "C" __global__ void __miss__radiance()
         emission += sunEmission;
     }
 
+    // DEBUG: Direct light source hits for center pixel
+    if (OPTIX_CENTER_PIXEL()) {
+        OPTIX_DEBUG_PRINT(rayData->depth);
+        OPTIX_DEBUG_PRINT(emission.x);
+        OPTIX_DEBUG_PRINT(emission.y);
+        OPTIX_DEBUG_PRINT(emission.z);
+        OPTIX_DEBUG_PRINT(hitDisk);
+        OPTIX_DEBUG_PRINT(rayData->radiance.x);
+        OPTIX_DEBUG_PRINT(rayData->radiance.y);
+        OPTIX_DEBUG_PRINT(rayData->radiance.z);
+    }
+
     rayData->radiance = emission;
     rayData->distance = RayMax;
     rayData->shouldTerminate = true;

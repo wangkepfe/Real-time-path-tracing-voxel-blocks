@@ -29,6 +29,12 @@ find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 12.6 REQUIRED)
 find_package(NVTT REQUIRED)
 
+# tinygltf library
+set(TINYGLTF_INCLUDE_DIR "${LOCAL_3RDPARTY}/tinygltf")
+add_definitions(-DTINYGLTF_IMPLEMENTATION)
+add_definitions(-DTINYGLTF_NO_STB_IMAGE_WRITE)
+add_definitions(-DTINYGLTF_NO_STB_IMAGE)
+
 set( IMGUI
     renderer/ext/imgui/imconfig.h
     renderer/ext/imgui/imgui.h
@@ -48,6 +54,7 @@ set( HEADERS
     renderer/core/OfflineBackend.h
     renderer/core/OptixRenderer.h
     renderer/core/Scene.h
+    renderer/core/Entity.h
     renderer/core/UI.h
     renderer/core/InputHandler.h
     renderer/core/GlobalSettings.h
@@ -65,6 +72,7 @@ set( HEADERS
     renderer/util/RandGenData.h
     renderer/util/RandGenHost.h
     renderer/util/ModelUtils.h
+    renderer/util/GLTFUtils.h
     renderer/util/ImageDiff.h
     renderer/util/PerformanceTracker.h
     renderer/shaders/LinearMath.h
@@ -93,6 +101,7 @@ set( SOURCES
     renderer/core/Backend.cpp
     renderer/core/OptixRenderer.cpp
     renderer/core/Scene.cpp
+    renderer/core/Entity.cpp
     renderer/core/UI.cpp
     renderer/core/InputHandler.cpp
     renderer/core/BufferManager.cpp
@@ -104,6 +113,7 @@ set( SOURCES
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
     renderer/util/ModelUtils.cpp
+    renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
@@ -172,6 +182,7 @@ target_include_directories( voxelgame PUBLIC
     ${OPTIX_INCLUDE_DIR}
     ${CUDAToolkit_INCLUDE_DIRS}
     ${NVTT_INCLUDE_DIR}
+    ${TINYGLTF_INCLUDE_DIR}
 )
 
 target_link_libraries( voxelgame
@@ -189,6 +200,22 @@ set_property(TARGET voxelgame PROPERTY CUDA_ARCHITECTURES 89)
 # target_compile_options(voxelgame PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G -rdc=true>)
 # set_property(TARGET voxelgame PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
+# Copy data files, PTX files, and DLLs to executable directory
+add_custom_command(TARGET voxelgame POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/data/models
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/data/textures
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/data/scene
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/ptx
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:voxelgame>/data/models
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:voxelgame>/data/textures
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:voxelgame>/data/scene
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PTX_DIR} $<TARGET_FILE_DIR:voxelgame>/ptx
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:voxelgame>/
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glfw/lib-vc2022/glfw3.dll $<TARGET_FILE_DIR:voxelgame>/
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glew/bin/Release/x64/glew32.dll $<TARGET_FILE_DIR:voxelgame>/
+    COMMENT "Copying data files, PTX files, and DLLs to executable directory"
+)
+
 # Offline renderer sources (excluding OpenGL/GLFW dependencies)
 set( OFFLINE_SOURCES
     mainOffline.cpp
@@ -196,6 +223,7 @@ set( OFFLINE_SOURCES
     renderer/core/SceneConfig.cpp
     renderer/core/OptixRenderer.cpp
     renderer/core/Scene.cpp
+    renderer/core/Entity.cpp
     renderer/core/BufferManager.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
@@ -204,6 +232,7 @@ set( OFFLINE_SOURCES
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
     renderer/util/ModelUtils.cpp
+    renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
@@ -226,6 +255,7 @@ target_include_directories( voxelgame_offline PUBLIC
     ${OPTIX_INCLUDE_DIR}
     ${CUDAToolkit_INCLUDE_DIRS}
     ${NVTT_INCLUDE_DIR}
+    ${TINYGLTF_INCLUDE_DIR}
 )
 
 target_compile_definitions( voxelgame_offline PRIVATE
@@ -240,6 +270,20 @@ target_link_libraries( voxelgame_offline
 )
 
 set_property(TARGET voxelgame_offline PROPERTY CUDA_ARCHITECTURES 89)
+
+# Copy data files, PTX files, and DLLs to executable directory
+add_custom_command(TARGET voxelgame_offline POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/data/models
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/data/textures
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/data/scene
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/ptx
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:voxelgame_offline>/data/models
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:voxelgame_offline>/data/textures
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:voxelgame_offline>/data/scene
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PTX_DIR} $<TARGET_FILE_DIR:voxelgame_offline>/ptx
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:voxelgame_offline>/
+    COMMENT "Copying data files, PTX files, and DLLs to offline executable directory"
+)
 
 # Separate include for stb_image_write.h since it's in renderer/ext/stb/
 target_include_directories( voxelgame_offline PRIVATE

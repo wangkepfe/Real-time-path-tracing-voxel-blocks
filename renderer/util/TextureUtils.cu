@@ -13,9 +13,38 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
+#include <cstdlib>
 #include "TextureUtils.h"
 
 #include "voxelengine/Block.h"
+
+namespace {
+    std::string getTextureCacheDirectory() {
+        std::filesystem::path cacheDir;
+
+#ifdef _WIN32
+        // On Windows, use %APPDATA%/wotw/tex
+        const char* appData = std::getenv("APPDATA");
+        if (appData) {
+            cacheDir = std::filesystem::path(appData) / "wotw" / "tex";
+        } else {
+            // Fallback to current directory if APPDATA is not set
+            cacheDir = "tex";
+        }
+#else
+        // On other platforms, use ~/.local/share/wotw/tex
+        const char* home = std::getenv("HOME");
+        if (home) {
+            cacheDir = std::filesystem::path(home) / ".local" / "share" / "wotw" / "tex";
+        } else {
+            // Fallback to current directory if HOME is not set
+            cacheDir = "tex";
+        }
+#endif
+
+        return cacheDir.string();
+    }
+}
 
 __global__ void fillFirstMipmapKernel(
     unsigned char *dMipmap,
@@ -103,17 +132,22 @@ void TextureManager::init()
     textureFiles.emplace_back("beaten-up-metal1");
     for (const auto &textureFile : textureFiles)
     {
-        filePaths.emplace_back("data/" + textureFile + "_albedo.png");
-        filePaths.emplace_back("data/" + textureFile + "_normal.png");
-        filePaths.emplace_back("data/" + textureFile + "_rough.png");
+        filePaths.emplace_back("data/textures/" + textureFile + "_albedo.png");
+        filePaths.emplace_back("data/textures/" + textureFile + "_normal.png");
+        filePaths.emplace_back("data/textures/" + textureFile + "_rough.png");
     }
-    filePaths.emplace_back("data/beaten-up-metal1_metal.png");
+    filePaths.emplace_back("data/textures/beaten-up-metal1_metal.png");
 
     m_textures.resize(filePaths.size());
 
-    if (!std::filesystem::exists("tex"))
+    // Get the texture cache directory path
+    std::string textureCacheDir = getTextureCacheDirectory();
+
+    // Create the cache directory if it doesn't exist (create_directories creates parent directories too)
+    if (!std::filesystem::exists(textureCacheDir))
     {
-        std::filesystem::create_directory("tex");
+        std::filesystem::create_directories(textureCacheDir);
+        std::cout << "Created texture cache directory: " << textureCacheDir << std::endl;
     }
 
     for (int i = 0; i < filePaths.size(); ++i)
@@ -126,7 +160,9 @@ void TextureManager::init()
         int fileNamePosStart = filePath.find('/') + 1;
         int fileNamePosEnd = filePath.find(".png");
 
-        std::string cacheFileNameBase = "tex/" + filePath.substr(fileNamePosStart, fileNamePosEnd - fileNamePosStart);
+        // Create the full path using filesystem::path for proper separator handling
+        std::string textureFileName = filePath.substr(fileNamePosStart, fileNamePosEnd - fileNamePosStart);
+        std::filesystem::path cacheFileNameBase = std::filesystem::path(textureCacheDir) / textureFileName;
 
         auto &texture = m_textures[i];
         auto &texObj = m_shaderTextures.texObjs[i];
@@ -212,8 +248,8 @@ void TextureManager::init()
             int pitch = currentSize / 4 * bytesPerTile;
             int height = currentSize / 4;
 
-            std::string cacheFileName = cacheFileNameBase + "_lod_" + std::to_string(lod) + ".bin";
-            std::string cacheFileNameDebug = cacheFileNameBase + "_lod_" + std::to_string(lod) + ".png";
+            std::string cacheFileName = cacheFileNameBase.string() + "_lod_" + std::to_string(lod) + ".bin";
+            std::string cacheFileNameDebug = cacheFileNameBase.string() + "_lod_" + std::to_string(lod) + ".png";
 
             int expectedCompressedTextureSize = currentSize * currentSize / 16 * bytesPerTile;
 
@@ -399,6 +435,10 @@ void TextureManager::init()
                 }
 
                 {
+                    // Ensure the parent directory exists before writing the file
+                    std::filesystem::path cacheFilePath(cacheFileName);
+                    std::filesystem::create_directories(cacheFilePath.parent_path());
+
                     std::ofstream myfile(cacheFileName, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
                     assert(myfile.is_open());
                     myfile.write(reinterpret_cast<char *>(compressedImageBuffer.data()), compressedTextureSize);

@@ -76,10 +76,10 @@ inline const std::vector<std::string> &GetTextureFiles()
 inline const std::string &GetModelFileName(int blockType)
 {
     static const std::unordered_map<int, std::string> modelFiles = {
-        {BlockTypeTest1, "data/test_plane.obj"},
-        {BlockTypeLeaves, "data/leavesCube4.obj"},
-        {BlockTypeTestLightBase, "data/lanternBase.obj"},
-        {BlockTypeTestLight, "data/lanternLight.obj"},
+        {BlockTypeTest1, "data/models/test_plane.obj"},
+        {BlockTypeLeaves, "data/models/leavesCube4.obj"},
+        {BlockTypeTestLightBase, "data/models/lanternBase.obj"},
+        {BlockTypeTestLight, "data/models/lanternLight.obj"},
     };
     return modelFiles.at(blockType);
 }

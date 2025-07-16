@@ -78,6 +78,7 @@ private:
     SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
 
     std::vector<MaterialParameter> m_materialParameters;
+    unsigned int m_entityMaterialStartIndex = 0;
 
     BlueNoiseRandGeneratorHost h_randGen{};
     BlueNoiseRandGenerator d_randGen{static_cast<BlueNoiseRandGenerator>(h_randGen)};

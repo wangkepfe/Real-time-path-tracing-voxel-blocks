@@ -149,3 +149,41 @@ OptixTraversableHandle Scene::CreateGeometry(
 
     return traversableHandle;
 }
+
+// Entity management functions
+void Scene::addEntity(std::unique_ptr<Entity> entity)
+{
+    std::cout << "[Scene] Adding entity to scene. Total entities before: " << m_entities.size() << std::endl;
+    if (entity) {
+        std::cout << "[Scene] Entity details - Type: " << entity->getType()
+                  << ", Vertices: " << entity->getAttributeSize()
+                  << ", Indices: " << entity->getIndicesSize() << std::endl;
+        std::cout << "[Scene] Entity position: (" << entity->getTransform().position.x
+                  << ", " << entity->getTransform().position.y
+                  << ", " << entity->getTransform().position.z << ")" << std::endl;
+    }
+    m_entities.push_back(std::move(entity));
+    std::cout << "[Scene] Total entities after adding: " << m_entities.size() << std::endl;
+    needSceneUpdate = true;
+}
+
+void Scene::removeEntity(size_t index)
+{
+    std::cout << "[Scene] Removing entity at index " << index << " from " << m_entities.size() << " entities" << std::endl;
+    if (index < m_entities.size())
+    {
+        m_entities.erase(m_entities.begin() + index);
+        needSceneUpdate = true;
+        std::cout << "[Scene] Entity removed successfully. Total entities: " << m_entities.size() << std::endl;
+    } else {
+        std::cout << "[Scene] Warning: Cannot remove entity at index " << index << " - out of bounds" << std::endl;
+    }
+}
+
+void Scene::clearEntities()
+{
+    std::cout << "[Scene] Clearing all entities. Current count: " << m_entities.size() << std::endl;
+    m_entities.clear();
+    needSceneUpdate = true;
+    std::cout << "[Scene] All entities cleared" << std::endl;
+}
