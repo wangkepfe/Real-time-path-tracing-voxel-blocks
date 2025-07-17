@@ -807,17 +807,7 @@ void OptixRenderer::init()
             parameter.albedo = Float3(1.0f, 0.5f, 0.0f);
             parameter.materialId = entityMaterialStartIndex + EntityTypeMinecraftCharacter;
 
-            std::cout << "[OptixRenderer] Creating Minecraft Character EMISSIVE material:" << std::endl;
-            std::cout << "  - Material index: " << (entityMaterialStartIndex + EntityTypeMinecraftCharacter) << std::endl;
-            std::cout << "  - Entity material start index: " << entityMaterialStartIndex << std::endl;
-            std::cout << "  - Entity type: " << EntityTypeMinecraftCharacter << std::endl;
-            std::cout << "  - Emissive: " << parameter.isEmissive << std::endl;
-            std::cout << "  - Albedo: (" << parameter.albedo.x << ", " << parameter.albedo.y << ", " << parameter.albedo.z << ")" << std::endl;
-            std::cout << "  - Total materials before entity: " << m_materialParameters.size() << std::endl;
-
             m_materialParameters.push_back(parameter);
-
-            std::cout << "  - Total materials after adding entity: " << m_materialParameters.size() << std::endl;
         }
 
         // Store entity material mapping for easy access
@@ -928,16 +918,11 @@ void OptixRenderer::init()
     }
 
     // Create entity geometry BLAS
-    std::cout << "[OptixRenderer] Processing " << scene.getEntityCount() << " entities for rendering" << std::endl;
-
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
     {
         Entity* entity = scene.getEntity(entityIndex);
         if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
         {
-            std::cout << "[OptixRenderer] Creating geometry for entity " << entityIndex
-                      << " with " << entity->getAttributeSize() << " vertices and "
-                      << entity->getIndicesSize() << " indices" << std::endl;
 
             GeometryData geometry = {};
             OptixTraversableHandle blasHandle = Scene::CreateGeometry(
@@ -964,23 +949,9 @@ void OptixRenderer::init()
             instance.traversableHandle = blasHandle;
             m_instances.push_back(instance);
 
-            std::cout << "[OptixRenderer] Created entity instance " << instance.instanceId
-                      << " with sbtOffset " << instance.sbtOffset << std::endl;
-            std::cout << "[OptixRenderer] Entity transform: [" << transformMatrix[0] << ", " << transformMatrix[1] << ", " << transformMatrix[2] << ", " << transformMatrix[3] << "]" << std::endl;
-            std::cout << "[OptixRenderer] Entity transform: [" << transformMatrix[4] << ", " << transformMatrix[5] << ", " << transformMatrix[6] << ", " << transformMatrix[7] << "]" << std::endl;
-            std::cout << "[OptixRenderer] Entity transform: [" << transformMatrix[8] << ", " << transformMatrix[9] << ", " << transformMatrix[10] << ", " << transformMatrix[11] << "]" << std::endl;
-
             // Advance sbtOffset for next entity
             currentSbtOffset += numTypesOfRays;
         } else {
-            std::cout << "[OptixRenderer] Skipping entity " << entityIndex << " - ";
-            if (!entity) {
-                std::cout << "null entity pointer" << std::endl;
-            } else if (entity->getAttributeSize() == 0) {
-                std::cout << "no vertices" << std::endl;
-            } else if (entity->getIndicesSize() == 0) {
-                std::cout << "no indices" << std::endl;
-            }
         }
     }
 
@@ -1347,13 +1318,6 @@ void OptixRenderer::init()
                     // Use the correct material index for entities from the material array
                     unsigned int entityMaterialIndex = m_entityMaterialStartIndex + static_cast<unsigned int>(entity->getType());
                     m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = entityMaterialIndex;
-
-                    std::cout << "[OptixRenderer] Setting SBT record " << sbtRecordIndex
-                              << " for entity " << entityIndex
-                              << " (type " << static_cast<unsigned int>(entity->getType()) << ")" << std::endl;
-                    std::cout << "  - SBT offset will be: " << (sbtRecordIndex * sizeof(SbtRecordGeometryInstanceData)) << std::endl;
-                    std::cout << "  - Material index: " << entityMaterialIndex << std::endl;
-                    std::cout << "  - Entity material start: " << m_entityMaterialStartIndex << std::endl;
 
                     sbtRecordIndex++;
                 }

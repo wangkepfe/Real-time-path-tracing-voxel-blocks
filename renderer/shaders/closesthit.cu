@@ -79,18 +79,6 @@ extern "C" __global__ void __closesthit__radiance()
 
     const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
 
-    // DEBUG: Check for minecraft character material (material index 16)
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(instanceData->materialIndex);
-        OPTIX_DEBUG_PRINT(parameters.albedo.x);
-        OPTIX_DEBUG_PRINT(parameters.albedo.y);
-        OPTIX_DEBUG_PRINT(parameters.albedo.z);
-        OPTIX_DEBUG_PRINT(parameters.roughness);
-        OPTIX_DEBUG_PRINT(parameters.metallic);
-        OPTIX_DEBUG_PRINT(parameters.isEmissive);
-        OPTIX_DEBUG_PRINT(parameters.translucency);
-    }
-
     int materialId = parameters.materialId;
     bool isEmissive = parameters.isEmissive;
     bool isThinfilm = parameters.isThinfilm;
@@ -246,29 +234,6 @@ extern "C" __global__ void __closesthit__radiance()
 
     rayData->isCurrentBounceDiffuse = isDiffuse;
 
-    // DEBUG: Material state after calculation
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(state.albedo.x);
-        OPTIX_DEBUG_PRINT(state.albedo.y);
-        OPTIX_DEBUG_PRINT(state.albedo.z);
-        OPTIX_DEBUG_PRINT(state.roughness);
-        OPTIX_DEBUG_PRINT(state.metallic);
-        OPTIX_DEBUG_PRINT(isDiffuse);
-        OPTIX_DEBUG_PRINT(rayData->depth);
-        OPTIX_DEBUG_PRINT(rayData->hitFirstDiffuseSurface);
-        // DEBUG: Check surface normal direction
-        OPTIX_DEBUG_PRINT(state.normal.x);
-        OPTIX_DEBUG_PRINT(state.normal.y);
-        OPTIX_DEBUG_PRINT(state.normal.z);
-        OPTIX_DEBUG_PRINT(state.geoNormal.x);
-        OPTIX_DEBUG_PRINT(state.geoNormal.y);
-        OPTIX_DEBUG_PRINT(state.geoNormal.z);
-        OPTIX_DEBUG_PRINT(rayData->wo.x);
-        OPTIX_DEBUG_PRINT(rayData->wo.y);
-        OPTIX_DEBUG_PRINT(rayData->wo.z);
-        OPTIX_DEBUG_PRINT(hitFrontFace);
-    }
-
     // Write Gbuffer data
     if (rayData->depth == 0)
     {
@@ -318,15 +283,6 @@ extern "C" __global__ void __closesthit__radiance()
     rayData->bsdfOverPdf = bsdfSampleBsdfOverPdf;
     rayData->pdf = bsdfSamplePdf;
 
-    // DEBUG: After BSDF sampling
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(bsdfSamplePdf);
-        OPTIX_DEBUG_PRINT(bsdfSampleBsdfOverPdf.x);
-        OPTIX_DEBUG_PRINT(bsdfSampleBsdfOverPdf.y);
-        OPTIX_DEBUG_PRINT(bsdfSampleBsdfOverPdf.z);
-        OPTIX_DEBUG_PRINT(skipAlbedoInShadowRayContribution);
-    }
-
     const bool enableReSTIR = true && rayData->depth == 0;
 
     // Specular hit = no shadow ray
@@ -375,13 +331,6 @@ extern "C" __global__ void __closesthit__radiance()
     DIReservoir localReservoir = EmptyDIReservoir();
     LightSample localSample = LightSample{};
 
-    // DEBUG: RIS sampling process
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(numLocalLightSamples);
-        OPTIX_DEBUG_PRINT(sysParam.accumulatedLocalLightLuminance);
-        OPTIX_DEBUG_PRINT(totalSceneLuminance);
-    }
-
     for (unsigned int i = 0; i < numLocalLightSamples; i++)
     {
         float sourcePdf;
@@ -397,17 +346,6 @@ extern "C" __global__ void __closesthit__radiance()
         float targetPdf = GetLightSampleTargetPdfForSurface(candidateSample, surface);
         float risRnd = rand(sysParam, randIdx);
 
-        // DEBUG: Each sample
-        if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16 && i == 0) {
-            OPTIX_DEBUG_PRINT(lightIndex);
-            OPTIX_DEBUG_PRINT(sourcePdf);
-            OPTIX_DEBUG_PRINT(blendedSourcePdf);
-            OPTIX_DEBUG_PRINT(targetPdf);
-            OPTIX_DEBUG_PRINT(candidateSample.radiance.x);
-            OPTIX_DEBUG_PRINT(candidateSample.radiance.y);
-            OPTIX_DEBUG_PRINT(candidateSample.radiance.z);
-        }
-
         if (blendedSourcePdf != 0.0f)
         {
             bool selected = StreamSample(localReservoir, lightIndex, uv, risRnd, targetPdf, 1.0f / blendedSourcePdf);
@@ -415,25 +353,10 @@ extern "C" __global__ void __closesthit__radiance()
             {
                 localSample = candidateSample;
             }
-
-            // DEBUG: Selection result
-            if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16 && i == 0) {
-                OPTIX_DEBUG_PRINT(selected);
-            }
         }
     }
     FinalizeResampling(localReservoir, 1.0, numMisSamples);
     localReservoir.M = 1;
-
-    // DEBUG: Final local reservoir
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(localReservoir.weightSum);
-        OPTIX_DEBUG_PRINT(localReservoir.targetPdf);
-        OPTIX_DEBUG_PRINT(localSample.lightType);
-        OPTIX_DEBUG_PRINT(localSample.radiance.x);
-        OPTIX_DEBUG_PRINT(localSample.radiance.y);
-        OPTIX_DEBUG_PRINT(localSample.radiance.z);
-    }
 
     // Sun
     DIReservoir sunLightReservoir = EmptyDIReservoir();
@@ -625,14 +548,6 @@ extern "C" __global__ void __closesthit__radiance()
     brdfReservoir.M = 1;
 
     // Merge samples
-    // DEBUG: Before combining reservoirs
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(localReservoir.weightSum);
-        OPTIX_DEBUG_PRINT(sunLightReservoir.weightSum);
-        OPTIX_DEBUG_PRINT(skyLightReservoir.weightSum);
-        OPTIX_DEBUG_PRINT(brdfReservoir.weightSum);
-    }
-
     CombineDIReservoirs(risReservoir, localReservoir, 0.5f, localReservoir.targetPdf);
     bool selectSunLight = CombineDIReservoirs(risReservoir, sunLightReservoir, rand(sysParam, randIdx), sunLightReservoir.targetPdf);
     bool selectSkyLight = CombineDIReservoirs(risReservoir, skyLightReservoir, rand(sysParam, randIdx), skyLightReservoir.targetPdf);
@@ -640,15 +555,6 @@ extern "C" __global__ void __closesthit__radiance()
 
     FinalizeResampling(risReservoir, 1.0f, 1.0f);
     risReservoir.M = 1;
-
-    // DEBUG: Selection results
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(selectSunLight);
-        OPTIX_DEBUG_PRINT(selectSkyLight);
-        OPTIX_DEBUG_PRINT(selectBrdf);
-        OPTIX_DEBUG_PRINT(risReservoir.weightSum);
-        OPTIX_DEBUG_PRINT(risReservoir.targetPdf);
-    }
 
     if (selectBrdf)
     {
@@ -665,14 +571,6 @@ extern "C" __global__ void __closesthit__radiance()
     else
     {
         lightSample = localSample;
-    }
-
-    // DEBUG: Final selected light sample
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(lightSample.lightType);
-        OPTIX_DEBUG_PRINT(lightSample.radiance.x);
-        OPTIX_DEBUG_PRINT(lightSample.radiance.y);
-        OPTIX_DEBUG_PRINT(lightSample.radiance.z);
     }
 
     // Initial visibility
@@ -912,26 +810,6 @@ extern "C" __global__ void __closesthit__radiance()
     // Shading
     DIReservoir shadingReservoir = enableReSTIR ? restirReservoir : risReservoir;
 
-    // DEBUG: Final contribution calculation + shadow ray details
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-        OPTIX_DEBUG_PRINT(lightSample.lightType);
-        OPTIX_DEBUG_PRINT(isLightVisible);
-        // DEBUG: Shadow ray parameters
-        OPTIX_DEBUG_PRINT(lightSample.position.x);
-        OPTIX_DEBUG_PRINT(lightSample.position.y);
-        OPTIX_DEBUG_PRINT(lightSample.position.z);
-        OPTIX_DEBUG_PRINT(surface.pos.x);
-        OPTIX_DEBUG_PRINT(surface.pos.y);
-        OPTIX_DEBUG_PRINT(surface.pos.z);
-        Float3 shadowRayDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
-        OPTIX_DEBUG_PRINT(shadowRayDir.x);
-        OPTIX_DEBUG_PRINT(shadowRayDir.y);
-        OPTIX_DEBUG_PRINT(shadowRayDir.z);
-        OPTIX_DEBUG_PRINT(rayData->radiance.x);
-        OPTIX_DEBUG_PRINT(rayData->radiance.y);
-        OPTIX_DEBUG_PRINT(rayData->radiance.z);
-    }
-
     if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(shadingReservoir))
     {
         if (isLightVisible)
@@ -950,31 +828,8 @@ extern "C" __global__ void __closesthit__radiance()
 
             Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
 
-            // DEBUG: Final contribution before adding
-            if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-                OPTIX_DEBUG_PRINT(shadowRayRadiance.x);
-                OPTIX_DEBUG_PRINT(shadowRayRadiance.y);
-                OPTIX_DEBUG_PRINT(shadowRayRadiance.z);
-                OPTIX_DEBUG_PRINT(cosTheta);
-                OPTIX_DEBUG_PRINT(lightSample.radiance.x);
-                OPTIX_DEBUG_PRINT(lightSample.radiance.y);
-                OPTIX_DEBUG_PRINT(lightSample.radiance.z);
-            }
-
             rayData->radiance += shadowRayRadiance;
-
-            // DEBUG: Final radiance after adding
-            if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-                OPTIX_DEBUG_PRINT(rayData->radiance.x);
-                OPTIX_DEBUG_PRINT(rayData->radiance.y);
-                OPTIX_DEBUG_PRINT(rayData->radiance.z);
-            }
         }
-    }
-
-    // DEBUG: Final check if no contribution was added
-    if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16 && lightSample.lightType == LightTypeInvalid) {
-        OPTIX_DEBUG_PRINT(999); // No valid light sample
     }
 
     // Store the reservoir

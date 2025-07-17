@@ -200,21 +200,34 @@ set_property(TARGET voxelgame PROPERTY CUDA_ARCHITECTURES 89)
 # target_compile_options(voxelgame PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G -rdc=true>)
 # set_property(TARGET voxelgame PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
-# Copy data files, PTX files, and DLLs to executable directory
-add_custom_command(TARGET voxelgame POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/data/models
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/data/textures
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/data/scene
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame>/ptx
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:voxelgame>/data/models
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:voxelgame>/data/textures
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:voxelgame>/data/scene
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PTX_DIR} $<TARGET_FILE_DIR:voxelgame>/ptx
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:voxelgame>/
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glfw/lib-vc2022/glfw3.dll $<TARGET_FILE_DIR:voxelgame>/
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glew/bin/Release/x64/glew32.dll $<TARGET_FILE_DIR:voxelgame>/
-    COMMENT "Copying data files, PTX files, and DLLs to executable directory"
-)
+# Function to copy data files, PTX files, and DLLs to target directory
+function(copy_game_data TARGET_NAME COPY_GLFW_GLEW)
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        # Create directories only if they don't exist
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/models
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/textures
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
+        # Copy directories only if files are different
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:${TARGET_NAME}>/data/models
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:${TARGET_NAME}>/data/textures
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${PTX_DIR} $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
+        # Copy NVTT DLL (needed by both targets)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:${TARGET_NAME}>/nvtt30200.dll
+    )
+
+    # Copy GLFW and GLEW DLLs only if requested (for main target only)
+    if(${COPY_GLFW_GLEW})
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glfw/lib-vc2022/glfw3.dll $<TARGET_FILE_DIR:${TARGET_NAME}>/glfw3.dll
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glew/bin/Release/x64/glew32.dll $<TARGET_FILE_DIR:${TARGET_NAME}>/glew32.dll
+        )
+    endif()
+endfunction()
+
+# Call the shared function for main target (with GLFW/GLEW)
+copy_game_data(voxelgame TRUE)
 
 # Offline renderer sources (excluding OpenGL/GLFW dependencies)
 set( OFFLINE_SOURCES
@@ -271,19 +284,8 @@ target_link_libraries( voxelgame_offline
 
 set_property(TARGET voxelgame_offline PROPERTY CUDA_ARCHITECTURES 89)
 
-# Copy data files, PTX files, and DLLs to executable directory
-add_custom_command(TARGET voxelgame_offline POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/data/models
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/data/textures
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/data/scene
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:voxelgame_offline>/ptx
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:voxelgame_offline>/data/models
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:voxelgame_offline>/data/textures
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:voxelgame_offline>/data/scene
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${PTX_DIR} $<TARGET_FILE_DIR:voxelgame_offline>/ptx
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:voxelgame_offline>/
-    COMMENT "Copying data files, PTX files, and DLLs to offline executable directory"
-)
+# Call the shared function for offline target (without GLFW/GLEW)
+copy_game_data(voxelgame_offline FALSE)
 
 # Separate include for stb_image_write.h since it's in renderer/ext/stb/
 target_include_directories( voxelgame_offline PRIVATE

@@ -28,38 +28,21 @@ namespace GLTFUtils {
                              std::vector<unsigned int>& indices,
                              std::vector<Float2>& texcoords,
                              const std::string& filename) {
-        std::cout << "[GLTFUtils] Starting to extract mesh from: " << filename << std::endl;
-
         tinygltf::Model model;
         tinygltf::TinyGLTF loader;
         std::string err;
         std::string warn;
 
-        std::cout << "[GLTFUtils] Attempting to load GLTF file..." << std::endl;
-
         bool ret = false;
         if (filename.find(".glb") != std::string::npos) {
-            std::cout << "[GLTFUtils] Loading as binary GLTF (.glb)" << std::endl;
             ret = loader.LoadBinaryFromFile(&model, &err, &warn, filename);
         } else {
-            std::cout << "[GLTFUtils] Loading as ASCII GLTF (.gltf)" << std::endl;
             ret = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
         }
 
-        if (!warn.empty()) {
-            std::cout << "[GLTFUtils] GLTF Warning: " << warn << std::endl;
-        }
-
-        if (!err.empty()) {
-            std::cerr << "[GLTFUtils] GLTF Error: " << err << std::endl;
-        }
-
         if (!ret) {
-            std::cerr << "[GLTFUtils] Failed to parse GLTF file: " << filename << std::endl;
             return false;
         }
-
-        std::cout << "[GLTFUtils] Successfully loaded GLTF file. Meshes: " << model.meshes.size() << std::endl;
 
         // Process each mesh
         for (const auto& mesh : model.meshes) {
@@ -148,24 +131,18 @@ namespace GLTFUtils {
                        unsigned int& attrSize,
                        unsigned int& indicesSize,
                        const std::string& filename) {
-        std::cout << "[GLTFUtils] Loading GLTF model from: " << filename << std::endl;
-
         // Extract mesh data from GLTF
         std::vector<Float3> vertices;
         std::vector<unsigned int> indices;
         std::vector<Float2> texcoords;
 
         if (!extractMeshFromGLTF(vertices, indices, texcoords, filename)) {
-            std::cout << "[GLTFUtils] Failed to extract mesh data from GLTF file: " << filename << std::endl;
             attrSize = 0;
             indicesSize = 0;
             *d_attr = nullptr;
             *d_indices = nullptr;
             return false;
         }
-
-        std::cout << "[GLTFUtils] Successfully extracted mesh data: " << vertices.size() << " vertices, "
-                  << indices.size() << " indices, " << texcoords.size() << " texcoords" << std::endl;
 
         // Build CPU-side vertex attributes array
         std::vector<VertexAttributes> finalVertices(vertices.size());
@@ -178,20 +155,14 @@ namespace GLTFUtils {
         indicesSize = static_cast<unsigned int>(indices.size());
 
         if (attrSize == 0) {
-            std::cout << "[GLTFUtils] No vertices found in GLTF file" << std::endl;
             *d_attr = nullptr;
             *d_indices = nullptr;
             return false;
         }
 
-        std::cout << "[GLTFUtils] Allocating GPU memory for " << attrSize << " vertices ("
-                  << (attrSize * sizeof(VertexAttributes)) << " bytes)" << std::endl;
-
         // Allocate device memory
         CUDA_CHECK(cudaMalloc((void**)d_attr, attrSize * sizeof(VertexAttributes)));
         CUDA_CHECK(cudaMalloc((void**)d_indices, indicesSize * sizeof(unsigned int)));
-
-        std::cout << "[GLTFUtils] GPU memory allocated successfully" << std::endl;
 
         // Copy CPU data to GPU
         CUDA_CHECK(cudaMemcpy(*d_attr,
@@ -203,8 +174,6 @@ namespace GLTFUtils {
                               indices.data(),
                               indicesSize * sizeof(unsigned int),
                               cudaMemcpyHostToDevice));
-
-        std::cout << "[GLTFUtils] Data copied to GPU successfully" << std::endl;
 
         return true;
     }

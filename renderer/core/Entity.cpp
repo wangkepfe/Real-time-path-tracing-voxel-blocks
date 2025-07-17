@@ -43,17 +43,7 @@ void EntityTransform::getTransformMatrix(float matrix[12]) const
 Entity::Entity(EntityType type, const EntityTransform& transform)
     : m_type(type), m_transform(transform)
 {
-    std::cout << "[Entity] Creating entity of type " << type << " at position ("
-              << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")"
-              << " with scale (" << transform.scale.x << ", " << transform.scale.y << ", " << transform.scale.z << ")" << std::endl;
-
-    bool success = loadGeometry();
-    if (success) {
-        std::cout << "[Entity] Successfully loaded geometry for entity type " << type
-                  << " - vertices: " << m_attributeSize << ", indices: " << m_indicesSize << std::endl;
-    } else {
-        std::cout << "[Entity] Failed to load geometry for entity type " << type << std::endl;
-    }
+    loadGeometry();
 }
 
 Entity::~Entity()
@@ -81,22 +71,12 @@ bool Entity::loadMinecraftCharacterGeometry()
     // Load Minecraft character from GLTF file
     const std::string gltfFile = "data/models/minecraft_char.gltf";
 
-    std::cout << "[Entity] Loading Minecraft character geometry from: " << gltfFile << std::endl;
-
     // Use the regular model loading function from ModelUtils
     loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
 
     if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0) {
-        std::cout << "[Entity] Successfully loaded Minecraft character from GLTF file " << gltfFile
-                  << " with " << m_attributeSize << " vertices and " << (m_indicesSize / 3) << " triangles." << std::endl;
-
-        // Log GPU pointers for debugging
-        std::cout << "[Entity] GPU vertex buffer address: " << m_d_attributes << std::endl;
-        std::cout << "[Entity] GPU index buffer address: " << m_d_indices << std::endl;
-
         return true;
     }
 
-    std::cerr << "[Entity] ERROR: Failed to load Minecraft character from GLTF file: " << gltfFile << std::endl;
     return false;
 }

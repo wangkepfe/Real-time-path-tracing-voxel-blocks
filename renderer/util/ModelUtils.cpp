@@ -30,19 +30,13 @@ void loadModel(VertexAttributes **d_attr,
                unsigned int &indicesSize,
                const std::string &filename)
 {
-    std::cout << "[ModelUtils] Loading model: " << filename << std::endl;
-
     // Check if this is a GLTF file and use appropriate loader
     bool isGLTF = GLTFUtils::isGLTFFile(filename);
-    std::cout << "[ModelUtils] isGLTFFile result: " << (isGLTF ? "true" : "false") << std::endl;
 
     if (isGLTF) {
-        std::cout << "[ModelUtils] Calling GLTFUtils::loadGLTFModel..." << std::endl;
         if (GLTFUtils::loadGLTFModel(d_attr, d_indices, attrSize, indicesSize, filename)) {
-            std::cout << "[ModelUtils] GLTF loading succeeded" << std::endl;
             return; // Successfully loaded GLTF file
         } else {
-            std::cerr << "[ModelUtils] Failed to load GLTF file: " << filename << std::endl;
             attrSize = 0;
             indicesSize = 0;
             *d_attr = nullptr;
@@ -50,8 +44,6 @@ void loadModel(VertexAttributes **d_attr,
             return;
         }
     }
-
-    std::cout << "[ModelUtils] Loading as OBJ file instead" << std::endl;
 
     // Load as OBJ file
     // 1) Temporary storage for reading .obj data

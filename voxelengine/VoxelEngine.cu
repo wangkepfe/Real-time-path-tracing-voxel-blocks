@@ -842,12 +842,9 @@ void VoxelEngine::update()
 
 void VoxelEngine::initEntities()
 {
-    std::cout << "[VoxelEngine] Initializing entities..." << std::endl;
-
     auto &scene = Scene::Get();
 
     // Clear any existing entities
-    std::cout << "[VoxelEngine] Clearing existing entities..." << std::endl;
     scene.clearEntities();
 
     // Create a hardcoded Minecraft character entity
@@ -873,33 +870,10 @@ void VoxelEngine::initEntities()
     Float3 normalizedDir = sceneCameraDir.normalize();
     transform.position = sceneCamera + normalizedDir * 6.0f;
 
-    std::cout << "[VoxelEngine] CENTERING minecraft character using scene camera data" << std::endl;
-    std::cout << "[VoxelEngine] Scene camera: (" << sceneCamera.x << ", " << sceneCamera.y << ", " << sceneCamera.z << ")" << std::endl;
-    std::cout << "[VoxelEngine] Scene camera dir: (" << sceneCameraDir.x << ", " << sceneCameraDir.y << ", " << sceneCameraDir.z << ")" << std::endl;
-    std::cout << "[VoxelEngine] Character distance from camera: 6.0 units" << std::endl;
-
     transform.rotation = Float3(0.0f, 0.0f, 0.0f);   // No rotation
     transform.scale = Float3(10.0f, 10.0f, 10.0f);   // Make it 10x larger for much better visibility
 
-    std::cout << "[VoxelEngine] Creating Minecraft character entity..." << std::endl;
-    std::cout << "[VoxelEngine] Current camera position: (" << cameraPos.x << ", " << cameraPos.y << ", " << cameraPos.z << ")" << std::endl;
-    std::cout << "[VoxelEngine] Current camera direction: (" << cameraDir.x << ", " << cameraDir.y << ", " << cameraDir.z << ")" << std::endl;
-    std::cout << "[VoxelEngine] Character position: (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
-    std::cout << "[VoxelEngine] Character rotation: (" << transform.rotation.x << ", " << transform.rotation.y << ", " << transform.rotation.z << ")" << std::endl;
-    std::cout << "[VoxelEngine] Character scale: (" << transform.scale.x << ", " << transform.scale.y << ", " << transform.scale.z << ")" << std::endl;
-
     auto minecraftEntity = std::make_unique<Entity>(EntityTypeMinecraftCharacter, transform);
 
-    if (minecraftEntity) {
-        std::cout << "[VoxelEngine] Minecraft character entity created successfully" << std::endl;
-        std::cout << "[VoxelEngine] Entity has " << minecraftEntity->getAttributeSize() << " vertices and "
-                  << minecraftEntity->getIndicesSize() << " indices" << std::endl;
-    } else {
-        std::cout << "[VoxelEngine] ERROR: Failed to create Minecraft character entity" << std::endl;
-    }
-
-    std::cout << "[VoxelEngine] Adding Minecraft character entity to scene..." << std::endl;
     scene.addEntity(std::move(minecraftEntity));
-
-    std::cout << "[VoxelEngine] Entity initialization complete. Total entities in scene: " << scene.getEntityCount() << std::endl;
 }
