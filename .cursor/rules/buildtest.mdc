@@ -5,5 +5,5 @@ alwaysApply: true
 ---
 At the end of task, build and test.
 Do not use other terminals.
-Build in /d/cmder/Real-time-path-tracing-voxel-blocks/build do "cmake --build . --config Release --parallel"
-Test in /d/cmder/Real-time-path-tracing-voxel-blocks/build/Release run voxelgame_offline.exe
+Build in the build folder do "cmake --build . --config Release --parallel"
+Test in build/Release run voxelgame_offline.exe

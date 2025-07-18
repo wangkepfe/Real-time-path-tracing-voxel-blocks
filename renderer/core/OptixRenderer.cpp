@@ -324,6 +324,7 @@ void OptixRenderer::update()
         // Uninstanced - recreate geometry for all chunks
         m_instances.clear(); // Clear all instances and rebuild them
         unsigned int instanceIndex = 0;
+        unsigned int baseSbtRecords = 0; // Track SBT records for entity offset calculation
 
         for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
@@ -368,6 +369,9 @@ void OptixRenderer::update()
                     instance.traversableHandle = blasHandle;
                     m_instances.push_back(instance);
 
+                    // Count this geometry for entity SBT offset calculation
+                    baseSbtRecords++;
+
                     // Shader binding table record hit group geometry
                     unsigned int sbtIndex = objectId * numTypesOfRays;
                     assert(sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size());
@@ -400,7 +404,12 @@ void OptixRenderer::update()
             }
         }
 
-                // Entities - add them to instances during reload
+        // Add instanced geometry records to the base count
+        baseSbtRecords += scene.instancedGeometryCount;
+
+
+
+        // Entities - add them to instances during reload
         // NOTE: Entities should keep their original SBT offsets from init() since SBT records are static
         for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
         {
@@ -419,47 +428,9 @@ void OptixRenderer::update()
                 instance.instanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
                 instance.visibilityMask = 255;
 
-                // Find the original SBT offset from init() by looking for existing instance
-                // The SBT offset should NOT be recalculated since SBT records are static
-                unsigned int originalSbtOffset = 0;
-                bool foundOriginalOffset = false;
-
-                // Search through existing instances to find the original entity SBT offset
-                for (const auto& existingInstance : m_instances) {
-                    if (existingInstance.instanceId == instance.instanceId) {
-                        originalSbtOffset = existingInstance.sbtOffset;
-                        foundOriginalOffset = true;
-                        break;
-                    }
-                }
-
-                // If we couldn't find it (shouldn't happen in normal operation),
-                // calculate it the same way as in init()
-                if (!foundOriginalOffset) {
-                    // This is the same calculation as in init() for entity SBT offsets
-                    // Count all SBT records before entities
-                    unsigned int priorSbtRecords = 0;
-
-                    // Count chunk records
-                    for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex) {
-                        for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId) {
-                            if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                                scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0) {
-                                priorSbtRecords++;
-                            }
-                        }
-                    }
-
-                    // Add instanced geometry records
-                    priorSbtRecords += scene.instancedGeometryCount;
-
-                    // Add previous entity records
-                    priorSbtRecords += static_cast<unsigned int>(entityIndex);
-
-                    originalSbtOffset = priorSbtRecords * numTypesOfRays;
-                }
-
-                instance.sbtOffset = originalSbtOffset;
+                // Calculate SBT offset using cached base + entity-specific offset
+                unsigned int entitySbtOffset = baseSbtRecords + static_cast<unsigned int>(entityIndex);
+                instance.sbtOffset = entitySbtOffset * numTypesOfRays;
                 instance.flags = OPTIX_INSTANCE_FLAG_NONE;
                 instance.traversableHandle = m_geometries[geometryIndex].gas; // Use the gas handle directly since we don't have a map for entities
                 m_instances.push_back(instance);
@@ -951,7 +922,6 @@ void OptixRenderer::init()
 
             // Advance sbtOffset for next entity
             currentSbtOffset += numTypesOfRays;
-        } else {
         }
     }
 
