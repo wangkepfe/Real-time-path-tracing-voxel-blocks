@@ -1,0 +1,8 @@
+# Scene Configuration File
+# Generated automatically
+
+camera:
+  position: [35.6184, 11.8733, 42.0387]
+  direction: [-0.321564, -0.0129988, -0.946799]
+  up: [0, 1, 0]
+  fov: 90

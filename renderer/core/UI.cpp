@@ -125,7 +125,7 @@ void UI::update()
 
     if (ImGui::CollapsingHeader("Scene Management", ImGuiTreeNodeFlags_None))
     {
-        static char sceneFileName[256] = "scene_export.yaml";
+        static char sceneFileName[256] = "data/scene/scene_export.yaml";
 
         ImGui::Text("Save Current Camera as YAML Scene");
         ImGui::InputText("Filename", sceneFileName, sizeof(sceneFileName));
@@ -145,7 +145,7 @@ void UI::update()
 
         ImGui::Separator();
 
-        static char loadFileName[256] = "scene_export.yaml";
+        static char loadFileName[256] = "data/scene/scene_export.yaml";
         ImGui::Text("Load YAML Scene");
         ImGui::InputText("Load File", loadFileName, sizeof(loadFileName));
 

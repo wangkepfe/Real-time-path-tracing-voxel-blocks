@@ -25,6 +25,7 @@ public:
     void update();
     void generateVoxels();
     void reload();
+    void initEntities();
 
     int totalNumUninstancedGeometries;
     int totalNumInstancedGeometries;

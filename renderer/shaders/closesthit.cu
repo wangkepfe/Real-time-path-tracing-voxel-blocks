@@ -330,6 +330,7 @@ extern "C" __global__ void __closesthit__radiance()
     // Local light
     DIReservoir localReservoir = EmptyDIReservoir();
     LightSample localSample = LightSample{};
+
     for (unsigned int i = 0; i < numLocalLightSamples; i++)
     {
         float sourcePdf;
@@ -586,6 +587,24 @@ extern "C" __global__ void __closesthit__radiance()
         UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
         Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
 
+        // DEBUG: Shadow ray parameters for minecraft character
+        if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
+            OPTIX_DEBUG_PRINT(shadowRayOrig.x);
+            OPTIX_DEBUG_PRINT(shadowRayOrig.y);
+            OPTIX_DEBUG_PRINT(shadowRayOrig.z);
+            OPTIX_DEBUG_PRINT(sampleDir.x);
+            OPTIX_DEBUG_PRINT(sampleDir.y);
+            OPTIX_DEBUG_PRINT(sampleDir.z);
+            OPTIX_DEBUG_PRINT(maxDistance);
+            OPTIX_DEBUG_PRINT(frontPos.x);
+            OPTIX_DEBUG_PRINT(frontPos.y);
+            OPTIX_DEBUG_PRINT(frontPos.z);
+            OPTIX_DEBUG_PRINT(backPos.x);
+            OPTIX_DEBUG_PRINT(backPos.y);
+            OPTIX_DEBUG_PRINT(backPos.z);
+            OPTIX_DEBUG_PRINT(surface.isThinfilm);
+        }
+
         optixTraverse(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
                       (float3)shadowRayOrig,
                       (float3)sampleDir,
@@ -790,6 +809,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     // Shading
     DIReservoir shadingReservoir = enableReSTIR ? restirReservoir : risReservoir;
+
     if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(shadingReservoir))
     {
         if (isLightVisible)

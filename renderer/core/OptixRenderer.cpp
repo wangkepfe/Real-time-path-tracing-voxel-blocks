@@ -399,6 +399,72 @@ void OptixRenderer::update()
                 instanceIds.insert(instanceId);
             }
         }
+
+                // Entities - add them to instances during reload
+        // NOTE: Entities should keep their original SBT offsets from init() since SBT records are static
+        for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+        {
+            Entity* entity = scene.getEntity(entityIndex);
+            if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+            {
+                // Calculate the correct geometry index for entities
+                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
+
+                OptixInstance instance = {};
+                float transformMatrix[12];
+                entity->getTransform().getTransformMatrix(transformMatrix);
+                memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+
+                // Use consistent entity instance ID
+                instance.instanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
+                instance.visibilityMask = 255;
+
+                // Find the original SBT offset from init() by looking for existing instance
+                // The SBT offset should NOT be recalculated since SBT records are static
+                unsigned int originalSbtOffset = 0;
+                bool foundOriginalOffset = false;
+
+                // Search through existing instances to find the original entity SBT offset
+                for (const auto& existingInstance : m_instances) {
+                    if (existingInstance.instanceId == instance.instanceId) {
+                        originalSbtOffset = existingInstance.sbtOffset;
+                        foundOriginalOffset = true;
+                        break;
+                    }
+                }
+
+                // If we couldn't find it (shouldn't happen in normal operation),
+                // calculate it the same way as in init()
+                if (!foundOriginalOffset) {
+                    // This is the same calculation as in init() for entity SBT offsets
+                    // Count all SBT records before entities
+                    unsigned int priorSbtRecords = 0;
+
+                    // Count chunk records
+                    for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex) {
+                        for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId) {
+                            if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
+                                scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0) {
+                                priorSbtRecords++;
+                            }
+                        }
+                    }
+
+                    // Add instanced geometry records
+                    priorSbtRecords += scene.instancedGeometryCount;
+
+                    // Add previous entity records
+                    priorSbtRecords += static_cast<unsigned int>(entityIndex);
+
+                    originalSbtOffset = priorSbtRecords * numTypesOfRays;
+                }
+
+                instance.sbtOffset = originalSbtOffset;
+                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                instance.traversableHandle = m_geometries[geometryIndex].gas; // Use the gas handle directly since we don't have a map for entities
+                m_instances.push_back(instance);
+            }
+        }
     }
     else
     {
@@ -680,9 +746,9 @@ void OptixRenderer::init()
         {
             MaterialParameter parameter{};
             parameter.uvScale = 2.5f;
-            parameter.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
+            parameter.textureAlbedo = textureManager.GetTexture("data/textures/" + textureFile + "_albedo.png");
+            parameter.textureNormal = textureManager.GetTexture("data/textures/" + textureFile + "_normal.png");
+            parameter.textureRoughness = textureManager.GetTexture("data/textures/" + textureFile + "_rough.png");
             parameter.useWorldGridUV = true;
             m_materialParameters.push_back(parameter);
         }
@@ -730,6 +796,22 @@ void OptixRenderer::init()
             parameter.isEmissive = true;
             m_materialParameters.push_back(parameter);
         }
+
+        // Store the index where entity materials start
+        unsigned int entityMaterialStartIndex = m_materialParameters.size();
+
+                // Entity materials
+        // Minecraft Character material
+        {
+            MaterialParameter parameter{};
+            parameter.albedo = Float3(1.0f, 0.5f, 0.0f);
+            parameter.materialId = entityMaterialStartIndex + EntityTypeMinecraftCharacter;
+
+            m_materialParameters.push_back(parameter);
+        }
+
+        // Store entity material mapping for easy access
+        m_entityMaterialStartIndex = entityMaterialStartIndex;
     }
 
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
@@ -833,6 +915,44 @@ void OptixRenderer::init()
 
         // Advance sbtOffset for next instanced geometry type
         currentSbtOffset += numTypesOfRays;
+    }
+
+    // Create entity geometry BLAS
+    for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+    {
+        Entity* entity = scene.getEntity(entityIndex);
+        if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+        {
+
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                m_api, m_context, Backend::Get().getCudaStream(),
+                geometry,
+                entity->getAttributes(),
+                entity->getIndices(),
+                entity->getAttributeSize(),
+                entity->getIndicesSize());
+
+            m_geometries.push_back(geometry);
+
+            // Create an instance for the entity
+            OptixInstance instance = {};
+            float transformMatrix[12];
+            entity->getTransform().getTransformMatrix(transformMatrix);
+            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+
+            // Use a unique instance ID for entities to avoid conflicts with block instances
+            instance.instanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
+            instance.visibilityMask = 255;
+            instance.sbtOffset = currentSbtOffset;
+            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+            instance.traversableHandle = blasHandle;
+            m_instances.push_back(instance);
+
+            // Advance sbtOffset for next entity
+            currentSbtOffset += numTypesOfRays;
+        } else {
+        }
     }
 
     // Build BVH
@@ -1106,6 +1226,8 @@ void OptixRenderer::init()
         }
         // Add space for instanced objects
         totalInstances += scene.instancedGeometryCount;
+        // Add space for entities
+        totalInstances += static_cast<unsigned int>(scene.getEntityCount());
 
         m_sbtRecordGeometryInstanceData.resize(totalInstances * numTypesOfRays);
 
@@ -1166,6 +1288,39 @@ void OptixRenderer::init()
                 m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
                 m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
                 sbtRecordIndex++;
+            }
+        }
+
+        // Setup SBT records for entities
+        for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+        {
+            Entity* entity = scene.getEntity(entityIndex);
+            if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+            {
+                // Calculate the correct geometry index for entities
+                // Entities are stored after all chunk-based and instanced geometries
+                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
+
+                for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                {
+                    if (rayType == 0)
+                    {
+                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                    }
+                    else
+                    {
+                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                    }
+
+                    assert(geometryIndex < m_geometries.size());
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+                    // Use the correct material index for entities from the material array
+                    unsigned int entityMaterialIndex = m_entityMaterialStartIndex + static_cast<unsigned int>(entity->getType());
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = entityMaterialIndex;
+
+                    sbtRecordIndex++;
+                }
             }
         }
 

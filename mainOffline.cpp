@@ -29,15 +29,15 @@ int main(int argc, char *argv[])
     int width = 3840;
     int height = 2160;
     std::string outputPrefix = "offline_render";
-    std::string sceneFile = "scene_export.yaml";
+    std::string sceneFile = "data/scene/scene_export.yaml";
     bool testCanonical = false;
     bool updateCanonical = false;
     std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
     std::string runComment = "default run";
 
-    // Hardcoded frame configuration
-    constexpr int totalFrames = 64;
-    const std::vector<int> savedFrames = {1, 4, 16, 64}; // 1-indexed frame numbers to save
+    // Frame configuration - can be overridden via command line
+    int totalFrames = 64;
+    std::vector<int> savedFrames = {1, 4, 16, 64}; // 1-indexed frame numbers to save
 
     for (int i = 1; i < argc; i++)
     {
@@ -75,6 +75,13 @@ int main(int argc, char *argv[])
         {
             runComment = argv[++i];
         }
+        else if (arg == "--frames" && i + 1 < argc)
+        {
+            totalFrames = std::atoi(argv[++i]);
+            if (totalFrames == 1) {
+                savedFrames = {1}; // Only save frame 1 for single frame render
+            }
+        }
         else if (arg == "--help" || arg == "-h")
         {
             std::cout << "Offline Voxel Path Tracer\n";
@@ -88,6 +95,7 @@ int main(int argc, char *argv[])
             std::cout << "  --update-canonical   Update the canonical reference image\n";
             std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
             std::cout << "  --comment <text>     Comment for performance report (default: default run)\n";
+            std::cout << "  --frames <int>       Number of frames to render (default: 64, use 1 for single frame)\n";
             std::cout << "  --help, -h           Show this help message\n";
             return 0;
         }

@@ -13,8 +13,10 @@
 #include <functional>
 #include <unordered_set>
 #include <set>
+#include <memory>
 
 #include "shaders/SystemParameter.h"
+#include "Entity.h"
 
 #include "util/DebugUtils.h"
 
@@ -79,6 +81,9 @@ public:
     InstanceLightMapping *d_instanceLightMapping;
     unsigned int numInstancedLightMesh;
 
+    // Entity management
+    std::vector<std::unique_ptr<Entity>> m_entities;
+
     // Initialize chunk-based geometry buffers
     void initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects);
 
@@ -90,6 +95,14 @@ public:
     unsigned int** getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId);
     unsigned int& getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId);
     unsigned int& getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId);
+
+    // Entity management functions
+    void addEntity(std::unique_ptr<Entity> entity);
+    void removeEntity(size_t index);
+    void clearEntities();
+    size_t getEntityCount() const { return m_entities.size(); }
+    Entity* getEntity(size_t index) { return index < m_entities.size() ? m_entities[index].get() : nullptr; }
+    const std::vector<std::unique_ptr<Entity>>& getEntities() const { return m_entities; }
 
     static OptixTraversableHandle CreateGeometry(
         OptixFunctionTable &api,

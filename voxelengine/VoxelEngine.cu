@@ -484,6 +484,9 @@ void VoxelEngine::init()
     // Init and update instanced meshes
     initInstanceGeometry();
     updateInstances();
+
+    // Initialize entities
+    initEntities();
 }
 
 void VoxelEngine::reload()
@@ -835,4 +838,42 @@ void VoxelEngine::update()
             }
         }
     }
+}
+
+void VoxelEngine::initEntities()
+{
+    auto &scene = Scene::Get();
+
+    // Clear any existing entities
+    scene.clearEntities();
+
+    // Create a hardcoded Minecraft character entity
+    // Position it in front of the current camera for guaranteed visibility
+    EntityTransform transform;
+
+    // Get current camera position and direction
+    auto &camera = RenderCamera::Get().camera;
+    Float3 cameraPos = camera.pos;
+    Float3 cameraDir = camera.dir;
+
+    // Check if camera values are valid (not NaN, not zero vector)
+    bool validCameraPos = !isnan(cameraPos.x) && !isnan(cameraPos.y) && !isnan(cameraPos.z);
+    bool validCameraDir = !isnan(cameraDir.x) && !isnan(cameraDir.y) && !isnan(cameraDir.z) &&
+                         (cameraDir.x != 0.0f || cameraDir.y != 0.0f || cameraDir.z != 0.0f);
+
+    // CENTER minecraft character for debugging based on scene camera
+    // Camera from scene_export.yaml: pos=[35.6184, 11.8733, 42.0387], dir=[-0.321564, -0.0129988, -0.946799]
+    Float3 sceneCamera = Float3(35.6184f, 11.8733f, 42.0387f);
+    Float3 sceneCameraDir = Float3(-0.321564f, -0.0129988f, -0.946799f);
+
+    // Place minecraft character 6 units in front of scene camera for guaranteed center visibility
+    Float3 normalizedDir = sceneCameraDir.normalize();
+    transform.position = sceneCamera + normalizedDir * 6.0f;
+
+    transform.rotation = Float3(0.0f, 0.0f, 0.0f);   // No rotation
+    transform.scale = Float3(10.0f, 10.0f, 10.0f);   // Make it 10x larger for much better visibility
+
+    auto minecraftEntity = std::make_unique<Entity>(EntityTypeMinecraftCharacter, transform);
+
+    scene.addEntity(std::move(minecraftEntity));
 }

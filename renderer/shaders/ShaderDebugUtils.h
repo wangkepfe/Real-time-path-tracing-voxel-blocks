@@ -3,6 +3,11 @@
 #include <optix.h>
 #include "LinearMath.h"
 
+// Debug control macro - define this to enable shader debug logging
+#ifndef ENABLE_SHADER_DEBUG
+#define ENABLE_SHADER_DEBUG 0
+#endif
+
 #ifdef __CUDA_ARCH__
 
 #define COMMA ,
@@ -11,13 +16,23 @@
 #define OPTIX_LEFT_HALF_SCREEN() (optixGetLaunchIndex().x < optixGetLaunchDimensions().x * 0.5f)
 #define OPTIX_CENTER_PIXEL() (optixGetLaunchIndex().x == optixGetLaunchDimensions().x * 0.5f) && (optixGetLaunchIndex().y == optixGetLaunchDimensions().y * 0.5f)
 #define OPTIX_CENTER_BLOCK() (optixGetLaunchIndex().x >= optixGetLaunchDimensions().x * 0.5f - 8) && (optixGetLaunchIndex().x < optixGetLaunchDimensions().x * 0.5f + 8) && (optixGetLaunchIndex().y >= optixGetLaunchDimensions().y * 0.5f - 8) && (optixGetLaunchIndex().y < optixGetLaunchDimensions().y * 0.5f + 8)
+
+#if ENABLE_SHADER_DEBUG
 #define OPTIX_DEBUG_PRINT(__VALUE__) OptixDebugPrint(__FILE__, __LINE__, #__VALUE__, __VALUE__);
+#else
+#define OPTIX_DEBUG_PRINT(__VALUE__)
+#endif
 
 // For CUDA
 #define CUDA_LEFT_HALF_SCREEN() (blockIdx.x * blockDim.x + threadIdx.x < gridDim.x * blockDim.x * 0.5f)
 #define CUDA_CENTER_PIXEL() (blockIdx.x * blockDim.x + threadIdx.x == gridDim.x * blockDim.x * 0.5f && blockIdx.y * blockDim.y + threadIdx.y == gridDim.y * blockDim.y * 0.5f)
 #define CUDA_PIXEL(__U__, __V__) (blockIdx.x * blockDim.x + threadIdx.x == gridDim.x * blockDim.x * __U__ && blockIdx.y * blockDim.y + threadIdx.y == gridDim.y * blockDim.y * __V__)
+
+#if ENABLE_SHADER_DEBUG
 #define DEBUG_PRINT(__VALUE__) CudaDebugPrint(__FILE__, __LINE__, #__VALUE__, __VALUE__);
+#else
+#define DEBUG_PRINT(__VALUE__)
+#endif
 
 // Implementations
 #define OPTIX_DEBUG_PRINT_IMPL(__ARG__, __PRINT_STR__, __PRINT_ARG__)                                                                                                      \

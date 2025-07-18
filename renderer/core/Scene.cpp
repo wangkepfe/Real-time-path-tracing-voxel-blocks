@@ -149,3 +149,25 @@ OptixTraversableHandle Scene::CreateGeometry(
 
     return traversableHandle;
 }
+
+// Entity management functions
+void Scene::addEntity(std::unique_ptr<Entity> entity)
+{
+    m_entities.push_back(std::move(entity));
+    needSceneUpdate = true;
+}
+
+void Scene::removeEntity(size_t index)
+{
+    if (index < m_entities.size())
+    {
+        m_entities.erase(m_entities.begin() + index);
+        needSceneUpdate = true;
+    }
+}
+
+void Scene::clearEntities()
+{
+    m_entities.clear();
+    needSceneUpdate = true;
+}
