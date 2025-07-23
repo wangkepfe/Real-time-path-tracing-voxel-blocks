@@ -165,6 +165,9 @@ void OptixRenderer::render()
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
 
+    // Update animated entities and rebuild their BLAS if needed
+    updateAnimatedEntities(backend.getCudaStream(), m_systemParameter.timeInSecond);
+
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
@@ -179,6 +182,174 @@ void OptixRenderer::render()
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(MaterialParameterBuffer), bufferManager.GetBuffer2D(MaterialParameterBuffer), bufferManager.GetBuffer2D(PrevMaterialParameterBuffer));
+}
+
+void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime)
+{
+    static int optixUpdateCount = 0;
+    optixUpdateCount++;
+
+    auto &scene = Scene::Get();
+    constexpr int numTypesOfRays = 2;
+    bool needBVHRebuild = false;
+
+    // Calculate delta time for animation updates
+    static float lastTime = -1.0f;
+    float deltaTime;
+
+    if (GlobalSettings::IsOfflineMode())
+    {
+        // In offline mode, use fixed timestep for consistent animation
+        static int frameCounter = 0;
+        frameCounter++;
+
+        const float targetFPS = 30.0f; // 30 FPS for smooth animation
+        deltaTime = 1.0f / targetFPS;
+
+                // Fixed timestep for consistent offline animation
+    }
+    else
+    {
+        // Real-time mode - use actual time differences
+        if (lastTime < 0.0f)
+        {
+            deltaTime = 1.0f / 60.0f; // Default for first frame
+        }
+        else
+        {
+            deltaTime = currentTime - lastTime;
+        }
+        lastTime = currentTime;
+    }
+
+        // Animation update system for OptiX renderer
+
+    // Update each animated entity
+    for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+    {
+        Entity* entity = scene.getEntity(entityIndex);
+        if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+        {
+                        // Processing animated entity
+
+            // Update entity animation
+            entity->update(deltaTime);
+
+            // Check if this entity has animations that require geometry updates
+            if (entity->hasAnimation())
+                        {
+                // Calculate the correct geometry index for entities
+                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
+
+                                                if (geometryIndex < m_geometries.size())
+                {
+                    GeometryData &geometry = m_geometries[geometryIndex];
+
+                    // Validate entity data before BLAS update
+                    if (!entity->getAttributes() || !entity->getIndices() || entity->getAttributeSize() == 0 || geometry.gas == 0) {
+                        continue;
+                    }
+
+                    // Update the BLAS with new animated vertices (much faster than recreation)
+                    OptixTraversableHandle blasHandle = Scene::UpdateGeometry(
+                        m_api, m_context, cudaStream,
+                        geometry,
+                        entity->getAttributes(),
+                        entity->getIndices(),
+                        entity->getAttributeSize(),
+                        entity->getIndicesSize());
+
+                    // Update the instance with the new BLAS handle
+                    unsigned int targetInstanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
+                    for (auto &instance : m_instances)
+                    {
+                        if (instance.instanceId == targetInstanceId)
+                        {
+                            instance.traversableHandle = blasHandle;
+
+                            // Update transform matrix in case entity moved
+                            float transformMatrix[12];
+                            entity->getTransform().getTransformMatrix(transformMatrix);
+                            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+
+                            needBVHRebuild = true;
+                            break;
+                        }
+                    }
+
+                    // Update SBT records for the animated entity
+                    // Calculate SBT offset for this entity
+                    unsigned int entitySbtOffset = (scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex)) * numTypesOfRays;
+                    if (entitySbtOffset + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size())
+                    {
+                        for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                        {
+                            unsigned int sbtIndex = entitySbtOffset + rayType;
+                            m_sbtRecordGeometryInstanceData[sbtIndex].data.indices = (Int3 *)geometry.indices;
+                            m_sbtRecordGeometryInstanceData[sbtIndex].data.attributes = (VertexAttributes *)geometry.attributes;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Rebuild top-level BVH if any animated entities were updated
+    if (needBVHRebuild)
+    {
+        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+
+        m_systemParameter.prevTopObject = m_systemParameter.topObject;
+
+        int nextIndex = (m_currentIasIdx + 1) % 2;
+        if (m_d_ias[nextIndex] != 0)
+        {
+            CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
+        }
+
+        // Build the new BVH in the inactive slot
+        CUdeviceptr d_instances;
+        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                                   cudaMemcpyHostToDevice, cudaStream));
+
+        OptixBuildInput instanceInput = {};
+        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+        instanceInput.instanceArray.instances = d_instances;
+        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+
+        OptixAccelBuildOptions accelBuildOptions = {};
+        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+        OptixAccelBufferSizes iasBufferSizes = {};
+        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+
+        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
+
+        CUdeviceptr d_tmp;
+        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+
+        // Build the acceleration structure into the new buffer
+        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
+                                          &accelBuildOptions, &instanceInput, 1,
+                                          d_tmp, iasBufferSizes.tempSizeInBytes,
+                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
+                                          &m_systemParameter.topObject, nullptr, 0));
+
+        // Clean up temporary allocations
+        CUDA_CHECK(cudaFree((void *)d_tmp));
+        CUDA_CHECK(cudaFree((void *)d_instances));
+
+        // Swap the buffer index
+        m_currentIasIdx = nextIndex;
+
+        // Upload updated SBT records
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
+                                   sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
+                                   cudaMemcpyHostToDevice, cudaStream));
+    }
 }
 
 #ifdef _WIN32
@@ -909,7 +1080,8 @@ void OptixRenderer::init()
                 entity->getAttributes(),
                 entity->getIndices(),
                 entity->getAttributeSize(),
-                entity->getIndicesSize());
+                entity->getIndicesSize(),
+                true); // Allow updates for animated entities
 
             m_geometries.push_back(geometry);
 

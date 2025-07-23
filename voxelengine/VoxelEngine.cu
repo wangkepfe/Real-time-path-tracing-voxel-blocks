@@ -9,6 +9,12 @@
 #include "util/ModelUtils.h"
 #include "shaders/ShaderDebugUtils.h"
 
+#ifndef OFFLINE_MODE
+#include <GLFW/glfw3.h>
+#else
+#include <chrono>
+#endif
+
 // Helper function: applies a 3x4 transform (stored as 12 floats in row-major order)
 // to a given 3D position.
 __device__ inline Float3 applyTransform(const Float3 &v, const float *t)
@@ -533,6 +539,7 @@ void VoxelEngine::reload()
 void VoxelEngine::update()
 {
     auto &camera = RenderCamera::Get().camera;
+    auto &scene = Scene::Get();
     Ray ray{camera.pos, camera.dir};
 
     bool hasSpaceToCreate = false;
@@ -540,6 +547,42 @@ void VoxelEngine::update()
     Int3 createPos(-1, -1, -1);
     Int3 deletePos(-1, -1, -1);
     int deleteBlockId = -1;
+
+    // Update all animated entities
+    static float lastTime = -1.0f;
+    float currentTime;
+    float deltaTime;
+
+#ifndef OFFLINE_MODE
+    currentTime = static_cast<float>(glfwGetTime()); // Using GLFW time for real-time mode
+
+    if (lastTime < 0.0f)
+    {
+        deltaTime = 1.0f / 60.0f; // Default for first frame
+    }
+    else
+    {
+        deltaTime = currentTime - lastTime;
+    }
+    lastTime = currentTime;
+#else
+    // Using fixed timestep for offline mode to ensure consistent animation
+    static int voxelFrameCounter = 0;
+    voxelFrameCounter++;
+
+        const float targetFPS = 30.0f; // 30 FPS for smooth animation
+    deltaTime = 1.0f / targetFPS;
+    currentTime = voxelFrameCounter * deltaTime; // Simulated time progression
+#endif
+
+    for (size_t i = 0; i < scene.getEntityCount(); ++i)
+    {
+        Entity* entity = scene.getEntity(i);
+        if (entity)
+        {
+            entity->update(deltaTime);
+        }
+    }
 
     cudaDeviceSynchronize();
 

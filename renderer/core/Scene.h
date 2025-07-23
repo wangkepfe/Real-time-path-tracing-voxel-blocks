@@ -112,6 +112,17 @@ public:
         VertexAttributes *d_attributes,
         unsigned int *d_indices,
         unsigned int attributeSize,
+        unsigned int indicesSize,
+        bool allowUpdate = false);
+
+    static OptixTraversableHandle UpdateGeometry(
+        OptixFunctionTable &api,
+        OptixDeviceContext &context,
+        CUstream cudaStream,
+        GeometryData &geometry,
+        VertexAttributes *d_attributes,
+        unsigned int *d_indices,
+        unsigned int attributeSize,
         unsigned int indicesSize);
 
 private:

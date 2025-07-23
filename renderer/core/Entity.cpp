@@ -1,9 +1,12 @@
 #include "Entity.h"
 #include "../util/DebugUtils.h"
 #include "../util/ModelUtils.h"
+#include "../util/GLTFUtils.h"
+#include "../shaders/VertexSkinning.h"
 #include <iostream>
 #include <cmath>
 #include <cuda_runtime.h>
+#include <algorithm>
 
 void EntityTransform::getTransformMatrix(float matrix[12]) const
 {
@@ -50,6 +53,14 @@ Entity::~Entity()
 {
     // Note: m_d_attributes and m_d_indices are owned and freed by OptixRenderer
     // through the m_geometries array. Do not free them here to avoid double-free.
+
+    // Free original vertices for animation (these are owned by Entity)
+    if (m_d_originalAttributes)
+    {
+        CUDA_CHECK(cudaFree(m_d_originalAttributes));
+        m_d_originalAttributes = nullptr;
+    }
+
     m_d_attributes = nullptr;
     m_d_indices = nullptr;
 }
@@ -66,16 +77,130 @@ bool Entity::loadGeometry()
     }
 }
 
+void Entity::update(float deltaTime)
+{
+    static int updateCount = 0;
+    updateCount++;
+
+    assert(m_animationManager != nullptr);
+
+    // Update animation
+    m_animationManager->update(deltaTime);
+
+    // Apply vertex skinning if we have original vertices
+    if (m_d_originalAttributes && m_d_attributes && m_attributeSize > 0)
+    {
+        // Validate pointers
+        if (!m_d_originalAttributes || !m_d_attributes) {
+            return;
+        }
+
+        // Get skinning data from animation manager's skeleton (which has the GPU memory)
+        SkinningData skinningData;
+        Skeleton* animSkeleton = m_animationManager->getSkeleton();
+        if (!animSkeleton) {
+            return;
+        }
+
+        skinningData.jointMatrices = animSkeleton->getDeviceJointMatrices();
+        skinningData.numJoints = static_cast<int>(animSkeleton->joints.size());
+        skinningData.enabled = true;
+
+        // Validate joint matrix pointer
+        if (!skinningData.jointMatrices)
+        {
+            return;
+        }
+
+        // Apply vertex skinning
+        applySkinningToVertices(m_d_attributes, m_d_originalAttributes,
+                                m_attributeSize, skinningData);
+    }
+}
+
+void Entity::playAnimation(const std::string& animationName, bool loop)
+{
+    assert(m_animationManager != nullptr);
+
+    // Find animation by name
+    for (size_t i = 0; i < m_animationClips.size(); ++i)
+    {
+        if (m_animationClips[i].name == animationName)
+        {
+            m_animationManager->playAnimation(static_cast<int>(i), loop);
+            return;
+        }
+    }
+}
+
+void Entity::playAnimation(int clipIndex, bool loop)
+{
+    assert(m_animationManager != nullptr);
+
+    m_animationManager->playAnimation(clipIndex, loop);
+}
+
+void Entity::stopAnimation()
+{
+    assert(m_animationManager != nullptr);
+
+    m_animationManager->stopAnimation();
+}
+
+void Entity::setAnimationSpeed(float speed)
+{
+    assert(m_animationManager != nullptr);
+
+    m_animationManager->setPlaybackSpeed(speed);
+}
+
 bool Entity::loadMinecraftCharacterGeometry()
 {
-    // Load Minecraft 1.8+ character with tessellated mesh from GLTF file
+    // Load Minecraft 1.8+ character with tessellated mesh from GLTF file with animation support
     const std::string gltfFile = "data/models/character-pink-smoothie.gltf";
 
-    // Use the regular model loading function from ModelUtils
-    loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
+    std::cout << "Loading animated Minecraft character from: " << gltfFile << std::endl;
 
-    if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0) {
+    // Use the new animated GLTF loader
+    if (GLTFUtils::loadAnimatedGLTFModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize,
+                                         m_skeleton, m_animationClips, gltfFile))
+    {
+        std::cout << "Successfully loaded animated character with " << m_animationClips.size() << " animations" << std::endl;
+
+        // Allocate and copy original vertices for animation skinning
+        const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
+        CUDA_CHECK(cudaMalloc((void**)&m_d_originalAttributes, vertexBufferSize));
+        CUDA_CHECK(cudaMemcpy(m_d_originalAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
+
+        // Create and initialize animation manager
+        m_animationManager = std::make_unique<AnimationManager>();
+        m_animationManager->setSkeleton(m_skeleton);
+
+        // Add all animation clips to the manager
+        for (const auto& clip : m_animationClips)
+        {
+            m_animationManager->addAnimationClip(clip);
+        }
+
+        // Start playing the first animation if available
+        if (!m_animationClips.empty())
+        {
+            std::cout << "Starting animation: " << m_animationClips[0].name << std::endl;
+            m_animationManager->playAnimation(0, true); // Play first animation looped
+        }
+
         return true;
+    }
+    else
+    {
+        std::cerr << "Failed to load animated GLTF model, falling back to static model" << std::endl;
+
+        // Fallback to regular model loading
+        loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
+
+        if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0) {
+            return true;
+        }
     }
 
     return false;

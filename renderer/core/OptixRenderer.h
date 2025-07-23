@@ -45,6 +45,8 @@ public:
 private:
     OptixRenderer() {}
 
+    void updateAnimatedEntities(CUstream cudaStream, float currentTime);
+
     int m_width;
     int m_height;
 

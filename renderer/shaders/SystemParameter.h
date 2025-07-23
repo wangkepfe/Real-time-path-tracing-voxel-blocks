@@ -102,6 +102,8 @@ struct VertexAttributes
 {
     Float3 vertex;
     Float2 texcoord;
+    Int4 jointIndices;    // 4 joint indices for skeletal animation
+    Float4 jointWeights;  // 4 joint weights for skeletal animation
 };
 
 // SBT Record data for the hit group.

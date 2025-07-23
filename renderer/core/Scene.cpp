@@ -86,7 +86,8 @@ OptixTraversableHandle Scene::CreateGeometry(
     VertexAttributes *d_attributes,
     unsigned int *d_indices,
     unsigned int attributeSize,
-    unsigned int indicesSize)
+    unsigned int indicesSize,
+    bool allowUpdate)
 {
     const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributeSize;
     const size_t indicesSizeInBytes = sizeof(unsigned int) * indicesSize;
@@ -113,7 +114,8 @@ OptixTraversableHandle Scene::CreateGeometry(
 
     OptixAccelBuildOptions accelBuildOptions = {};
 
-    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+    // Set build flags based on whether updates are allowed
+    accelBuildOptions.buildFlags = allowUpdate ? OPTIX_BUILD_FLAG_ALLOW_UPDATE : OPTIX_BUILD_FLAG_NONE;
     accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
     OptixAccelBufferSizes accelBufferSizes;
@@ -146,6 +148,78 @@ OptixTraversableHandle Scene::CreateGeometry(
     geometry.numAttributes = attributeSize;
     geometry.numIndices = indicesSize;
     geometry.gas = d_gas;
+
+    return traversableHandle;
+}
+
+OptixTraversableHandle Scene::UpdateGeometry(
+    OptixFunctionTable &api,
+    OptixDeviceContext &context,
+    CUstream cudaStream,
+    GeometryData &geometry,
+    VertexAttributes *d_attributes,
+    unsigned int *d_indices,
+    unsigned int attributeSize,
+    unsigned int indicesSize)
+{
+    // Validate inputs
+    if (!d_attributes || !d_indices || attributeSize == 0 || indicesSize == 0 || geometry.gas == 0) {
+        return 0;
+    }
+
+    const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributeSize;
+    const size_t indicesSizeInBytes = sizeof(unsigned int) * indicesSize;
+
+    OptixBuildInput triangleInput = {};
+
+    triangleInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+
+    triangleInput.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
+    triangleInput.triangleArray.vertexStrideInBytes = sizeof(VertexAttributes);
+    triangleInput.triangleArray.numVertices = attributeSize;
+    triangleInput.triangleArray.vertexBuffers = (const CUdeviceptr *)(&d_attributes);
+
+    triangleInput.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+    triangleInput.triangleArray.indexStrideInBytes = sizeof(unsigned int) * 3;
+
+    triangleInput.triangleArray.numIndexTriplets = indicesSize / 3;
+    triangleInput.triangleArray.indexBuffer = (CUdeviceptr)d_indices;
+
+    unsigned int triangleInputFlags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+
+    triangleInput.triangleArray.flags = triangleInputFlags;
+    triangleInput.triangleArray.numSbtRecords = 1;
+
+    OptixAccelBuildOptions accelBuildOptions = {};
+
+    // Use update operation for existing BLAS
+    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_UPDATE;
+
+        OptixAccelBufferSizes accelBufferSizes;
+
+    OPTIX_CHECK(api.optixAccelComputeMemoryUsage(context, &accelBuildOptions, &triangleInput, 1, &accelBufferSizes));
+
+    CUdeviceptr d_tmp;
+    CUDA_CHECK(cudaMalloc((void **)&d_tmp, accelBufferSizes.tempUpdateSizeInBytes));
+
+    OptixTraversableHandle traversableHandle = 0; // This is the GAS handle which gets returned.
+
+    OPTIX_CHECK(api.optixAccelBuild(context, cudaStream,
+                                    &accelBuildOptions, &triangleInput, 1,
+                                    d_tmp, accelBufferSizes.tempUpdateSizeInBytes,
+                                    geometry.gas, accelBufferSizes.outputSizeInBytes,
+                                    &traversableHandle, nullptr, 0));
+
+    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+
+    CUDA_CHECK(cudaFree((void *)d_tmp));
+
+    // Update the GeometryData
+    geometry.indices = d_indices;
+    geometry.attributes = d_attributes;
+    geometry.numAttributes = attributeSize;
+    geometry.numIndices = indicesSize;
 
     return traversableHandle;
 }

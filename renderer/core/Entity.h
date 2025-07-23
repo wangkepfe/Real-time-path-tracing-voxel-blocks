@@ -2,8 +2,10 @@
 
 #include "../shaders/LinearMath.h"
 #include "../shaders/SystemParameter.h"
+#include "../animation/Animation.h"
 #include <string>
 #include <vector>
+#include <memory>
 
 // Entity type enumeration - separate from Block types
 enum EntityType
@@ -56,17 +58,31 @@ public:
     bool loadGeometry();
 
     // Update entity (for animation, etc.)
-    virtual void update(float deltaTime) {}
+    virtual void update(float deltaTime);
+
+    // Animation support
+    bool hasAnimation() const { return m_animationManager != nullptr; }
+    AnimationManager* getAnimationManager() const { return m_animationManager.get(); }
+    void playAnimation(const std::string& animationName, bool loop = true);
+    void playAnimation(int clipIndex, bool loop = true);
+    void stopAnimation();
+    void setAnimationSpeed(float speed);
 
 private:
     EntityType m_type;
     EntityTransform m_transform;
 
     // GPU geometry data
-    VertexAttributes* m_d_attributes = nullptr;
+    VertexAttributes* m_d_attributes = nullptr;           // Current (possibly skinned) vertices
+    VertexAttributes* m_d_originalAttributes = nullptr;   // Original unskinned vertices for animation
     unsigned int* m_d_indices = nullptr;
     unsigned int m_attributeSize = 0;
     unsigned int m_indicesSize = 0;
+
+    // Animation system
+    std::unique_ptr<AnimationManager> m_animationManager;
+    std::vector<AnimationClip> m_animationClips;
+    Skeleton m_skeleton;
 
     // Load specific geometry based on entity type
     bool loadMinecraftCharacterGeometry();
