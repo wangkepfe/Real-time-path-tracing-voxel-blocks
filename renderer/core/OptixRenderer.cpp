@@ -772,11 +772,18 @@ void OptixRenderer::init()
         unsigned int entityMaterialStartIndex = m_materialParameters.size();
 
                 // Entity materials
-        // Minecraft Character material
+        // Minecraft 1.8+ Character material with pink-smoothie texture
         {
             MaterialParameter parameter{};
-            parameter.albedo = Float3(1.0f, 0.5f, 0.0f);
+            parameter.textureAlbedo = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_albedo.png");
+            parameter.textureNormal = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_normal.png");
+            parameter.textureRoughness = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_roughness.png");
+            parameter.albedo = Float3(1.0f, 1.0f, 1.0f); // White base color to let texture show through
+            parameter.roughness = 1.0f; // Let the roughness map control this
+            parameter.metallic = 0.0f; // Non-metallic material
             parameter.materialId = entityMaterialStartIndex + EntityTypeMinecraftCharacter;
+            parameter.useWorldGridUV = false; // Use model UV coordinates, not world grid
+            parameter.uvScale = 1.0f; // Don't scale the UV coordinates
 
             m_materialParameters.push_back(parameter);
         }

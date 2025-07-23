@@ -68,8 +68,8 @@ bool Entity::loadGeometry()
 
 bool Entity::loadMinecraftCharacterGeometry()
 {
-    // Load Minecraft character from GLTF file
-    const std::string gltfFile = "data/models/minecraft_char.gltf";
+    // Load Minecraft 1.8+ character with tessellated mesh from GLTF file
+    const std::string gltfFile = "data/models/character-pink-smoothie.gltf";
 
     // Use the regular model loading function from ModelUtils
     loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);

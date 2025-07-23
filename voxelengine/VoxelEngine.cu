@@ -871,7 +871,7 @@ void VoxelEngine::initEntities()
     transform.position = sceneCamera + normalizedDir * 6.0f;
 
     transform.rotation = Float3(0.0f, 0.0f, 0.0f);   // No rotation
-    transform.scale = Float3(10.0f, 10.0f, 10.0f);   // Make it 10x larger for much better visibility
+    transform.scale = Float3(1.0f, 1.0f, 1.0f);     // Use natural GLTF model scale (respects GLTF scaling)
 
     auto minecraftEntity = std::make_unique<Entity>(EntityTypeMinecraftCharacter, transform);
 

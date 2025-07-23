@@ -136,7 +136,13 @@ void TextureManager::init()
         filePaths.emplace_back("data/textures/" + textureFile + "_normal.png");
         filePaths.emplace_back("data/textures/" + textureFile + "_rough.png");
     }
-    filePaths.emplace_back("data/textures/beaten-up-metal1_metal.png");
+        filePaths.emplace_back("data/textures/beaten-up-metal1_metal.png");
+
+    // Add minecraft character textures
+    filePaths.emplace_back("data/textures/minecraft_char_albedo.png");
+    filePaths.emplace_back("data/textures/high_fidelity_pink_smoothie_albedo.png");
+    filePaths.emplace_back("data/textures/high_fidelity_pink_smoothie_normal.png");
+    filePaths.emplace_back("data/textures/high_fidelity_pink_smoothie_roughness.png");
 
     m_textures.resize(filePaths.size());
 
