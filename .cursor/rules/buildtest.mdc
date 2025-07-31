@@ -1,9 +1,0 @@
----
-description:
-globs:
-alwaysApply: true
----
-At the end of task, build and test.
-Do not use other terminals.
-Build in the build folder do "cmake --build . --config Release --parallel"
-Test in build/Release run voxelgame_offline.exe
