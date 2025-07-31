@@ -1164,6 +1164,40 @@ struct Mat4
             _v[i] = m._v[i];
         }
     }
+    
+    // TRS constructor - create transformation matrix from Translation, Rotation (quaternion), Scale
+    INL_HOST_DEVICE Mat4(const Float3& translation, const Float4& rotation, const Float3& scale)
+    {
+        // Extract quaternion components
+        float x = rotation.x, y = rotation.y, z = rotation.z, w = rotation.w;
+
+        // Calculate rotation matrix elements
+        float xx = x * x, yy = y * y, zz = z * z;
+        float xy = x * y, xz = x * z, yz = y * z;
+        float wx = w * x, wy = w * y, wz = w * z;
+
+        // Build matrix with rotation and scale (column-major)
+        _v[0] = scale.x * (1.0f - 2.0f * (yy + zz));    // [0][0]
+        _v[1] = scale.x * (2.0f * (xy + wz));           // [0][1]
+        _v[2] = scale.x * (2.0f * (xz - wy));           // [0][2]
+        _v[3] = 0.0f;                                   // [0][3]
+
+        _v[4] = scale.y * (2.0f * (xy - wz));           // [1][0]
+        _v[5] = scale.y * (1.0f - 2.0f * (xx + zz));    // [1][1]
+        _v[6] = scale.y * (2.0f * (yz + wx));           // [1][2]
+        _v[7] = 0.0f;                                   // [1][3]
+
+        _v[8] = scale.z * (2.0f * (xz + wy));           // [2][0]
+        _v[9] = scale.z * (2.0f * (yz - wx));           // [2][1]
+        _v[10] = scale.z * (1.0f - 2.0f * (xx + yy));   // [2][2]
+        _v[11] = 0.0f;                                  // [2][3]
+
+        // Translation
+        _v[12] = translation.x;                         // [3][0]
+        _v[13] = translation.y;                         // [3][1]
+        _v[14] = translation.z;                         // [3][2]
+        _v[15] = 1.0f;                                  // [3][3]
+    }
 
     // row
     INL_HOST_DEVICE void setRow(unsigned int i, const Float4 &v)
@@ -1191,6 +1225,32 @@ struct Mat4
 
     INL_HOST_DEVICE const float *operator[](unsigned int i) const { return _v + i * 4; }
     INL_HOST_DEVICE float *operator[](unsigned int i) { return _v + i * 4; }
+    
+    // Matrix multiplication operator (column-major)
+    INL_HOST_DEVICE Mat4 operator*(const Mat4& other) const {
+        Mat4 result;
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                result[col][row] = 0.0f;
+                for (int k = 0; k < 4; k++) {
+                    result[col][row] += (*this)[k][row] * other[col][k];
+                }
+            }
+        }
+        return result;
+    }
+    
+    
+    // Transform a 3D point by this matrix (homogeneous coordinates) - operator overload
+    INL_HOST_DEVICE Float3 operator*(const Float3& point) const {
+        Float4 result;
+        // Column-major matrix transformation: result = matrix * point
+        result.x = (*this)[0][0] * point.x + (*this)[1][0] * point.y + (*this)[2][0] * point.z + (*this)[3][0];
+        result.y = (*this)[0][1] * point.x + (*this)[1][1] * point.y + (*this)[2][1] * point.z + (*this)[3][1];
+        result.z = (*this)[0][2] * point.x + (*this)[1][2] * point.y + (*this)[2][2] * point.z + (*this)[3][2];
+        result.w = (*this)[0][3] * point.x + (*this)[1][3] * point.y + (*this)[2][3] * point.z + (*this)[3][3];
+        return Float3(result.x, result.y, result.z) / result.w;
+    }
 };
 
 INL_HOST_DEVICE Mat4 invert(const Mat4 &m)
@@ -1301,6 +1361,75 @@ INL_HOST_DEVICE Quat rotationBetween(const Quat &p, const Quat &q) { return Quat
 INL_HOST_DEVICE Float3 rotate3f(const Float3 &axis, float angle, const Float3 &v) { return rotate(Quat::axisAngle(axis, angle), v).v; }
 INL_HOST_DEVICE Float3 slerp3f(const Float3 &q, const Float3 &r, float t) { return slerp(Quat(q), Quat(r), t).v; }
 INL_HOST_DEVICE Float3 rotationBetween3f(const Float3 &p, const Float3 &q) { return rotationBetween(Quat(p), Quat(q)).v; }
+
+// Spherical linear interpolation for Float4 quaternions (x,y,z,w format)
+INL_HOST_DEVICE Float4 slerp(const Float4 &q1, const Float4 &q2, float t)
+{
+    Float4 qa = q1;
+    Float4 qb = q2;
+
+    // Compute dot product
+    float dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w;
+
+    // If dot product is negative, slerp won't take the shorter path
+    if (dot < 0.0f)
+    {
+        qb.x = -qb.x;
+        qb.y = -qb.y;
+        qb.z = -qb.z;
+        qb.w = -qb.w;
+        dot = -dot;
+    }
+
+    if (dot > 0.9995f)
+    {
+        // Linear interpolation for very close quaternions
+        Float4 result;
+        result.x = qa.x + t * (qb.x - qa.x);
+        result.y = qa.y + t * (qb.y - qa.y);
+        result.z = qa.z + t * (qb.z - qa.z);
+        result.w = qa.w + t * (qb.w - qa.w);
+
+        // Normalize
+        float length = sqrtf(result.x * result.x + result.y * result.y + result.z * result.z + result.w * result.w);
+        if (length > 0.0f)
+        {
+            result.x /= length;
+            result.y /= length;
+            result.z /= length;
+            result.w /= length;
+        }
+
+        return result;
+    }
+    else
+    {
+        // Spherical linear interpolation
+        float angle = acosf(dot);
+        float sinAngle = sinf(angle);
+        float factor1 = sinf((1.0f - t) * angle) / sinAngle;
+        float factor2 = sinf(t * angle) / sinAngle;
+
+        Float4 result;
+        result.x = qa.x * factor1 + qb.x * factor2;
+        result.y = qa.y * factor1 + qb.y * factor2;
+        result.z = qa.z * factor1 + qb.z * factor2;
+        result.w = qa.w * factor1 + qb.w * factor2;
+
+        return result;
+    }
+}
+
+// Quaternion multiplication for Float4 quaternions (x,y,z,w format)
+INL_HOST_DEVICE Float4 quaternionMultiply(const Float4 &q1, const Float4 &q2)
+{
+    Float4 result;
+    result.w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z;
+    result.x = q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y;
+    result.y = q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x;
+    result.z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w;
+    return result;
+}
 
 INL_HOST_DEVICE float SafeDivide(float a, float b)
 {
