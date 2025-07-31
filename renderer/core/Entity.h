@@ -3,6 +3,8 @@
 #include "../shaders/LinearMath.h"
 #include "../shaders/SystemParameter.h"
 #include "../animation/Animation.h"
+#include "../animation/AnimationManager.h"
+#include "../animation/Skeleton.h"
 #include <string>
 #include <vector>
 #include <memory>

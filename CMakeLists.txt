@@ -115,7 +115,8 @@ set( SOURCES
     renderer/util/ModelUtils.cpp
     renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
-    renderer/animation/Animation.cpp
+    renderer/animation/Skeleton.cpp
+    renderer/animation/AnimationManager.cpp
     renderer/animation/VertexSkinning.cu
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
@@ -249,7 +250,8 @@ set( OFFLINE_SOURCES
     renderer/util/ModelUtils.cpp
     renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
-    renderer/animation/Animation.cpp
+    renderer/animation/Skeleton.cpp
+    renderer/animation/AnimationManager.cpp
     renderer/animation/VertexSkinning.cu
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu

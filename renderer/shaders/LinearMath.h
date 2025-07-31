@@ -1362,6 +1362,75 @@ INL_HOST_DEVICE Float3 rotate3f(const Float3 &axis, float angle, const Float3 &v
 INL_HOST_DEVICE Float3 slerp3f(const Float3 &q, const Float3 &r, float t) { return slerp(Quat(q), Quat(r), t).v; }
 INL_HOST_DEVICE Float3 rotationBetween3f(const Float3 &p, const Float3 &q) { return rotationBetween(Quat(p), Quat(q)).v; }
 
+// Spherical linear interpolation for Float4 quaternions (x,y,z,w format)
+INL_HOST_DEVICE Float4 slerp(const Float4 &q1, const Float4 &q2, float t)
+{
+    Float4 qa = q1;
+    Float4 qb = q2;
+
+    // Compute dot product
+    float dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w;
+
+    // If dot product is negative, slerp won't take the shorter path
+    if (dot < 0.0f)
+    {
+        qb.x = -qb.x;
+        qb.y = -qb.y;
+        qb.z = -qb.z;
+        qb.w = -qb.w;
+        dot = -dot;
+    }
+
+    if (dot > 0.9995f)
+    {
+        // Linear interpolation for very close quaternions
+        Float4 result;
+        result.x = qa.x + t * (qb.x - qa.x);
+        result.y = qa.y + t * (qb.y - qa.y);
+        result.z = qa.z + t * (qb.z - qa.z);
+        result.w = qa.w + t * (qb.w - qa.w);
+
+        // Normalize
+        float length = sqrtf(result.x * result.x + result.y * result.y + result.z * result.z + result.w * result.w);
+        if (length > 0.0f)
+        {
+            result.x /= length;
+            result.y /= length;
+            result.z /= length;
+            result.w /= length;
+        }
+
+        return result;
+    }
+    else
+    {
+        // Spherical linear interpolation
+        float angle = acosf(dot);
+        float sinAngle = sinf(angle);
+        float factor1 = sinf((1.0f - t) * angle) / sinAngle;
+        float factor2 = sinf(t * angle) / sinAngle;
+
+        Float4 result;
+        result.x = qa.x * factor1 + qb.x * factor2;
+        result.y = qa.y * factor1 + qb.y * factor2;
+        result.z = qa.z * factor1 + qb.z * factor2;
+        result.w = qa.w * factor1 + qb.w * factor2;
+
+        return result;
+    }
+}
+
+// Quaternion multiplication for Float4 quaternions (x,y,z,w format)
+INL_HOST_DEVICE Float4 quaternionMultiply(const Float4 &q1, const Float4 &q2)
+{
+    Float4 result;
+    result.w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z;
+    result.x = q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y;
+    result.y = q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x;
+    result.z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w;
+    return result;
+}
+
 INL_HOST_DEVICE float SafeDivide(float a, float b)
 {
     float eps = 1e-20f;

@@ -4,6 +4,8 @@
 #include "../util/GLTFUtils.h"
 #include "../animation/VertexSkinning.h"
 #include "../animation/Animation.h"
+#include "../animation/AnimationManager.h"
+#include "../animation/Skeleton.h"
 #include <iostream>
 #include <cmath>
 #include <cuda_runtime.h>

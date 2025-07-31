@@ -206,7 +206,7 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         const float targetFPS = 30.0f; // 30 FPS for smooth animation
         deltaTime = 1.0f / targetFPS;
 
-                // Fixed timestep for consistent offline animation
+        // Fixed timestep for consistent offline animation
     }
     else
     {
@@ -222,31 +222,32 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         lastTime = currentTime;
     }
 
-        // Animation update system for OptiX renderer
+    // Animation update system for OptiX renderer
 
     // Update each animated entity
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
     {
-        Entity* entity = scene.getEntity(entityIndex);
+        Entity *entity = scene.getEntity(entityIndex);
         if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
         {
-                        // Processing animated entity
+            // Processing animated entity
 
             // Update entity animation
             entity->update(deltaTime);
 
             // Check if this entity has animations that require geometry updates
             if (entity->hasAnimation())
-                        {
+            {
                 // Calculate the correct geometry index for entities
                 unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
 
-                                                if (geometryIndex < m_geometries.size())
+                if (geometryIndex < m_geometries.size())
                 {
                     GeometryData &geometry = m_geometries[geometryIndex];
 
                     // Validate entity data before BLAS update
-                    if (!entity->getAttributes() || !entity->getIndices() || entity->getAttributeSize() == 0 || geometry.gas == 0) {
+                    if (!entity->getAttributes() || !entity->getIndices() || entity->getAttributeSize() == 0 || geometry.gas == 0)
+                    {
                         continue;
                     }
 
@@ -578,13 +579,11 @@ void OptixRenderer::update()
         // Add instanced geometry records to the base count
         baseSbtRecords += scene.instancedGeometryCount;
 
-
-
         // Entities - add them to instances during reload
         // NOTE: Entities should keep their original SBT offsets from init() since SBT records are static
         for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
         {
-            Entity* entity = scene.getEntity(entityIndex);
+            Entity *entity = scene.getEntity(entityIndex);
             if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
             {
                 // Calculate the correct geometry index for entities
@@ -615,7 +614,7 @@ void OptixRenderer::update()
             auto objectId = scene.sceneUpdateObjectId[i];
             unsigned int blockId = ObjectIdToBlockId(objectId);
 
-                        // Uninstanced
+            // Uninstanced
             if (IsUninstancedBlockType(blockId))
             {
                 // Optimized: only update specific chunks that have changed
@@ -942,7 +941,7 @@ void OptixRenderer::init()
         // Store the index where entity materials start
         unsigned int entityMaterialStartIndex = m_materialParameters.size();
 
-                // Entity materials
+        // Entity materials
         // Minecraft 1.8+ Character material with pink-smoothie texture
         {
             MaterialParameter parameter{};
@@ -950,11 +949,11 @@ void OptixRenderer::init()
             parameter.textureNormal = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_normal.png");
             parameter.textureRoughness = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_roughness.png");
             parameter.albedo = Float3(1.0f, 1.0f, 1.0f); // White base color to let texture show through
-            parameter.roughness = 1.0f; // Let the roughness map control this
-            parameter.metallic = 0.0f; // Non-metallic material
+            parameter.roughness = 1.0f;                  // Let the roughness map control this
+            parameter.metallic = 0.0f;                   // Non-metallic material
             parameter.materialId = entityMaterialStartIndex + EntityTypeMinecraftCharacter;
             parameter.useWorldGridUV = false; // Use model UV coordinates, not world grid
-            parameter.uvScale = 1.0f; // Don't scale the UV coordinates
+            parameter.uvScale = 1.0f;         // Don't scale the UV coordinates
 
             m_materialParameters.push_back(parameter);
         }
@@ -1069,7 +1068,7 @@ void OptixRenderer::init()
     // Create entity geometry BLAS
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
     {
-        Entity* entity = scene.getEntity(entityIndex);
+        Entity *entity = scene.getEntity(entityIndex);
         if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
         {
 
@@ -1360,7 +1359,7 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[4], &m_sbtRecordHitRadiance));
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[5], &m_sbtRecordHitShadow));
 
-                // Calculate total instances needed for all chunks
+        // Calculate total instances needed for all chunks
         unsigned int totalInstances = 0;
         for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
@@ -1414,7 +1413,7 @@ void OptixRenderer::init()
             }
         }
 
-                // Setup SBT records for instanced geometry
+        // Setup SBT records for instanced geometry
         for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
         {
             // Calculate the correct geometry index for instanced objects
@@ -1443,7 +1442,7 @@ void OptixRenderer::init()
         // Setup SBT records for entities
         for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
         {
-            Entity* entity = scene.getEntity(entityIndex);
+            Entity *entity = scene.getEntity(entityIndex);
             if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
             {
                 // Calculate the correct geometry index for entities

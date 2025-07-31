@@ -1,78 +1,10 @@
-#include "Animation.h"
-#include "util/DebugUtils.h"
+#include "AnimationManager.h"
+#include "../util/DebugUtils.h"
 #include <algorithm>
 #include <cstring>
 #include <cmath>
 #include <iomanip>
-#include <immintrin.h> // For SIMD intrinsics
-#include <cuda_runtime.h>
 #include <iostream>
-
-// ===== Skeleton Implementation =====
-void Skeleton::updateJointTransforms()
-{
-    // Update transforms in hierarchical order
-    for (size_t i = 0; i < joints.size(); ++i)
-    {
-        Joint &joint = joints[i];
-
-        // Build local matrix from TRS
-        joint.localMatrix = Mat4(joint.position, joint.rotation, joint.scale);
-
-        // Calculate global matrix
-        if (joint.parentIndex == -1)
-        {
-            joint.globalMatrix = joint.localMatrix;
-        }
-        else
-        {
-            const Joint &parent = joints[joint.parentIndex];
-            joint.globalMatrix = parent.globalMatrix * joint.localMatrix;
-        }
-    }
-}
-
-void Skeleton::uploadToGPU()
-{
-    assert(d_jointMatrices != nullptr);
-
-    if (!d_jointMatrices)
-    {
-        CUDA_CHECK(cudaMalloc(&d_jointMatrices, MAX_JOINTS * sizeof(Mat4)));
-    }
-
-    // Prepare matrix data for upload
-    Mat4 jointMatrices[MAX_JOINTS];
-
-    // Zero out arrays
-    for (int i = 0; i < MAX_JOINTS; i++)
-    {
-        jointMatrices[i] = Mat4(); // Initialize to identity
-    }
-
-    // Copy joint data
-    for (size_t i = 0; i < joints.size() && i < MAX_JOINTS; ++i)
-    {
-        jointMatrices[i] = joints[i].globalMatrix * joints[i].inverseBindMatrix;
-    }
-
-    // Upload joint matrices to GPU
-    CUDA_CHECK(cudaMemcpy(d_jointMatrices, jointMatrices, MAX_JOINTS * sizeof(Mat4), cudaMemcpyHostToDevice));
-
-    // Synchronize after uploads
-    CUDA_CHECK(cudaDeviceSynchronize());
-}
-
-void Skeleton::cleanup()
-{
-    if (d_jointMatrices)
-    {
-        CUDA_CHECK(cudaFree(d_jointMatrices));
-        d_jointMatrices = nullptr;
-    }
-}
-
-// ===== AnimationManager Implementation =====
 
 AnimationManager::AnimationManager()
 {
@@ -113,7 +45,7 @@ void AnimationManager::setSkeleton(const Skeleton &skeleton)
 {
     m_skeleton.cleanup();
     m_skeleton = skeleton;
-    m_skeleton.updateJointTransforms(); // ✅ FIX: Initialize matrices first!
+    m_skeleton.updateJointTransforms(); // Initialize matrices first!
     m_skeleton.uploadToGPU();
 }
 
@@ -221,8 +153,6 @@ void AnimationManager::update(float deltaTime)
         }
         return;
     }
-
-    // Animation update system
 
     // Update primary animation
     if (m_primaryAnimation.isPlaying && m_primaryAnimation.clipIndex != -1)
@@ -368,7 +298,7 @@ void AnimationManager::blendAnimations()
             joint.scale = from.scale * (1.0f - blendFactor) + to.scale * blendFactor;
 
             // Spherical interpolation for rotation
-            joint.rotation = AnimationMath::quaternionSlerp(from.rotation, to.rotation, blendFactor);
+            joint.rotation = slerp(from.rotation, to.rotation, blendFactor);
         }
     }
     else if (m_primaryAnimation.isPlaying && m_primaryAnimation.clipIndex != -1)
@@ -410,9 +340,9 @@ void AnimationManager::applyAdditiveAnimations()
             joint.scale = joint.scale + (additiveJoint.scale - Float3(1.0f)) * additive.weight;
 
             // For rotation, use quaternion multiplication for additive
-            Float4 additiveRot = AnimationMath::quaternionSlerp(
+            Float4 additiveRot = slerp(
                 Float4(0.0f, 0.0f, 0.0f, 1.0f), additiveJoint.rotation, additive.weight);
-            joint.rotation = AnimationMath::quaternionMultiply(joint.rotation, additiveRot);
+            joint.rotation = quaternionMultiply(joint.rotation, additiveRot);
         }
     }
 }
@@ -483,7 +413,7 @@ Float4 AnimationManager::interpolateRotation(const AnimationSampler &sampler, fl
         return q0;
     case AnimationSampler::LINEAR:
     case AnimationSampler::CUBICSPLINE: // Fallback to linear for now
-        return AnimationMath::quaternionSlerp(q0, q1, factor);
+        return slerp(q0, q1, factor);
     default:
         return q0;
     }
@@ -553,339 +483,3 @@ int AnimationManager::findKeyframeIndex(const std::vector<float> &times, float t
 
     return std::max(0, right);
 }
-
-// ===== AnimationMath Namespace Implementation =====
-
-namespace AnimationMath
-{
-
-    void transposeMatrix4x4(const float *input, float *output)
-    {
-        for (int i = 0; i < 4; ++i)
-        {
-            for (int j = 0; j < 4; ++j)
-            {
-                output[j * 4 + i] = input[i * 4 + j];
-            }
-        }
-    }
-
-    void invertMatrix4x4(const float *input, float *output)
-    {
-        // 4x4 matrix inversion using cofactor expansion
-        float inv[16];
-
-        inv[0] = input[5] * input[10] * input[15] -
-                 input[5] * input[11] * input[14] -
-                 input[9] * input[6] * input[15] +
-                 input[9] * input[7] * input[14] +
-                 input[13] * input[6] * input[11] -
-                 input[13] * input[7] * input[10];
-
-        inv[4] = -input[4] * input[10] * input[15] +
-                 input[4] * input[11] * input[14] +
-                 input[8] * input[6] * input[15] -
-                 input[8] * input[7] * input[14] -
-                 input[12] * input[6] * input[11] +
-                 input[12] * input[7] * input[10];
-
-        inv[8] = input[4] * input[9] * input[15] -
-                 input[4] * input[11] * input[13] -
-                 input[8] * input[5] * input[15] +
-                 input[8] * input[7] * input[13] +
-                 input[12] * input[5] * input[11] -
-                 input[12] * input[7] * input[9];
-
-        inv[12] = -input[4] * input[9] * input[14] +
-                  input[4] * input[10] * input[13] +
-                  input[8] * input[5] * input[14] -
-                  input[8] * input[6] * input[13] -
-                  input[12] * input[5] * input[10] +
-                  input[12] * input[6] * input[9];
-
-        inv[1] = -input[1] * input[10] * input[15] +
-                 input[1] * input[11] * input[14] +
-                 input[9] * input[2] * input[15] -
-                 input[9] * input[3] * input[14] -
-                 input[13] * input[2] * input[11] +
-                 input[13] * input[3] * input[10];
-
-        inv[5] = input[0] * input[10] * input[15] -
-                 input[0] * input[11] * input[14] -
-                 input[8] * input[2] * input[15] +
-                 input[8] * input[3] * input[14] +
-                 input[12] * input[2] * input[11] -
-                 input[12] * input[3] * input[10];
-
-        inv[9] = -input[0] * input[9] * input[15] +
-                 input[0] * input[11] * input[13] +
-                 input[8] * input[1] * input[15] -
-                 input[8] * input[3] * input[13] -
-                 input[12] * input[1] * input[11] +
-                 input[12] * input[3] * input[9];
-
-        inv[13] = input[0] * input[9] * input[14] -
-                  input[0] * input[10] * input[13] -
-                  input[8] * input[1] * input[14] +
-                  input[8] * input[2] * input[13] +
-                  input[12] * input[1] * input[10] -
-                  input[12] * input[2] * input[9];
-
-        inv[2] = input[1] * input[6] * input[15] -
-                 input[1] * input[7] * input[14] -
-                 input[5] * input[2] * input[15] +
-                 input[5] * input[3] * input[14] +
-                 input[13] * input[2] * input[7] -
-                 input[13] * input[3] * input[6];
-
-        inv[6] = -input[0] * input[6] * input[15] +
-                 input[0] * input[7] * input[14] +
-                 input[4] * input[2] * input[15] -
-                 input[4] * input[3] * input[14] -
-                 input[12] * input[2] * input[7] +
-                 input[12] * input[3] * input[6];
-
-        inv[10] = input[0] * input[5] * input[15] -
-                  input[0] * input[7] * input[13] -
-                  input[4] * input[1] * input[15] +
-                  input[4] * input[3] * input[13] +
-                  input[12] * input[1] * input[7] -
-                  input[12] * input[3] * input[5];
-
-        inv[14] = -input[0] * input[5] * input[14] +
-                  input[0] * input[6] * input[13] +
-                  input[4] * input[1] * input[14] -
-                  input[4] * input[2] * input[13] -
-                  input[12] * input[1] * input[6] +
-                  input[12] * input[2] * input[5];
-
-        inv[3] = -input[1] * input[6] * input[11] +
-                 input[1] * input[7] * input[10] +
-                 input[5] * input[2] * input[11] -
-                 input[5] * input[3] * input[10] -
-                 input[9] * input[2] * input[7] +
-                 input[9] * input[3] * input[6];
-
-        inv[7] = input[0] * input[6] * input[11] -
-                 input[0] * input[7] * input[10] -
-                 input[4] * input[2] * input[11] +
-                 input[4] * input[3] * input[10] +
-                 input[8] * input[2] * input[7] -
-                 input[8] * input[3] * input[6];
-
-        inv[11] = -input[0] * input[5] * input[11] +
-                  input[0] * input[7] * input[9] +
-                  input[4] * input[1] * input[11] -
-                  input[4] * input[3] * input[9] -
-                  input[8] * input[1] * input[7] +
-                  input[8] * input[3] * input[5];
-
-        inv[15] = input[0] * input[5] * input[10] -
-                  input[0] * input[6] * input[9] -
-                  input[4] * input[1] * input[10] +
-                  input[4] * input[2] * input[9] +
-                  input[8] * input[1] * input[6] -
-                  input[8] * input[2] * input[5];
-
-        float det = input[0] * inv[0] + input[1] * inv[4] + input[2] * inv[8] + input[3] * inv[12];
-
-        if (det == 0)
-        {
-            // Matrix is not invertible, return identity
-            memset(output, 0, sizeof(float) * 16);
-            output[0] = output[5] = output[10] = output[15] = 1.0f;
-            return;
-        }
-
-        det = 1.0f / det;
-
-        for (int i = 0; i < 16; i++)
-        {
-            output[i] = inv[i] * det;
-        }
-    }
-
-    Float4 quaternionSlerp(const Float4 &q1, const Float4 &q2, float t)
-    {
-        Float4 qa = q1;
-        Float4 qb = q2;
-
-        // Compute dot product
-        float dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w;
-
-        // If dot product is negative, slerp won't take the shorter path
-        if (dot < 0.0f)
-        {
-            qb.x = -qb.x;
-            qb.y = -qb.y;
-            qb.z = -qb.z;
-            qb.w = -qb.w;
-            dot = -dot;
-        }
-
-        if (dot > 0.9995f)
-        {
-            // Linear interpolation for very close quaternions
-            Float4 result;
-            result.x = qa.x + t * (qb.x - qa.x);
-            result.y = qa.y + t * (qb.y - qa.y);
-            result.z = qa.z + t * (qb.z - qa.z);
-            result.w = qa.w + t * (qb.w - qa.w);
-
-            // Normalize
-            float length = sqrtf(result.x * result.x + result.y * result.y + result.z * result.z + result.w * result.w);
-            if (length > 0.0f)
-            {
-                result.x /= length;
-                result.y /= length;
-                result.z /= length;
-                result.w /= length;
-            }
-
-            return result;
-        }
-        else
-        {
-            // Spherical linear interpolation
-            float angle = acosf(dot);
-            float sinAngle = sinf(angle);
-            float factor1 = sinf((1.0f - t) * angle) / sinAngle;
-            float factor2 = sinf(t * angle) / sinAngle;
-
-            Float4 result;
-            result.x = qa.x * factor1 + qb.x * factor2;
-            result.y = qa.y * factor1 + qb.y * factor2;
-            result.z = qa.z * factor1 + qb.z * factor2;
-            result.w = qa.w * factor1 + qb.w * factor2;
-
-            return result;
-        }
-    }
-
-    Float4 quaternionMultiply(const Float4 &q1, const Float4 &q2)
-    {
-        Float4 result;
-        result.w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z;
-        result.x = q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y;
-        result.y = q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x;
-        result.z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w;
-        return result;
-    }
-
-    void matrixFromQuaternion(const Float4 &q, float *matrix)
-    {
-        float x2 = q.x * 2.0f;
-        float y2 = q.y * 2.0f;
-        float z2 = q.z * 2.0f;
-        float xx = q.x * x2;
-        float xy = q.x * y2;
-        float xz = q.x * z2;
-        float yy = q.y * y2;
-        float yz = q.y * z2;
-        float zz = q.z * z2;
-        float wx = q.w * x2;
-        float wy = q.w * y2;
-        float wz = q.w * z2;
-
-        matrix[0] = 1.0f - (yy + zz);
-        matrix[1] = xy - wz;
-        matrix[2] = xz + wy;
-        matrix[3] = 0.0f;
-
-        matrix[4] = xy + wz;
-        matrix[5] = 1.0f - (xx + zz);
-        matrix[6] = yz - wx;
-        matrix[7] = 0.0f;
-
-        matrix[8] = xz - wy;
-        matrix[9] = yz + wx;
-        matrix[10] = 1.0f - (xx + yy);
-        matrix[11] = 0.0f;
-
-        matrix[12] = 0.0f;
-        matrix[13] = 0.0f;
-        matrix[14] = 0.0f;
-        matrix[15] = 1.0f;
-    }
-
-    Float4 matrixToQuaternion(const float *matrix)
-    {
-        Float4 q;
-
-        float trace = matrix[0] + matrix[5] + matrix[10];
-
-        if (trace > 0.0f)
-        {
-            float s = sqrtf(trace + 1.0f) * 2.0f; // s = 4 * qw
-            q.w = 0.25f * s;
-            q.x = (matrix[6] - matrix[9]) / s;
-            q.y = (matrix[8] - matrix[2]) / s;
-            q.z = (matrix[1] - matrix[4]) / s;
-        }
-        else if (matrix[0] > matrix[5] && matrix[0] > matrix[10])
-        {
-            float s = sqrtf(1.0f + matrix[0] - matrix[5] - matrix[10]) * 2.0f; // s = 4 * qx
-            q.w = (matrix[6] - matrix[9]) / s;
-            q.x = 0.25f * s;
-            q.y = (matrix[1] + matrix[4]) / s;
-            q.z = (matrix[8] + matrix[2]) / s;
-        }
-        else if (matrix[5] > matrix[10])
-        {
-            float s = sqrtf(1.0f + matrix[5] - matrix[0] - matrix[10]) * 2.0f; // s = 4 * qy
-            q.w = (matrix[8] - matrix[2]) / s;
-            q.x = (matrix[1] + matrix[4]) / s;
-            q.y = 0.25f * s;
-            q.z = (matrix[6] + matrix[9]) / s;
-        }
-        else
-        {
-            float s = sqrtf(1.0f + matrix[10] - matrix[0] - matrix[5]) * 2.0f; // s = 4 * qz
-            q.w = (matrix[1] - matrix[4]) / s;
-            q.x = (matrix[8] + matrix[2]) / s;
-            q.y = (matrix[6] + matrix[9]) / s;
-            q.z = 0.25f * s;
-        }
-
-        return q;
-    }
-
-    void quaternionToAxisAngle(const Float4 &quat, Float3 &axis, float &angle)
-    {
-        // Normalize quaternion
-        float len = sqrtf(quat.x * quat.x + quat.y * quat.y + quat.z * quat.z + quat.w * quat.w);
-        if (len < 0.001f)
-        {
-            axis = Float3(0, 0, 1);
-            angle = 0.0f;
-            return;
-        }
-
-        Float4 q = quat;
-        q.x /= len;
-        q.y /= len;
-        q.z /= len;
-        q.w /= len;
-
-        // Convert to axis-angle
-        float sinHalfAngle = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
-
-        if (sinHalfAngle < 0.001f)
-        {
-            // No rotation
-            axis = Float3(0, 0, 1);
-            angle = 0.0f;
-        }
-        else
-        {
-            axis.x = q.x / sinHalfAngle;
-            axis.y = q.y / sinHalfAngle;
-            axis.z = q.z / sinHalfAngle;
-            angle = 2.0f * atan2f(sinHalfAngle, q.w);
-        }
-
-        // Convert angle from radians to degrees
-        angle = angle * 180.0f / 3.14159265f;
-    }
-
-} // namespace AnimationMath

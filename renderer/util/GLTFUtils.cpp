@@ -1,6 +1,7 @@
 #include "GLTFUtils.h"
 #include "DebugUtils.h"
 #include "../animation/Animation.h"
+#include "../animation/Skeleton.h"
 #include "../shaders/SystemParameter.h"
 
 #include "tiny_gltf.h"
