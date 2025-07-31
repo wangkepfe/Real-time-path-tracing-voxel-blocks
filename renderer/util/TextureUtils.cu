@@ -18,25 +18,33 @@
 
 #include "voxelengine/Block.h"
 
-namespace {
-    std::string getTextureCacheDirectory() {
+namespace
+{
+    std::string getTextureCacheDirectory()
+    {
         std::filesystem::path cacheDir;
 
 #ifdef _WIN32
         // On Windows, use %APPDATA%/wotw/tex
-        const char* appData = std::getenv("APPDATA");
-        if (appData) {
+        const char *appData = std::getenv("APPDATA");
+        if (appData)
+        {
             cacheDir = std::filesystem::path(appData) / "wotw" / "tex";
-        } else {
+        }
+        else
+        {
             // Fallback to current directory if APPDATA is not set
             cacheDir = "tex";
         }
 #else
         // On other platforms, use ~/.local/share/wotw/tex
-        const char* home = std::getenv("HOME");
-        if (home) {
+        const char *home = std::getenv("HOME");
+        if (home)
+        {
             cacheDir = std::filesystem::path(home) / ".local" / "share" / "wotw" / "tex";
-        } else {
+        }
+        else
+        {
             // Fallback to current directory if HOME is not set
             cacheDir = "tex";
         }
@@ -136,10 +144,9 @@ void TextureManager::init()
         filePaths.emplace_back("data/textures/" + textureFile + "_normal.png");
         filePaths.emplace_back("data/textures/" + textureFile + "_rough.png");
     }
-        filePaths.emplace_back("data/textures/beaten-up-metal1_metal.png");
+    filePaths.emplace_back("data/textures/beaten-up-metal1_metal.png");
 
     // Add minecraft character textures
-    filePaths.emplace_back("data/textures/minecraft_char_albedo.png");
     filePaths.emplace_back("data/textures/high_fidelity_pink_smoothie_albedo.png");
     filePaths.emplace_back("data/textures/high_fidelity_pink_smoothie_normal.png");
     filePaths.emplace_back("data/textures/high_fidelity_pink_smoothie_roughness.png");
@@ -174,6 +181,15 @@ void TextureManager::init()
         auto &texObj = m_shaderTextures.texObjs[i];
 
         stbi_uc *buffer = stbi_load(filePath.c_str(), &texture.width, &texture.height, &texture.channel, 0);
+
+        if (buffer == nullptr || texture.width == 0 || texture.height == 0)
+        {
+            printf("ERROR: Failed to load texture '%s' or invalid dimensions (w=%d, h=%d)\n",
+                   filePath.c_str(), texture.width, texture.height);
+            if (buffer)
+                stbi_image_free(buffer);
+            continue;
+        }
 
         int nChannels = 4;
         int nInputBufferChannels = texture.channel;
@@ -235,6 +251,12 @@ void TextureManager::init()
         texture.texDesc.sRGB = 0;
 
         CUDA_CHECK(cudaCreateTextureObject(&texObj, &texture.resourceDesc, &texture.texDesc, nullptr));
+
+        if (numLods <= 0)
+        {
+            printf("ERROR: Invalid numLods=%d for texture, skipping mipmap generation\n", numLods);
+            continue;
+        }
 
         std::vector<std::vector<uint8_t>> mipmapBuffers(numLods);
         int currentSize = texture.width;

@@ -1164,6 +1164,40 @@ struct Mat4
             _v[i] = m._v[i];
         }
     }
+    
+    // TRS constructor - create transformation matrix from Translation, Rotation (quaternion), Scale
+    INL_HOST_DEVICE Mat4(const Float3& translation, const Float4& rotation, const Float3& scale)
+    {
+        // Extract quaternion components
+        float x = rotation.x, y = rotation.y, z = rotation.z, w = rotation.w;
+
+        // Calculate rotation matrix elements
+        float xx = x * x, yy = y * y, zz = z * z;
+        float xy = x * y, xz = x * z, yz = y * z;
+        float wx = w * x, wy = w * y, wz = w * z;
+
+        // Build matrix with rotation and scale (column-major)
+        _v[0] = scale.x * (1.0f - 2.0f * (yy + zz));    // [0][0]
+        _v[1] = scale.x * (2.0f * (xy + wz));           // [0][1]
+        _v[2] = scale.x * (2.0f * (xz - wy));           // [0][2]
+        _v[3] = 0.0f;                                   // [0][3]
+
+        _v[4] = scale.y * (2.0f * (xy - wz));           // [1][0]
+        _v[5] = scale.y * (1.0f - 2.0f * (xx + zz));    // [1][1]
+        _v[6] = scale.y * (2.0f * (yz + wx));           // [1][2]
+        _v[7] = 0.0f;                                   // [1][3]
+
+        _v[8] = scale.z * (2.0f * (xz + wy));           // [2][0]
+        _v[9] = scale.z * (2.0f * (yz - wx));           // [2][1]
+        _v[10] = scale.z * (1.0f - 2.0f * (xx + yy));   // [2][2]
+        _v[11] = 0.0f;                                  // [2][3]
+
+        // Translation
+        _v[12] = translation.x;                         // [3][0]
+        _v[13] = translation.y;                         // [3][1]
+        _v[14] = translation.z;                         // [3][2]
+        _v[15] = 1.0f;                                  // [3][3]
+    }
 
     // row
     INL_HOST_DEVICE void setRow(unsigned int i, const Float4 &v)
@@ -1191,6 +1225,32 @@ struct Mat4
 
     INL_HOST_DEVICE const float *operator[](unsigned int i) const { return _v + i * 4; }
     INL_HOST_DEVICE float *operator[](unsigned int i) { return _v + i * 4; }
+    
+    // Matrix multiplication operator (column-major)
+    INL_HOST_DEVICE Mat4 operator*(const Mat4& other) const {
+        Mat4 result;
+        for (int col = 0; col < 4; col++) {
+            for (int row = 0; row < 4; row++) {
+                result[col][row] = 0.0f;
+                for (int k = 0; k < 4; k++) {
+                    result[col][row] += (*this)[k][row] * other[col][k];
+                }
+            }
+        }
+        return result;
+    }
+    
+    
+    // Transform a 3D point by this matrix (homogeneous coordinates) - operator overload
+    INL_HOST_DEVICE Float3 operator*(const Float3& point) const {
+        Float4 result;
+        // Column-major matrix transformation: result = matrix * point
+        result.x = (*this)[0][0] * point.x + (*this)[1][0] * point.y + (*this)[2][0] * point.z + (*this)[3][0];
+        result.y = (*this)[0][1] * point.x + (*this)[1][1] * point.y + (*this)[2][1] * point.z + (*this)[3][1];
+        result.z = (*this)[0][2] * point.x + (*this)[1][2] * point.y + (*this)[2][2] * point.z + (*this)[3][2];
+        result.w = (*this)[0][3] * point.x + (*this)[1][3] * point.y + (*this)[2][3] * point.z + (*this)[3][3];
+        return Float3(result.x, result.y, result.z) / result.w;
+    }
 };
 
 INL_HOST_DEVICE Mat4 invert(const Mat4 &m)

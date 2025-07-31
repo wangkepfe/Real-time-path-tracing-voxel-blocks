@@ -39,7 +39,7 @@ class MinecraftCharacterGenerator:
         with open(spec_file, 'r') as f:
             self.spec = json.load(f)
 
-        self.texture_size = self.spec['textureSize']
+        self.texture_size = self.spec.get('textureSize', {'width': 64, 'height': 64})
         self.parts = self.spec['parts']
         self.skeleton = self.spec.get('skeleton', [])
         self.scale_factor = scale_factor
@@ -439,13 +439,16 @@ class MinecraftCharacterGenerator:
             scaled_pos = [pos * self.scale_factor for pos in bone_world_pos]
 
             # Create inverse bind matrix (inverse of bone's bind pose transform)
+            # In column-major order (OpenGL/GLTF convention):
+            # Elements 0-3: first column, 4-7: second column, etc.
+            # Translation is in elements 12, 13, 14
             matrix = np.eye(4, dtype=np.float32)
-            matrix[3, 0] = -scaled_pos[0]  # Negative translation for inverse
-            matrix[3, 1] = -scaled_pos[1]
-            matrix[3, 2] = -scaled_pos[2]
+            matrix[0, 3] = -scaled_pos[0]  # Translation X in column-major
+            matrix[1, 3] = -scaled_pos[1]  # Translation Y in column-major
+            matrix[2, 3] = -scaled_pos[2]  # Translation Z in column-major
 
-            # Flatten to row-major order for GLTF
-            inverse_bind_matrices[i] = matrix.flatten()
+            # Flatten to column-major order for GLTF (transpose before flattening)
+            inverse_bind_matrices[i] = matrix.T.flatten()
 
         return inverse_bind_matrices
 

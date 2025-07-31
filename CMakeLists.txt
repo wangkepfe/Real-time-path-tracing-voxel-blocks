@@ -116,7 +116,7 @@ set( SOURCES
     renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
     renderer/animation/Animation.cpp
-    renderer/shaders/VertexSkinning.cu
+    renderer/animation/VertexSkinning.cu
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp
@@ -250,7 +250,7 @@ set( OFFLINE_SOURCES
     renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
     renderer/animation/Animation.cpp
-    renderer/shaders/VertexSkinning.cu
+    renderer/animation/VertexSkinning.cu
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp

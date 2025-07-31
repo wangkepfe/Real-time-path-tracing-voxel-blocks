@@ -348,9 +348,9 @@ namespace GLTFUtils {
             // Set joint name
             joint.name = node.name.empty() ? ("joint_" + std::to_string(i)) : node.name;
 
-            // Extract local transform
+            // Extract local transform and store as both current and bind pose
             if (node.translation.size() == 3) {
-                joint.position = Float3(
+                joint.position = joint.bindPosition = Float3(
                     static_cast<float>(node.translation[0]),
                     static_cast<float>(node.translation[1]),
                     static_cast<float>(node.translation[2])
@@ -358,7 +358,7 @@ namespace GLTFUtils {
             }
 
             if (node.rotation.size() == 4) {
-                joint.rotation = Float4(
+                joint.rotation = joint.bindRotation = Float4(
                     static_cast<float>(node.rotation[0]),
                     static_cast<float>(node.rotation[1]),
                     static_cast<float>(node.rotation[2]),
@@ -367,7 +367,7 @@ namespace GLTFUtils {
             }
 
             if (node.scale.size() == 3) {
-                joint.scale = Float3(
+                joint.scale = joint.bindScale = Float3(
                     static_cast<float>(node.scale[0]),
                     static_cast<float>(node.scale[1]),
                     static_cast<float>(node.scale[2])
@@ -401,14 +401,12 @@ namespace GLTFUtils {
                 &buffer.data[bufferView.byteOffset + accessor.byteOffset]);
 
             for (size_t i = 0; i < skeleton.joints.size() && i < accessor.count; ++i) {
-                memcpy(skeleton.joints[i].inverseBindMatrix, &matrixData[i * 16], sizeof(float) * 16);
+                memcpy(&skeleton.joints[i].inverseBindMatrix, &matrixData[i * 16], sizeof(float) * 16);
             }
         } else {
             // Set identity matrices
             for (auto& joint : skeleton.joints) {
-                memset(joint.inverseBindMatrix, 0, sizeof(float) * 16);
-                joint.inverseBindMatrix[0] = joint.inverseBindMatrix[5] =
-                joint.inverseBindMatrix[10] = joint.inverseBindMatrix[15] = 1.0f;
+                joint.inverseBindMatrix = Mat4(); // Default constructor creates identity
             }
         }
 

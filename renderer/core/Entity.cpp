@@ -2,11 +2,64 @@
 #include "../util/DebugUtils.h"
 #include "../util/ModelUtils.h"
 #include "../util/GLTFUtils.h"
-#include "../shaders/VertexSkinning.h"
+#include "../animation/VertexSkinning.h"
+#include "../animation/Animation.h"
 #include <iostream>
 #include <cmath>
 #include <cuda_runtime.h>
 #include <algorithm>
+#include <limits>
+#include <utility>
+#include <iomanip>
+
+// Helper function to calculate AABB for vertices influenced by a specific joint
+std::pair<Float3, Float3> calculateJointAABB(const VertexAttributes *vertices, int numVertices, int jointIndex, float weightThreshold = 0.1f)
+{
+    float maxFloat = std::numeric_limits<float>::max();
+    float minFloat = std::numeric_limits<float>::lowest();
+    Float3 minBounds(maxFloat, maxFloat, maxFloat);
+    Float3 maxBounds(minFloat, minFloat, minFloat);
+    bool foundVertex = false;
+
+    for (int i = 0; i < numVertices; ++i)
+    {
+        const VertexAttributes &vertex = vertices[i];
+
+        // Check if this vertex is influenced by the target joint
+        bool influenced = false;
+        if ((vertex.jointIndices.x == jointIndex && vertex.jointWeights.x >= weightThreshold) ||
+            (vertex.jointIndices.y == jointIndex && vertex.jointWeights.y >= weightThreshold) ||
+            (vertex.jointIndices.z == jointIndex && vertex.jointWeights.z >= weightThreshold) ||
+            (vertex.jointIndices.w == jointIndex && vertex.jointWeights.w >= weightThreshold))
+        {
+            influenced = true;
+        }
+
+        if (influenced)
+        {
+            foundVertex = true;
+            const Float3 &pos = vertex.vertex;
+
+            // Update min bounds
+            minBounds.x = std::min(minBounds.x, pos.x);
+            minBounds.y = std::min(minBounds.y, pos.y);
+            minBounds.z = std::min(minBounds.z, pos.z);
+
+            // Update max bounds
+            maxBounds.x = std::max(maxBounds.x, pos.x);
+            maxBounds.y = std::max(maxBounds.y, pos.y);
+            maxBounds.z = std::max(maxBounds.z, pos.z);
+        }
+    }
+
+    if (!foundVertex)
+    {
+        // Return default bounds if no vertices found
+        return std::pair<Float3, Float3>(Float3(0.0f, 0.0f, 0.0f), Float3(0.0f, 0.0f, 0.0f));
+    }
+
+    return std::pair<Float3, Float3>(minBounds, maxBounds);
+}
 
 void EntityTransform::getTransformMatrix(float matrix[12]) const
 {
@@ -43,7 +96,7 @@ void EntityTransform::getTransformMatrix(float matrix[12]) const
     matrix[11] = position.z;
 }
 
-Entity::Entity(EntityType type, const EntityTransform& transform)
+Entity::Entity(EntityType type, const EntityTransform &transform)
     : m_type(type), m_transform(transform)
 {
     loadGeometry();
@@ -69,11 +122,11 @@ bool Entity::loadGeometry()
 {
     switch (m_type)
     {
-        case EntityTypeMinecraftCharacter:
-            return loadMinecraftCharacterGeometry();
-        default:
-            std::cerr << "Unknown entity type: " << m_type << std::endl;
-            return false;
+    case EntityTypeMinecraftCharacter:
+        return loadMinecraftCharacterGeometry();
+    default:
+        std::cerr << "Unknown entity type: " << m_type << std::endl;
+        return false;
     }
 }
 
@@ -91,19 +144,21 @@ void Entity::update(float deltaTime)
     if (m_d_originalAttributes && m_d_attributes && m_attributeSize > 0)
     {
         // Validate pointers
-        if (!m_d_originalAttributes || !m_d_attributes) {
+        if (!m_d_originalAttributes || !m_d_attributes)
+        {
             return;
         }
 
         // Get skinning data from animation manager's skeleton (which has the GPU memory)
         SkinningData skinningData;
-        Skeleton* animSkeleton = m_animationManager->getSkeleton();
-        if (!animSkeleton) {
+        Skeleton *animSkeleton = m_animationManager->getSkeleton();
+        if (!animSkeleton)
+        {
             return;
         }
 
-        skinningData.jointMatrices = animSkeleton->getDeviceJointMatrices();
-        skinningData.numJoints = static_cast<int>(animSkeleton->joints.size());
+        skinningData.jointMatrices = (Mat4*)m_animationManager->getJointMatricesGPU();
+        skinningData.numJoints = m_animationManager->getJointCount();
         skinningData.enabled = true;
 
         // Validate joint matrix pointer
@@ -118,7 +173,7 @@ void Entity::update(float deltaTime)
     }
 }
 
-void Entity::playAnimation(const std::string& animationName, bool loop)
+void Entity::playAnimation(const std::string &animationName, bool loop)
 {
     assert(m_animationManager != nullptr);
 
@@ -169,7 +224,7 @@ bool Entity::loadMinecraftCharacterGeometry()
 
         // Allocate and copy original vertices for animation skinning
         const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
-        CUDA_CHECK(cudaMalloc((void**)&m_d_originalAttributes, vertexBufferSize));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_originalAttributes, vertexBufferSize));
         CUDA_CHECK(cudaMemcpy(m_d_originalAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
 
         // Create and initialize animation manager
@@ -177,7 +232,7 @@ bool Entity::loadMinecraftCharacterGeometry()
         m_animationManager->setSkeleton(m_skeleton);
 
         // Add all animation clips to the manager
-        for (const auto& clip : m_animationClips)
+        for (const auto &clip : m_animationClips)
         {
             m_animationManager->addAnimationClip(clip);
         }
@@ -198,7 +253,8 @@ bool Entity::loadMinecraftCharacterGeometry()
         // Fallback to regular model loading
         loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
 
-        if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0) {
+        if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0)
+        {
             return true;
         }
     }
