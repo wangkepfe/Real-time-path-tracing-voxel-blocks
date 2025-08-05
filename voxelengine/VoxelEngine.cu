@@ -202,8 +202,8 @@ unsigned int VoxelEngine::getChunkIndex(unsigned int chunkX, unsigned int chunkY
 }
 
 void VoxelEngine::globalToChunkCoords(unsigned int globalX, unsigned int globalY, unsigned int globalZ,
-                                    unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
-                                    unsigned int &localX, unsigned int &localY, unsigned int &localZ) const
+                                      unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
+                                      unsigned int &localX, unsigned int &localY, unsigned int &localZ) const
 {
     chunkX = globalX / VoxelChunk::width;
     chunkY = globalY / VoxelChunk::width;
@@ -215,8 +215,8 @@ void VoxelEngine::globalToChunkCoords(unsigned int globalX, unsigned int globalY
 }
 
 void VoxelEngine::chunkToGlobalCoords(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ,
-                                    unsigned int localX, unsigned int localY, unsigned int localZ,
-                                    unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const
+                                      unsigned int localX, unsigned int localY, unsigned int localZ,
+                                      unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const
 {
     globalX = chunkX * VoxelChunk::width + localX;
     globalY = chunkY * VoxelChunk::width + localY;
@@ -400,10 +400,8 @@ void VoxelEngine::updateInstances()
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 }
 
-
-
 // Multi-chunk version with chunk-specific face tracking
-void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks)
+void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel *> &d_dataChunks)
 {
     auto &scene = Scene::Get();
 
@@ -478,7 +476,7 @@ void VoxelEngine::init()
     voxelChunks.resize(chunkConfig.getTotalChunks());
 
     // Initialize all chunks
-    std::vector<Voxel*> d_dataChunks(chunkConfig.getTotalChunks());
+    std::vector<Voxel *> d_dataChunks(chunkConfig.getTotalChunks());
     for (unsigned int i = 0; i < chunkConfig.getTotalChunks(); ++i)
     {
         initVoxelsMultiChunk(voxelChunks[i], &d_dataChunks[i], i, chunkConfig);
@@ -488,7 +486,7 @@ void VoxelEngine::init()
     updateUninstancedMeshes(d_dataChunks);
 
     // Free device data for all chunks
-    for (auto& d_data : d_dataChunks)
+    for (auto &d_data : d_dataChunks)
     {
         freeDeviceVoxelData(d_data);
     }
@@ -497,10 +495,8 @@ void VoxelEngine::init()
     initInstanceGeometry();
     updateInstances();
 
-    std::cout << "=== VoxelEngine::init() - About to initialize entities ===" << std::endl;
     // Initialize entities
     initEntities();
-    std::cout << "=== VoxelEngine::init() complete ===" << std::endl;
 }
 
 void VoxelEngine::reload()
@@ -520,7 +516,7 @@ void VoxelEngine::reload()
     }
 
     // Upload voxel data from disk load for all chunks
-    std::vector<Voxel*> d_dataChunks(chunkConfig.getTotalChunks());
+    std::vector<Voxel *> d_dataChunks(chunkConfig.getTotalChunks());
     for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
     {
         size_t totalVoxels = VoxelChunk::width * VoxelChunk::width * VoxelChunk::width;
@@ -532,7 +528,7 @@ void VoxelEngine::reload()
     updateUninstancedMeshes(d_dataChunks);
 
     // Free device data for all chunks
-    for (auto& d_data : d_dataChunks)
+    for (auto &d_data : d_dataChunks)
     {
         freeDeviceVoxelData(d_data);
     }
@@ -578,14 +574,14 @@ void VoxelEngine::update()
     static int voxelFrameCounter = 0;
     voxelFrameCounter++;
 
-        const float targetFPS = 30.0f; // 30 FPS for smooth animation
+    const float targetFPS = 30.0f; // 30 FPS for smooth animation
     deltaTime = 1.0f / targetFPS;
     currentTime = voxelFrameCounter * deltaTime; // Simulated time progression
 #endif
 
     for (size_t i = 0; i < scene.getEntityCount(); ++i)
     {
-        Entity* entity = scene.getEntity(i);
+        Entity *entity = scene.getEntity(i);
         if (entity)
         {
             entity->update(deltaTime);
@@ -897,14 +893,10 @@ void VoxelEngine::update()
 
 void VoxelEngine::initEntities()
 {
-    std::cout << "=== VoxelEngine::initEntities() called ===" << std::endl;
-    
     auto &scene = Scene::Get();
 
     // Clear any existing entities
     scene.clearEntities();
-    std::cout << "Cleared existing entities" << std::endl;
-
     // Create a hardcoded Minecraft character entity
     // Position it in front of the current camera for guaranteed visibility
     EntityTransform transform;
@@ -917,21 +909,20 @@ void VoxelEngine::initEntities()
     // Check if camera values are valid (not NaN, not zero vector)
     bool validCameraPos = !isnan(cameraPos.x) && !isnan(cameraPos.y) && !isnan(cameraPos.z);
     bool validCameraDir = !isnan(cameraDir.x) && !isnan(cameraDir.y) && !isnan(cameraDir.z) &&
-                         (cameraDir.x != 0.0f || cameraDir.y != 0.0f || cameraDir.z != 0.0f);
+                          (cameraDir.x != 0.0f || cameraDir.y != 0.0f || cameraDir.z != 0.0f);
 
     // Use character position from scene config if available
     // Try to load from scene config file first
     std::string sceneConfigFile = "data/scene/scene_export.yaml";
     SceneConfig sceneConfig;
     bool configLoaded = SceneConfigParser::LoadFromFile(sceneConfigFile, sceneConfig);
-    
+
     if (configLoaded)
     {
         // Use character position from config
         transform.position = sceneConfig.character.position;
         transform.rotation = sceneConfig.character.rotation;
         transform.scale = sceneConfig.character.scale;
-        std::cout << "SUCCESS: Loaded scene config file" << std::endl;
     }
     else
     {
@@ -939,27 +930,19 @@ void VoxelEngine::initEntities()
         transform.position = Float3(16.0f, 10.0f, 16.0f);
         transform.rotation = Float3(0.0f, 0.0f, 0.0f);
         transform.scale = Float3(1.0f, 1.0f, 1.0f);
+        std::cout << "Failed to load scene config file" << std::endl;
     }
 
     // Create Character instead of Entity for controllable character
-    std::cout << "Creating Character with transform..." << std::endl;
     auto minecraftCharacter = std::make_unique<Character>(transform);
-    std::cout << "Character created successfully" << std::endl;
 
 #ifndef OFFLINE_MODE
     // Set up the character with the input handler for control
-    std::cout << "Setting up InputHandler for character control..." << std::endl;
     auto &inputHandler = InputHandler::Get();
-    Character* characterPtr = minecraftCharacter.get();
+    Character *characterPtr = minecraftCharacter.get();
     inputHandler.setCharacter(characterPtr);
-    std::cout << "InputHandler setup complete" << std::endl;
-#else
-    std::cout << "Skipping InputHandler setup (OFFLINE_MODE)" << std::endl;
 #endif
 
-    // Add character to scene (Character inherits from Entity)  
-    std::cout << "Adding character to scene..." << std::endl;
+    // Add character to scene (Character inherits from Entity)
     scene.addEntity(std::move(minecraftCharacter));
-    std::cout << "Character added to scene. Total entities: " << scene.getEntityCount() << std::endl;
-    std::cout << "=== initEntities() complete ===" << std::endl;
 }

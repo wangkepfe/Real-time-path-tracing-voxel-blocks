@@ -251,7 +251,7 @@ void Character::updatePhysics(float deltaTime)
     // Clamp horizontal speed based on running mode
     auto &globalMovement = GlobalSettings::GetCharacterMovementParams();
     float currentMaxSpeed = m_movement.isRunning ? globalMovement.runMaxSpeed : globalMovement.walkMaxSpeed;
-    
+
     Float3 horizontalVel = Float3(m_physics.velocity.x, 0.0f, m_physics.velocity.z);
     float horizontalSpeed = length(horizontalVel);
     if (horizontalSpeed > currentMaxSpeed)
@@ -303,7 +303,6 @@ void Character::updatePhysics(float deltaTime)
     // Update movement tracking for animation
     Float3 currentVelocity = Float3(m_physics.velocity.x, 0.0f, m_physics.velocity.z);
     m_movement.currentSpeed = length(currentVelocity);
-    m_movement.isMoving = m_movement.currentSpeed > 0.1f; // Moving if speed > 0.1 tiles/sec
 }
 
 void Character::resolveCollisions(Float3 &newPosition)
@@ -314,7 +313,7 @@ void Character::resolveCollisions(Float3 &newPosition)
     // Check terrain collision and adjust Y position
     float groundHeight = getTerrainHeightAt(newPosition);
     float characterBottom = newPosition.y;
-    
+
     // Cache the ground height for consistent use in checkGroundCollision
     m_lastCalculatedGroundHeight = groundHeight;
     m_groundHeightValid = true;
@@ -325,8 +324,7 @@ void Character::resolveCollisions(Float3 &newPosition)
     bool shouldBeGrounded = false;
     bool isCliffEdgeCase = false;
     bool hasSupport = false;
-    
-    
+
     if (characterBottom <= groundHeight)
     {
         // Standard case: character is at or below ground level
@@ -340,18 +338,13 @@ void Character::resolveCollisions(Float3 &newPosition)
         isCliffEdgeCase = true;
         hasSupport = hasGroundSupport(newPosition, groundHeight);
         shouldBeGrounded = hasSupport;
-        
-    }
-    else
-    {
     }
 
     if (shouldBeGrounded)
     {
         float oldY = newPosition.y;
         newPosition.y = groundHeight + 0.01f; // Small offset to ensure character is above ground
-        
-        
+
         if (m_physics.velocity.y <= 0.0f)
         {
             m_physics.velocity.y = 0.0f;
@@ -389,15 +382,13 @@ void Character::resolveCollisions(Float3 &newPosition)
 
     // Check horizontal cylinder collision with terrain
     bool positionValid = isPositionValid(newPosition);
-    
 
     if (!positionValid)
     {
-
         // Calculate movement delta
         Float3 movementDelta = newPosition - currentPos;
         Float3 bestPosition = newPosition; // FIXED: Preserve Y position from vertical collision resolution
-        bestPosition.x = currentPos.x; // Only reset horizontal position
+        bestPosition.x = currentPos.x;     // Only reset horizontal position
         bestPosition.z = currentPos.z;
         bool foundValidPosition = false;
 
@@ -426,8 +417,8 @@ void Character::resolveCollisions(Float3 &newPosition)
             float currentGroundHeight = getTerrainHeightAt(currentPos);
             float newGroundHeight = getTerrainHeightAt(newPosition);
             bool movingUpward = newGroundHeight > currentGroundHeight + 0.1f; // Moving to higher ground
-            bool isFalling = m_physics.velocity.y < -1.0f; // Falling with significant downward velocity
-            
+            bool isFalling = m_physics.velocity.y < -1.0f;                    // Falling with significant downward velocity
+
             if (movingUpward && !isFalling)
             {
                 // Character is trying to go up stairs - allow step-up
@@ -441,9 +432,6 @@ void Character::resolveCollisions(Float3 &newPosition)
                         break;
                     }
                 }
-            }
-            else
-            {
             }
         }
 
@@ -498,7 +486,6 @@ void Character::resolveCollisions(Float3 &newPosition)
         // Apply the best position found
         Float3 oldPosition = newPosition;
         newPosition = bestPosition;
-        
 
         if (!foundValidPosition)
         {
@@ -506,9 +493,6 @@ void Character::resolveCollisions(Float3 &newPosition)
             m_physics.velocity.x *= 0.8f;
             m_physics.velocity.z *= 0.8f;
         }
-    }
-    else
-    {
     }
 }
 
@@ -531,7 +515,7 @@ void Character::checkGroundCollision()
         // Fallback: recalculate if cache not available
         groundHeight = getTerrainHeightAt(position);
     }
-    
+
     float characterBottom = position.y;
     float distance = std::abs(characterBottom - groundHeight);
     bool wasGrounded = m_physics.isGrounded;
@@ -545,7 +529,6 @@ void Character::checkGroundCollision()
     {
         m_physics.isGrounded = false;
     }
-    
 }
 
 bool Character::checkCylinderCollision(const Float3 &newPosition)
@@ -601,7 +584,7 @@ bool Character::isPositionValid(const Float3 &position)
     // SIMPLE FIX: If character is grounded and stable, allow horizontal movement
     bool isGrounded = m_physics.isGrounded;
     bool isStable = std::abs(m_physics.velocity.y) < 0.1f; // Not moving vertically much
-    
+
     if (isGrounded && isStable)
     {
         // Character is stable on ground - allow horizontal movement
@@ -609,33 +592,33 @@ bool Character::isPositionValid(const Float3 &position)
         float radius = m_physics.radius;
         float height = m_physics.height;
         float headLevel = position.y + height * 0.8f; // Check near the top of character
-        
+
         const int checkPoints = 8;
         for (int i = 0; i < checkPoints; i++)
         {
             float angle = (2.0f * M_PI * i) / checkPoints;
             float checkX = position.x + radius * cos(angle);
             float checkZ = position.z + radius * sin(angle);
-            
+
             int blockX = static_cast<int>(floor(checkX));
             int blockY = static_cast<int>(floor(headLevel));
             int blockZ = static_cast<int>(floor(checkZ));
-            
+
             Voxel voxel = VoxelEngine::Get().getVoxelAtGlobal(blockX, blockY, blockZ);
             if (voxel.id != BlockTypeEmpty)
             {
                 return false; // Head would hit something
             }
         }
-        
+
         return true; // No head collisions - movement allowed
     }
-    
+
     // Character is not stable - use normal collision detection
     float radius = m_physics.radius;
     float height = m_physics.height;
     float checkStartY = position.y + 0.1f;
-    
+
     // When falling, be more permissive
     if (m_physics.velocity.y < -1.0f)
     {
@@ -670,12 +653,11 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
 {
     // Check if character has sufficient ground support within their footprint
     // This prevents cliff-edge oscillation by ensuring character either has solid support or falls
-    
+
     float radius = m_physics.radius;
     int supportingBlocks = 0;
     int totalChecks = 0;
-    
-    
+
     // Check multiple points within character's circular footprint
     const int checkPoints = 8;
     for (int i = 0; i < checkPoints; i++)
@@ -683,14 +665,14 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
         float angle = (2.0f * M_PI * i) / checkPoints;
         float checkX = position.x + radius * 0.7f * cos(angle); // Check at 70% of radius
         float checkZ = position.z + radius * 0.7f * sin(angle);
-        
+
         int blockX = static_cast<int>(floor(checkX));
         int blockZ = static_cast<int>(floor(checkZ));
         int blockY = static_cast<int>(floor(groundHeight)) - 1; // Block that should provide support
-        
+
         Voxel supportBlock = VoxelEngine::Get().getVoxelAtGlobal(blockX, blockY, blockZ);
         totalChecks++;
-        
+
         if (supportBlock.id != BlockTypeEmpty)
         {
             supportingBlocks++;
@@ -699,12 +681,12 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
         {
         }
     }
-    
+
     // Also check center point
     int centerX = static_cast<int>(floor(position.x));
     int centerZ = static_cast<int>(floor(position.z));
     int centerY = static_cast<int>(floor(groundHeight)) - 1;
-    
+
     Voxel centerBlock = VoxelEngine::Get().getVoxelAtGlobal(centerX, centerY, centerZ);
     totalChecks++;
     if (centerBlock.id != BlockTypeEmpty)
@@ -714,12 +696,11 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
     else
     {
     }
-    
+
     // Character needs at least 50% ground support to stay on cliff edge
     float supportRatio = static_cast<float>(supportingBlocks) / static_cast<float>(totalChecks);
     bool hasSupport = supportRatio >= 0.5f;
-    
-    
+
     return hasSupport;
 }
 
@@ -762,7 +743,7 @@ void Character::updateTwoStageAnimation(float deltaTime)
     // Use appropriate max speed based on running mode
     auto &globalMovement = GlobalSettings::GetCharacterMovementParams();
     const float maxSpeed = m_movement.isRunning ? globalMovement.runMaxSpeed : globalMovement.walkMaxSpeed;
-    
+
     // Check if running mode has changed - restart blend if it has
     bool modeChanged = (m_movement.isRunning != m_animation.previousRunningMode);
     if (modeChanged)
@@ -775,7 +756,7 @@ void Character::updateTwoStageAnimation(float deltaTime)
         }
         else
         {
-            // Switched to walking mode - start idle-walk blend  
+            // Switched to walking mode - start idle-walk blend
             getAnimationManager()->startManualBlend(m_animation.idleClipIndex, m_animation.walkClipIndex);
         }
         m_animation.previousRunningMode = m_movement.isRunning;

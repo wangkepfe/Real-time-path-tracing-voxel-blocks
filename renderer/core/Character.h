@@ -30,52 +30,51 @@ struct CharacterMovement
     bool moveLeft = false;
     bool moveRight = false;
     bool jump = false;
-    bool isRunning = false;   // Whether running mode is active
+    bool isRunning = false; // Whether running mode is active
 
     Float3 moveDirection = Float3(0.0f, 0.0f, 0.0f);
     float moveSpeed = 3.0f;
-    
+
     // Movement tracking for animation
-    float currentSpeed = 0.0f;    // Current horizontal movement speed
-    bool isMoving = false;        // Whether character is currently moving
+    float currentSpeed = 0.0f; // Current horizontal movement speed
 
     // Character orientation (separate from camera)
-    float yaw = 0.0f;         // Current character rotation around Y axis
-    float targetYaw = 0.0f;   // Target yaw for smooth rotation
+    float yaw = 0.0f;           // Current character rotation around Y axis
+    float targetYaw = 0.0f;     // Target yaw for smooth rotation
     float rotationSpeed = 8.0f; // How fast character rotates (radians per second)
 };
 
 // Animation states for the character
 enum class CharacterAnimationState
 {
-    Idle,        // Standing still
-    Walking,     // Walking/running
-    Blending     // Transitioning between states
+    Idle,    // Standing still
+    Walking, // Walking/running
+    Blending // Transitioning between states
 };
 
 // Three-animation system: idle, walk, run
 struct CharacterAnimation
 {
-    int idleClipIndex = -1;        // Index of idle animation clip
-    int walkClipIndex = -1;        // Index of walk animation clip  
-    int runClipIndex = -1;         // Index of run animation clip
-    int placeClipIndex = -1;       // Index of place animation clip
-    
+    int idleClipIndex = -1;  // Index of idle animation clip
+    int walkClipIndex = -1;  // Index of walk animation clip
+    int runClipIndex = -1;   // Index of run animation clip
+    int placeClipIndex = -1; // Index of place animation clip
+
     // Animation blending ratios
-    float blendRatio = 0.0f;       // Blend ratio for current animation pair
-    float animationSpeed = 1.0f;   // Animation playback speed
-    
+    float blendRatio = 0.0f;     // Blend ratio for current animation pair
+    float animationSpeed = 1.0f; // Animation playback speed
+
     // Thresholds (loaded from global settings)
     float walkSpeedThreshold = 0.1f;
     float mediumSpeedThreshold = 2.5f;
     float runSpeedThreshold = 0.2f;
     float runMediumSpeedThreshold = 4.0f;
-    
+
     // Animation time tracking
     float idleTime = 0.0f;
     float walkTime = 0.0f;
     float runTime = 0.0f;
-    
+
     // Mode switching detection
     bool previousRunningMode = false;
 };
@@ -109,15 +108,15 @@ public:
 
     // Character camera following
     Float3 getCameraTargetPosition() const;
-    
-    // Animation control  
+
+    // Animation control
     void initializeAnimationClips();
     void updateTwoStageAnimation(float deltaTime);
     void updateAnimationTimes(float deltaTime);
     void blendTwoAnimations(int anim1Index, int anim2Index, float ratio); // ratio: 0.0 = full anim1, 1.0 = full anim2
     void setAnimationSpeed(float speed);
     float getBlendRatio() const { return m_animation.blendRatio; }
-    
+
     // Place animation control
     void triggerPlaceAnimation();
 
@@ -125,7 +124,7 @@ private:
     CharacterPhysics m_physics;
     CharacterMovement m_movement;
     CharacterAnimation m_animation;
-    
+
     // Cache for consistent ground height calculations
     float m_lastCalculatedGroundHeight = 0.0f;
     bool m_groundHeightValid = false;

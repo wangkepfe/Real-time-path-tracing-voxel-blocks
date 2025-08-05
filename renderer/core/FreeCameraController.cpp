@@ -12,15 +12,17 @@ void FreeCameraController::updateCamera(Camera& camera, float deltaTime)
     {
         Float3 movingDir{0};
         
-        // Use horizontal-only camera direction for WASD movement (better for free camera)
-        Float3 horizontalDir = camera.dir;
-        horizontalDir.y = 0.0f; // Remove vertical component
-        horizontalDir = normalize(horizontalDir); // Normalize the horizontal direction
+        // Use actual camera direction for forward/backward movement
+        Float3 forwardDir = camera.dir; // Use full 3D camera direction
         
+        // For strafing, use horizontal-only direction to maintain level movement
+        Float3 horizontalDir = camera.dir;
+        horizontalDir.y = 0.0f;
+        horizontalDir = normalize(horizontalDir);
         Float3 strafeDir = cross(horizontalDir, Float3(0, 1, 0)).normalize();
 
-        if (m_moveW) movingDir += horizontalDir;     // Forward in horizontal plane
-        if (m_moveS) movingDir -= horizontalDir;     // Backward in horizontal plane
+        if (m_moveW) movingDir += forwardDir;        // Forward in actual look direction
+        if (m_moveS) movingDir -= forwardDir;        // Backward in actual look direction
         if (m_moveA) movingDir -= strafeDir;         // Left
         if (m_moveD) movingDir += strafeDir;         // Right
         if (m_moveC) movingDir += Float3(0, 1, 0);   // Up

@@ -101,11 +101,11 @@ void EntityTransform::getTransformMatrix(float matrix[12]) const
 Entity::Entity(EntityType type, const EntityTransform &transform)
     : m_type(type), m_transform(transform)
 {
-    std::cout << "=== Entity Constructor Called ===" << std::endl;
-    std::cout << "Entity type: " << type << std::endl;
-    std::cout << "Loading geometry..." << std::endl;
     bool success = loadGeometry();
-    std::cout << "Geometry loading " << (success ? "SUCCESS" : "FAILED") << std::endl;
+    if (!success)
+    {
+        std::cout << "Geometry loading FAILED" << std::endl;
+    }
 }
 
 Entity::~Entity()
@@ -163,7 +163,7 @@ void Entity::update(float deltaTime)
             return;
         }
 
-        skinningData.jointMatrices = (Mat4*)m_animationManager->getJointMatricesGPU();
+        skinningData.jointMatrices = (Mat4 *)m_animationManager->getJointMatricesGPU();
         skinningData.numJoints = m_animationManager->getJointCount();
         skinningData.enabled = true;
 
@@ -178,8 +178,6 @@ void Entity::update(float deltaTime)
                                 m_attributeSize, skinningData);
     }
 }
-
-
 
 bool Entity::loadMinecraftCharacterGeometry()
 {
@@ -207,18 +205,6 @@ bool Entity::loadMinecraftCharacterGeometry()
         for (const auto &clip : m_animationClips)
         {
             m_animationManager->addAnimationClip(clip);
-        }
-
-        // Animation clips loaded - Character class will handle animation control
-        if (!m_animationClips.empty())
-        {
-            std::cout << "Loaded " << m_animationClips.size() << " animation clips: ";
-            for (size_t i = 0; i < m_animationClips.size(); ++i)
-            {
-                std::cout << m_animationClips[i].name;
-                if (i < m_animationClips.size() - 1) std::cout << ", ";
-            }
-            std::cout << std::endl;
         }
 
         return true;
