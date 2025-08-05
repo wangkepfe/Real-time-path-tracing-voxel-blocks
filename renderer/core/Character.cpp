@@ -326,23 +326,11 @@ void Character::resolveCollisions(Float3 &newPosition)
     bool isCliffEdgeCase = false;
     bool hasSupport = false;
     
-    // DEBUG: Print collision analysis
-    static int debugCounter = 0;
-    debugCounter++;
-    if (debugCounter % 30 == 0 || std::abs(distanceToGround) < 2.0f)
-    {
-        std::cout << "[DEBUG resolve] CharBottom: " << characterBottom << " GroundH: " << groundHeight 
-                  << " Distance: " << distanceToGround << " VelY: " << m_physics.velocity.y << std::endl;
-    }
     
     if (characterBottom <= groundHeight)
     {
         // Standard case: character is at or below ground level
         shouldBeGrounded = true;
-        if (debugCounter % 30 == 0 || std::abs(distanceToGround) < 2.0f)
-        {
-            std::cout << "[DEBUG resolve] -> Standard case: character below ground" << std::endl;
-        }
     }
     else if (distanceToGround < 0.2f && m_physics.velocity.y <= -2.0f)
     {
@@ -353,20 +341,9 @@ void Character::resolveCollisions(Float3 &newPosition)
         hasSupport = hasGroundSupport(newPosition, groundHeight);
         shouldBeGrounded = hasSupport;
         
-        if (debugCounter % 30 == 0 || std::abs(distanceToGround) < 2.0f)
-        {
-            std::cout << "[DEBUG resolve] -> Cliff edge case: distance=" << distanceToGround 
-                      << " hasSupport=" << (hasSupport ? "YES" : "NO") 
-                      << " shouldGround=" << (shouldBeGrounded ? "YES" : "NO") << std::endl;
-        }
     }
     else
     {
-        if (debugCounter % 30 == 0 || std::abs(distanceToGround) < 2.0f)
-        {
-            std::cout << "[DEBUG resolve] -> No grounding: distance=" << distanceToGround 
-                      << " velY=" << m_physics.velocity.y << std::endl;
-        }
     }
 
     if (shouldBeGrounded)
@@ -374,10 +351,6 @@ void Character::resolveCollisions(Float3 &newPosition)
         float oldY = newPosition.y;
         newPosition.y = groundHeight + 0.01f; // Small offset to ensure character is above ground
         
-        if (debugCounter % 30 == 0 || std::abs(distanceToGround) < 2.0f)
-        {
-            std::cout << "[DEBUG resolve] *** GROUNDING: Y " << oldY << " -> " << newPosition.y << std::endl;
-        }
         
         if (m_physics.velocity.y <= 0.0f)
         {
@@ -392,10 +365,6 @@ void Character::resolveCollisions(Float3 &newPosition)
         if (distanceToGround > 0.3f) // Only set airborne if significantly above ground
         {
             m_physics.isGrounded = false;
-            if (debugCounter % 30 == 0 || std::abs(distanceToGround) < 2.0f)
-            {
-                std::cout << "[DEBUG resolve] -> Set AIRBORNE (distance > 0.3)" << std::endl;
-            }
         }
     }
 
@@ -421,21 +390,9 @@ void Character::resolveCollisions(Float3 &newPosition)
     // Check horizontal cylinder collision with terrain
     bool positionValid = isPositionValid(newPosition);
     
-    // DEBUG: Check if horizontal collision is interfering with vertical positioning
-    static int collisionCounter = 0;
-    collisionCounter++;
-    if (collisionCounter % 30 == 0 || !positionValid)
-    {
-        float currentGroundHeight = getTerrainHeightAt(currentPos);
-        float newGroundHeight = getTerrainHeightAt(newPosition);
-        std::cout << "[DEBUG horizontal] Position (" << newPosition.x << ", " << newPosition.y << ", " << newPosition.z 
-                  << ") isValid: " << (positionValid ? "YES" : "NO") 
-                  << " currentGround: " << currentGroundHeight << " newGround: " << newGroundHeight << std::endl;
-    }
 
     if (!positionValid)
     {
-        std::cout << "[DEBUG horizontal] *** HORIZONTAL COLLISION TRIGGERED - might affect Y position!" << std::endl;
 
         // Calculate movement delta
         Float3 movementDelta = newPosition - currentPos;
@@ -453,14 +410,12 @@ void Character::resolveCollisions(Float3 &newPosition)
             bestPosition = slideX;
             foundValidPosition = true;
             m_physics.velocity.z *= 0.3f; // Reduce blocked direction
-            std::cout << "[DEBUG horizontal] -> STEP 1: slideX successful" << std::endl;
         }
         else if (isPositionValid(slideZ))
         {
             bestPosition = slideZ;
             foundValidPosition = true;
             m_physics.velocity.x *= 0.3f; // Reduce blocked direction
-            std::cout << "[DEBUG horizontal] -> STEP 1: slideZ successful" << std::endl;
         }
 
         // STEP 2: Try step-up for stairs/small obstacles
@@ -483,16 +438,12 @@ void Character::resolveCollisions(Float3 &newPosition)
                     {
                         bestPosition = stepUp;
                         foundValidPosition = true;
-                        std::cout << "[DEBUG horizontal] -> STEP 2: step-up successful at height +" << stepHeight 
-                                  << " (moving upward)" << std::endl;
                         break;
                     }
                 }
             }
             else
             {
-                std::cout << "[DEBUG horizontal] -> STEP 2: step-up DISABLED (movingUp=" << movingUpward 
-                          << " isFalling=" << isFalling << " velY=" << m_physics.velocity.y << ")" << std::endl;
             }
         }
 
@@ -548,17 +499,6 @@ void Character::resolveCollisions(Float3 &newPosition)
         Float3 oldPosition = newPosition;
         newPosition = bestPosition;
         
-        // DEBUG: Check if horizontal collision changed Y position
-        if (std::abs(oldPosition.y - newPosition.y) > 0.01f)
-        {
-            std::cout << "[DEBUG horizontal] *** Y POSITION CHANGED by horizontal collision! " 
-                      << oldPosition.y << " -> " << newPosition.y 
-                      << " (delta: " << (newPosition.y - oldPosition.y) << ")" << std::endl;
-        }
-        else
-        {
-            std::cout << "[DEBUG horizontal] Y position unchanged: " << newPosition.y << std::endl;
-        }
 
         if (!foundValidPosition)
         {
@@ -606,16 +546,6 @@ void Character::checkGroundCollision()
         m_physics.isGrounded = false;
     }
     
-    // DEBUG: Print grounded state analysis
-    static int checkCounter = 0;
-    checkCounter++;
-    if (checkCounter % 30 == 0 || distance < 2.0f || wasGrounded != m_physics.isGrounded)
-    {
-        std::cout << "[DEBUG checkGround] Pos: (" << position.x << ", " << position.y << ", " << position.z << ") "
-                  << "GroundH: " << groundHeight << " Distance: " << distance << " "
-                  << "Was: " << (wasGrounded ? "G" : "A") << " Now: " << (m_physics.isGrounded ? "G" : "A") << " "
-                  << "Cache: " << (usedCache ? "Y" : "N") << " VelY: " << m_physics.velocity.y << std::endl;
-    }
 }
 
 bool Character::checkCylinderCollision(const Float3 &newPosition)
@@ -745,9 +675,6 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
     int supportingBlocks = 0;
     int totalChecks = 0;
     
-    // DEBUG: Print support analysis
-    std::cout << "[DEBUG support] Checking support at pos(" << position.x << ", " << position.y << ", " << position.z 
-              << ") groundH=" << groundHeight << " radius=" << radius << std::endl;
     
     // Check multiple points within character's circular footprint
     const int checkPoints = 8;
@@ -767,13 +694,9 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
         if (supportBlock.id != BlockTypeEmpty)
         {
             supportingBlocks++;
-            std::cout << "[DEBUG support] Point " << i << " at (" << checkX << ", " << checkZ << ") block(" 
-                      << blockX << ", " << blockY << ", " << blockZ << ") = SOLID" << std::endl;
         }
         else
         {
-            std::cout << "[DEBUG support] Point " << i << " at (" << checkX << ", " << checkZ << ") block(" 
-                      << blockX << ", " << blockY << ", " << blockZ << ") = EMPTY" << std::endl;
         }
     }
     
@@ -787,19 +710,15 @@ bool Character::hasGroundSupport(const Float3 &position, float groundHeight)
     if (centerBlock.id != BlockTypeEmpty)
     {
         supportingBlocks++;
-        std::cout << "[DEBUG support] Center at block(" << centerX << ", " << centerY << ", " << centerZ << ") = SOLID" << std::endl;
     }
     else
     {
-        std::cout << "[DEBUG support] Center at block(" << centerX << ", " << centerY << ", " << centerZ << ") = EMPTY" << std::endl;
     }
     
     // Character needs at least 50% ground support to stay on cliff edge
     float supportRatio = static_cast<float>(supportingBlocks) / static_cast<float>(totalChecks);
     bool hasSupport = supportRatio >= 0.5f;
     
-    std::cout << "[DEBUG support] Result: " << supportingBlocks << "/" << totalChecks 
-              << " = " << supportRatio << " -> " << (hasSupport ? "HAS_SUPPORT" : "NO_SUPPORT") << std::endl;
     
     return hasSupport;
 }
