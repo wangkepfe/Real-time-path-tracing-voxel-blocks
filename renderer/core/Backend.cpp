@@ -106,6 +106,9 @@ void Backend::mainloop()
 
         dynamicResolution();
 
+        // CAMERA HISTORY: Save current camera as history BEFORE InputHandler updates it
+        RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
+
         inputHandler.update();
 
         renderer.update();

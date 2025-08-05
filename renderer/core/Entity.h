@@ -65,10 +65,6 @@ public:
     // Animation support
     bool hasAnimation() const { return m_animationManager != nullptr; }
     AnimationManager* getAnimationManager() const { return m_animationManager.get(); }
-    void playAnimation(const std::string& animationName, bool loop = true);
-    void playAnimation(int clipIndex, bool loop = true);
-    void stopAnimation();
-    void setAnimationSpeed(float speed);
 
 private:
     EntityType m_type;

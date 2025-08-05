@@ -20,9 +20,17 @@ struct CameraConfig
     }
 };
 
+struct CharacterConfig
+{
+    Float3 position = Float3(16.0f, 10.0f, 16.0f);
+    Float3 rotation = Float3(0.0f, 0.0f, 0.0f);
+    Float3 scale = Float3(1.0f, 1.0f, 1.0f);
+};
+
 struct SceneConfig
 {
     CameraConfig camera;
+    CharacterConfig character;
 
     // Add more scene elements here in the future
     // LightConfig lights;

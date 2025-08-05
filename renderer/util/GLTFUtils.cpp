@@ -465,11 +465,18 @@ namespace GLTFUtils {
                     // For now, store the raw data in translations (we'll sort it out in channels)
                     if (outputAccessor.type == TINYGLTF_TYPE_VEC3) {
                         for (size_t i = 0; i < outputAccessor.count; ++i) {
-                            sampler.outputTranslations.push_back(Float3(
+                            Float3 vec3Data(
                                 outputData[i * 3 + 0],
                                 outputData[i * 3 + 1],
                                 outputData[i * 3 + 2]
-                            ));
+                            );
+                            sampler.outputTranslations.push_back(vec3Data);
+                            
+                            // Debug output for hip translation data
+                            if (clip.name == "Run") {
+                                std::cout << "Loading Run animation VEC3 data [" << i << "]: " 
+                                          << vec3Data.x << ", " << vec3Data.y << ", " << vec3Data.z << std::endl;
+                            }
                         }
                     } else if (outputAccessor.type == TINYGLTF_TYPE_VEC4) {
                         for (size_t i = 0; i < outputAccessor.count; ++i) {

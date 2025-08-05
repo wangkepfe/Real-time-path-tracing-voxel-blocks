@@ -12,6 +12,7 @@ void Skeleton::updateJointTransforms()
 
         // Build local matrix from TRS
         joint.localMatrix = Mat4(joint.position, joint.rotation, joint.scale);
+        
 
         // Calculate global matrix
         if (joint.parentIndex == -1)

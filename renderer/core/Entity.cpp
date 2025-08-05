@@ -101,7 +101,11 @@ void EntityTransform::getTransformMatrix(float matrix[12]) const
 Entity::Entity(EntityType type, const EntityTransform &transform)
     : m_type(type), m_transform(transform)
 {
-    loadGeometry();
+    std::cout << "=== Entity Constructor Called ===" << std::endl;
+    std::cout << "Entity type: " << type << std::endl;
+    std::cout << "Loading geometry..." << std::endl;
+    bool success = loadGeometry();
+    std::cout << "Geometry loading " << (success ? "SUCCESS" : "FAILED") << std::endl;
 }
 
 Entity::~Entity()
@@ -175,41 +179,7 @@ void Entity::update(float deltaTime)
     }
 }
 
-void Entity::playAnimation(const std::string &animationName, bool loop)
-{
-    assert(m_animationManager != nullptr);
 
-    // Find animation by name
-    for (size_t i = 0; i < m_animationClips.size(); ++i)
-    {
-        if (m_animationClips[i].name == animationName)
-        {
-            m_animationManager->playAnimation(static_cast<int>(i), loop);
-            return;
-        }
-    }
-}
-
-void Entity::playAnimation(int clipIndex, bool loop)
-{
-    assert(m_animationManager != nullptr);
-
-    m_animationManager->playAnimation(clipIndex, loop);
-}
-
-void Entity::stopAnimation()
-{
-    assert(m_animationManager != nullptr);
-
-    m_animationManager->stopAnimation();
-}
-
-void Entity::setAnimationSpeed(float speed)
-{
-    assert(m_animationManager != nullptr);
-
-    m_animationManager->setPlaybackSpeed(speed);
-}
 
 bool Entity::loadMinecraftCharacterGeometry()
 {
@@ -239,11 +209,16 @@ bool Entity::loadMinecraftCharacterGeometry()
             m_animationManager->addAnimationClip(clip);
         }
 
-        // Start playing the first animation if available
+        // Animation clips loaded - Character class will handle animation control
         if (!m_animationClips.empty())
         {
-            std::cout << "Starting animation: " << m_animationClips[0].name << std::endl;
-            m_animationManager->playAnimation(0, true); // Play first animation looped
+            std::cout << "Loaded " << m_animationClips.size() << " animation clips: ";
+            for (size_t i = 0; i < m_animationClips.size(); ++i)
+            {
+                std::cout << m_animationClips[i].name;
+                if (i < m_animationClips.size() - 1) std::cout << ", ";
+            }
+            std::cout << std::endl;
         }
 
         return true;

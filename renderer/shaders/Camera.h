@@ -39,10 +39,9 @@ struct __align__(16) Camera
         tanHalfFov = Float2(tanf(fovX * 0.5f), tanf(fovY * 0.5f));
     }
 
-    INL_HOST_DEVICE void update()
+    INL_HOST_DEVICE void updateMatrices()
     {
-        pos = pos + posDelta;
-        posDelta = Float3(0.0f, 0.0f, 0.0f);
+        // Update camera direction from yaw/pitch
         dir = YawPitchToDir(yaw, pitch);
 
         // Fixed vertical direction for camera setup
@@ -82,6 +81,22 @@ struct __align__(16) Camera
 
         worldToUv = ndcToUv * viewToNdc * worldToView;
         viewToUv = viewToNdc * worldToView;
+    }
+
+    INL_HOST_DEVICE void update()
+    {
+        // Protect against corrupted posDelta values
+        if (isnan(posDelta.x) || isnan(posDelta.y) || isnan(posDelta.z) ||
+            abs(posDelta.x) > 1000.0f || abs(posDelta.y) > 1000.0f || abs(posDelta.z) > 1000.0f)
+        {
+            // Reset corrupted posDelta to prevent camera position corruption
+            posDelta = Float3(0.0f, 0.0f, 0.0f);
+        }
+        
+        pos = pos + posDelta;
+        posDelta = Float3(0.0f, 0.0f, 0.0f);
+        
+        updateMatrices();
     }
 
     INL_DEVICE Float3 uvToWorldDirection(const Float2 &uv) const

@@ -58,16 +58,28 @@ bool SceneConfigParser::LoadFromFile(const std::string& filepath, SceneConfig& c
                 parseFloat(value, config.camera.fov);
             }
         }
+        // Parse character settings
+        else if (currentSection == "character")
+        {
+            if (key == "position")
+            {
+                parseFloat3(value, config.character.position);
+            }
+            else if (key == "rotation")
+            {
+                parseFloat3(value, config.character.rotation);
+            }
+            else if (key == "scale")
+            {
+                parseFloat3(value, config.character.scale);
+            }
+        }
     }
 
     // Normalize camera direction
     config.camera.normalize();
 
     std::cout << "Loaded scene config from: " << filepath << std::endl;
-    std::cout << "Camera position: [" << config.camera.position.x << ", "
-              << config.camera.position.y << ", " << config.camera.position.z << "]" << std::endl;
-    std::cout << "Camera direction: [" << config.camera.direction.x << ", "
-              << config.camera.direction.y << ", " << config.camera.direction.z << "]" << std::endl;
 
     return true;
 }
@@ -88,7 +100,12 @@ void SceneConfigParser::SaveToFile(const std::string& filepath, const SceneConfi
     file << "  position: " << float3ToString(config.camera.position) << "\n";
     file << "  direction: " << float3ToString(config.camera.direction) << "\n";
     file << "  up: " << float3ToString(config.camera.up) << "\n";
-    file << "  fov: " << config.camera.fov << "\n";
+    file << "  fov: " << config.camera.fov << "\n\n";
+    
+    file << "character:\n";
+    file << "  position: " << float3ToString(config.character.position) << "\n";
+    file << "  rotation: " << float3ToString(config.character.rotation) << "\n";
+    file << "  scale: " << float3ToString(config.character.scale) << "\n";
 
     std::cout << "Saved scene config to: " << filepath << std::endl;
 }
@@ -101,6 +118,11 @@ SceneConfig SceneConfigParser::CreateDefault()
     config.camera.up = Float3(0.0f, 1.0f, 0.0f);
     config.camera.fov = 90.0f;
     config.camera.normalize();
+    
+    config.character.position = Float3(16.0f, 10.0f, 16.0f);
+    config.character.rotation = Float3(0.0f, 0.0f, 0.0f);
+    config.character.scale = Float3(1.0f, 1.0f, 1.0f);
+    
     return config;
 }
 

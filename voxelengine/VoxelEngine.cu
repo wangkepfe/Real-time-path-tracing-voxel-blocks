@@ -3,8 +3,12 @@
 #include "Block.h"
 
 #include "core/Scene.h"
+#ifndef OFFLINE_MODE
 #include "core/InputHandler.h"
+#endif
 #include "core/RenderCamera.h"
+#include "core/Character.h"
+#include "core/SceneConfig.h"
 
 #include "util/ModelUtils.h"
 #include "shaders/ShaderDebugUtils.h"
@@ -353,7 +357,7 @@ void VoxelEngine::updateInstances()
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
             unsigned int numTriPerInstance = sceneGeometryIndicesSize[arrayIndex] / 3;
-            unsigned int numTriLight = numTriPerInstance * numInstances;
+            // unsigned int numTriLight = numTriPerInstance * numInstances; // Unused variable
 
             std::vector<std::array<float, 12>> transforms;
             unsigned int lightOffset = currentGlobalOffset;
@@ -436,9 +440,11 @@ void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunk
 
 void VoxelEngine::init()
 {
+#ifndef OFFLINE_MODE
     // Input handling
     auto &inputHandler = InputHandler::Get();
     inputHandler.setMouseButtonCallbackFunc(MouseButtonCallback);
+#endif
 
     auto &scene = Scene::Get();
 
@@ -491,8 +497,10 @@ void VoxelEngine::init()
     initInstanceGeometry();
     updateInstances();
 
+    std::cout << "=== VoxelEngine::init() - About to initialize entities ===" << std::endl;
     // Initialize entities
     initEntities();
+    std::cout << "=== VoxelEngine::init() complete ===" << std::endl;
 }
 
 void VoxelEngine::reload()
@@ -746,7 +754,11 @@ void VoxelEngine::update()
     {
         leftMouseButtonClicked = false;
 
+#ifndef OFFLINE_MODE
         int blockId = InputHandler::Get().currentSelectedBlockId;
+#else
+        int blockId = 1; // Default block ID for offline mode
+#endif
 
         auto &scene = Scene::Get();
 
@@ -885,10 +897,13 @@ void VoxelEngine::update()
 
 void VoxelEngine::initEntities()
 {
+    std::cout << "=== VoxelEngine::initEntities() called ===" << std::endl;
+    
     auto &scene = Scene::Get();
 
     // Clear any existing entities
     scene.clearEntities();
+    std::cout << "Cleared existing entities" << std::endl;
 
     // Create a hardcoded Minecraft character entity
     // Position it in front of the current camera for guaranteed visibility
@@ -904,19 +919,47 @@ void VoxelEngine::initEntities()
     bool validCameraDir = !isnan(cameraDir.x) && !isnan(cameraDir.y) && !isnan(cameraDir.z) &&
                          (cameraDir.x != 0.0f || cameraDir.y != 0.0f || cameraDir.z != 0.0f);
 
-    // CENTER minecraft character for debugging based on scene camera
-    // Camera from scene_export.yaml: pos=[35.6184, 11.8733, 42.0387], dir=[-0.321564, -0.0129988, -0.946799]
-    Float3 sceneCamera = Float3(35.6184f, 11.8733f, 42.0387f);
-    Float3 sceneCameraDir = Float3(-0.321564f, -0.0129988f, -0.946799f);
+    // Use character position from scene config if available
+    // Try to load from scene config file first
+    std::string sceneConfigFile = "data/scene/scene_export.yaml";
+    SceneConfig sceneConfig;
+    bool configLoaded = SceneConfigParser::LoadFromFile(sceneConfigFile, sceneConfig);
+    
+    if (configLoaded)
+    {
+        // Use character position from config
+        transform.position = sceneConfig.character.position;
+        transform.rotation = sceneConfig.character.rotation;
+        transform.scale = sceneConfig.character.scale;
+        std::cout << "SUCCESS: Loaded scene config file" << std::endl;
+    }
+    else
+    {
+        // Fallback to default position
+        transform.position = Float3(16.0f, 10.0f, 16.0f);
+        transform.rotation = Float3(0.0f, 0.0f, 0.0f);
+        transform.scale = Float3(1.0f, 1.0f, 1.0f);
+    }
 
-    // Place minecraft character 6 units in front of scene camera for guaranteed center visibility
-    Float3 normalizedDir = sceneCameraDir.normalize();
-    transform.position = sceneCamera + normalizedDir * 6.0f;
+    // Create Character instead of Entity for controllable character
+    std::cout << "Creating Character with transform..." << std::endl;
+    auto minecraftCharacter = std::make_unique<Character>(transform);
+    std::cout << "Character created successfully" << std::endl;
 
-    transform.rotation = Float3(0.0f, 0.0f, 0.0f);   // No rotation
-    transform.scale = Float3(1.0f, 1.0f, 1.0f);     // Use natural GLTF model scale (respects GLTF scaling)
+#ifndef OFFLINE_MODE
+    // Set up the character with the input handler for control
+    std::cout << "Setting up InputHandler for character control..." << std::endl;
+    auto &inputHandler = InputHandler::Get();
+    Character* characterPtr = minecraftCharacter.get();
+    inputHandler.setCharacter(characterPtr);
+    std::cout << "InputHandler setup complete" << std::endl;
+#else
+    std::cout << "Skipping InputHandler setup (OFFLINE_MODE)" << std::endl;
+#endif
 
-    auto minecraftEntity = std::make_unique<Entity>(EntityTypeMinecraftCharacter, transform);
-
-    scene.addEntity(std::move(minecraftEntity));
+    // Add character to scene (Character inherits from Entity)  
+    std::cout << "Adding character to scene..." << std::endl;
+    scene.addEntity(std::move(minecraftCharacter));
+    std::cout << "Character added to scene. Total entities: " << scene.getEntityCount() << std::endl;
+    std::cout << "=== initEntities() complete ===" << std::endl;
 }

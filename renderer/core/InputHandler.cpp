@@ -5,11 +5,96 @@
 #include "shaders/LinearMath.h"
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
+#include "core/Character.h"
+#include "core/CameraController.h"
+#include "core/FreeCameraController.h"
+#include "core/CharacterFollowCameraController.h"
 #include "voxelengine/VoxelEngine.h"
 #include "voxelengine/Block.h"
 
-#include <iostream>
 #include <fstream>
+
+InputHandler::InputHandler()
+{
+    initializeCameraControllers();
+}
+
+InputHandler::~InputHandler()
+{
+    // Destructor implementation needed for unique_ptr with incomplete type in header
+    // The camera controllers will be automatically destroyed
+}
+
+void InputHandler::initializeCameraControllers()
+{
+    // Create camera controllers
+    m_freeCameraController = std::make_unique<FreeCameraController>();
+    m_characterFollowCameraController = std::make_unique<CharacterFollowCameraController>();
+    
+    // Start with free camera by default
+    m_currentCameraController = m_freeCameraController.get();
+}
+
+void InputHandler::switchCameraController(AppMode newMode)
+{
+    if (appmode == newMode)
+    {
+        return; // Already in this mode
+    }
+        
+    auto &camera = RenderCamera::Get().camera;
+    
+    // Deactivate current controller
+    if (m_currentCameraController)
+    {
+        m_currentCameraController->onDeactivate(camera);
+    }
+    
+    // Switch to new controller
+    appmode = newMode;
+    CameraController* newController = nullptr;
+    
+    switch (newMode)
+    {
+        case AppMode::FreeMove:
+            newController = m_freeCameraController.get();
+            break;
+        case AppMode::CharacterFollow:
+            newController = m_characterFollowCameraController.get();
+            break;
+        case AppMode::GUI:
+            // Keep current controller but don't process input
+            newController = m_currentCameraController;
+            break;
+    }
+    
+    if (newController && newController != m_currentCameraController)
+    {
+        m_currentCameraController = newController;
+        m_currentCameraController->onActivate(camera);
+    }
+}
+
+void InputHandler::setCharacter(Character* character)
+{
+    m_character = character;
+    
+    // Set character in the character follow controller
+    if (m_characterFollowCameraController)
+    {
+        auto* charController = static_cast<CharacterFollowCameraController*>(m_characterFollowCameraController.get());
+        charController->setCharacter(character);
+    }
+    
+    // Switch to CharacterFollow mode if we have a character
+    if (m_character)
+    {
+        switchCameraController(AppMode::CharacterFollow);
+    }
+    else
+    {
+    }
+}
 
 void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
@@ -22,20 +107,21 @@ void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
 
     if (key == GLFW_KEY_M && action == GLFW_PRESS)
     {
-        if (inputHandler.appmode == AppMode::Menu)
+        if (inputHandler.appmode == AppMode::GUI)
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            inputHandler.appmode = AppMode::FreeMove;
+            inputHandler.switchCameraController(AppMode::CharacterFollow);
+            inputHandler.cursorReset = 1;
+        }
+        else if (inputHandler.appmode == AppMode::CharacterFollow)
+        {
+            inputHandler.switchCameraController(AppMode::FreeMove);
             inputHandler.cursorReset = 1;
         }
         else if (inputHandler.appmode == AppMode::FreeMove)
         {
-            inputHandler.appmode = AppMode::Gameplay;
-        }
-        else if (inputHandler.appmode == AppMode::Gameplay)
-        {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            inputHandler.appmode = AppMode::Menu;
+            inputHandler.switchCameraController(AppMode::GUI);
         }
     }
 
@@ -52,9 +138,10 @@ void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
         }
     }
 
-    if (inputHandler.appmode == AppMode::FreeMove)
+    // Universal movement input handling (all camera modes use same keys)
+    if (inputHandler.appmode != AppMode::GUI)
     {
-        // movement
+        // WASD movement
         if (key == GLFW_KEY_W)
         {
             if (action == GLFW_PRESS)
@@ -83,7 +170,9 @@ void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
             else if (action == GLFW_RELEASE)
                 inputHandler.moveD = 0;
         }
-        if (key == GLFW_KEY_C)
+        
+        // Vertical movement (different meaning for different controllers)
+        if (key == GLFW_KEY_C || key == GLFW_KEY_SPACE)
         {
             if (action == GLFW_PRESS)
                 inputHandler.moveC = 1;
@@ -99,61 +188,21 @@ void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
         }
     }
 
-    if (inputHandler.appmode == AppMode::Gameplay)
-    {
-        // movement
-        if (key == GLFW_KEY_W)
-        {
-            if (action == GLFW_PRESS)
-                inputHandler.moveW = 1;
-            else if (action == GLFW_RELEASE)
-                inputHandler.moveW = 0;
-        }
-        if (key == GLFW_KEY_S)
-        {
-            if (action == GLFW_PRESS)
-                inputHandler.moveS = 1;
-            else if (action == GLFW_RELEASE)
-                inputHandler.moveS = 0;
-        }
-        if (key == GLFW_KEY_A)
-        {
-            if (action == GLFW_PRESS)
-                inputHandler.moveA = 1;
-            else if (action == GLFW_RELEASE)
-                inputHandler.moveA = 0;
-        }
-        if (key == GLFW_KEY_D)
-        {
-            if (action == GLFW_PRESS)
-                inputHandler.moveD = 1;
-            else if (action == GLFW_RELEASE)
-                inputHandler.moveD = 0;
-        }
-
-        if (key == GLFW_KEY_SPACE)
-        {
-            if (action == GLFW_PRESS)
-            {
-                inputHandler.fallSpeed = -0.008f;
-            }
-        }
-
-        if (key == GLFW_KEY_LEFT_CONTROL)
-        {
-            if (action == GLFW_PRESS)
-                inputHandler.height = 1.0f;
-            else if (action == GLFW_RELEASE)
-                inputHandler.height = 1.5f;
-        }
-    }
-
-    if (key == GLFW_KEY_LEFT_SHIFT)
+    // Speed modifier keys for free camera
+    if (key == GLFW_KEY_LEFT_CONTROL || key == GLFW_KEY_RIGHT_CONTROL)
     {
         if (action == GLFW_PRESS)
-            inputHandler.moveSpeed = 0.01f;
+            inputHandler.slowMode = 1;
         else if (action == GLFW_RELEASE)
-            inputHandler.moveSpeed = 0.003f;
+            inputHandler.slowMode = 0;
+    }
+    
+    if (key == GLFW_KEY_LEFT_SHIFT || key == GLFW_KEY_RIGHT_SHIFT)
+    {
+        if (action == GLFW_PRESS)
+            inputHandler.fastMode = 1;
+        else if (action == GLFW_RELEASE)
+            inputHandler.fastMode = 0;
     }
 
     for (int i = 0; i < 10; ++i)
@@ -183,7 +232,7 @@ void InputHandler::CursorPosCallback(GLFWwindow *window, double xpos, double ypo
 {
     auto &inputHandler = InputHandler::Get();
     Backend &backend = Backend::Get();
-    if (inputHandler.appmode == AppMode::FreeMove || inputHandler.appmode == AppMode::Gameplay)
+    if (inputHandler.appmode != AppMode::GUI)
     {
         if (inputHandler.cursorReset)
         {
@@ -199,11 +248,12 @@ void InputHandler::CursorPosCallback(GLFWwindow *window, double xpos, double ypo
         inputHandler.xpos = xpos;
         inputHandler.ypos = ypos;
 
-        auto &camera = RenderCamera::Get().camera;
-
-        camera.yaw -= inputHandler.deltax * inputHandler.cursorMoveSpeed;
-        camera.pitch -= inputHandler.deltay * inputHandler.cursorMoveSpeed;
-        camera.pitch = clampf(camera.pitch, -PI_OVER_2 + 0.1f, PI_OVER_2 - 0.1f);
+        // Delegate mouse movement to current camera controller
+        if (inputHandler.m_currentCameraController)
+        {
+            auto &camera = RenderCamera::Get().camera;
+            inputHandler.m_currentCameraController->handleMouseMovement(camera, inputHandler.deltax, inputHandler.deltay);
+        }
     }
 }
 
@@ -211,7 +261,7 @@ void InputHandler::MouseButtonCallback(GLFWwindow *window, int button, int actio
 {
     auto &inputHandler = InputHandler::Get();
     Backend &backend = Backend::Get();
-    if (inputHandler.appmode == AppMode::FreeMove || inputHandler.appmode == AppMode::Gameplay)
+    if (inputHandler.appmode == AppMode::FreeMove || inputHandler.appmode == AppMode::CharacterFollow)
     {
         inputHandler.mouseButtonCallbackFunc(button, action, mods);
 
@@ -220,6 +270,11 @@ void InputHandler::MouseButtonCallback(GLFWwindow *window, int button, int actio
         }
         else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
         {
+            // Trigger place animation in character following mode
+            if (inputHandler.appmode == AppMode::CharacterFollow && inputHandler.m_character)
+            {
+                inputHandler.m_character->triggerPlaceAnimation();
+            }
         }
     }
 }
@@ -230,99 +285,33 @@ void InputHandler::update()
     Backend &backend = Backend::Get();
 
     float deltaTimeMs = backend.getTimer().getDeltaTime();
+    
+    // Debug output (reduced frequency)
+    static int frameCount = 0;
+    frameCount++;
 
-    if (appmode == AppMode::FreeMove)
+    // Skip camera updates in GUI mode
+    if (appmode == AppMode::GUI)
     {
-        if (moveW || moveS || moveA || moveD || moveC || moveX)
-        {
-            Float3 movingDir{0};
-            Float3 strafeDir = cross(camera.dir, Float3(0, 1, 0)).normalize();
-
-            if (moveW)
-                movingDir += camera.dir;
-            if (moveS)
-                movingDir -= camera.dir;
-            if (moveA)
-                movingDir -= strafeDir;
-            if (moveD)
-                movingDir += strafeDir;
-            if (moveC)
-                movingDir += Float3(0, 1, 0);
-            if (moveX)
-                movingDir -= Float3(0, 1, 0);
-
-            camera.posDelta += movingDir * deltaTimeMs * moveSpeed;
-        }
+        return;
     }
 
-    if (appmode == AppMode::Gameplay)
+    // UNIFIED CAMERA UPDATE: Only one place where camera gets updated!
+    if (m_currentCameraController)
     {
-        auto &voxelEngine = VoxelEngine::Get();
-
-        // Horizontal
-        if (moveW || moveS || moveA || moveD)
-        {
-            Float3 movingDir{0};
-
-            Float3 upDir = Float3(0, 1, 0);
-            Float3 strafeRightDir = cross(camera.dir, upDir).normalize();
-            Float3 frontDir = cross(upDir, strafeRightDir).normalize();
-
-            if (moveW)
-                movingDir += frontDir;
-            if (moveS)
-                movingDir -= frontDir;
-            if (moveA)
-                movingDir -= strafeRightDir;
-            if (moveD)
-                movingDir += strafeRightDir;
-
-            Float3 horizontalMove = movingDir * deltaTimeMs * moveSpeed;
-
-            // Use multi-chunk collision detection
-            Float3 newPos = camera.pos + horizontalMove;
-            auto v0 = voxelEngine.getVoxelAtGlobal((unsigned int)newPos.x, (unsigned int)newPos.y, (unsigned int)newPos.z);
-            auto v1 = voxelEngine.getVoxelAtGlobal((unsigned int)newPos.x, (unsigned int)(newPos.y - 1), (unsigned int)newPos.z);
-
-            if (v0.id == BlockTypeEmpty && v1.id == BlockTypeEmpty)
-            {
-                camera.posDelta += horizontalMove;
-            }
-        }
-
-        // Vertical
-
-        // Free fall
-        float fallAccel = 9.8e-6f;
-        fallSpeed += fallAccel * deltaTimeMs;
-        camera.posDelta.y -= fallSpeed * deltaTimeMs;
-
-        Float3 fallCheckPos = camera.pos + camera.posDelta - Float3(0, height, 0);
-        auto v2 = voxelEngine.getVoxelAtGlobal((unsigned int)fallCheckPos.x, (unsigned int)fallCheckPos.y, (unsigned int)fallCheckPos.z);
-
-        if (fallSpeed > 0.0f && v2.id != BlockTypeEmpty)
-        {
-            while (v2.id != BlockTypeEmpty)
-            {
-                camera.posDelta.y += 1.0f;
-                fallCheckPos = camera.pos + camera.posDelta - Float3(0, height, 0);
-                v2 = voxelEngine.getVoxelAtGlobal((unsigned int)fallCheckPos.x, (unsigned int)fallCheckPos.y, (unsigned int)fallCheckPos.z);
-            }
-            camera.posDelta.y += static_cast<float>(static_cast<int>((camera.pos.y + camera.posDelta.y) - height)) + height - (camera.pos.y + camera.posDelta.y);
-            fallSpeed = 0.0f;
-        }
-
-        // head bump to roof
-        Float3 headPos = camera.pos + Float3(0, 0.49f, 0);
-        auto v3 = voxelEngine.getVoxelAtGlobal((unsigned int)headPos.x, (unsigned int)headPos.y, (unsigned int)headPos.z);
-        if (fallSpeed < 0.0f && v3.id != BlockTypeEmpty)
-        {
-            fallSpeed = 0.0f;
-        }
+        // Set movement input in the current controller
+        m_currentCameraController->setMovementInput(moveW, moveS, moveA, moveD, moveC, moveX);
+        
+        // Set speed modifiers for all camera controllers
+        m_currentCameraController->setSpeedModifiers(slowMode, fastMode);
+        
+        // Let the controller update the camera
+        m_currentCameraController->updateCamera(camera, deltaTimeMs);
     }
-
-
 }
+
+// NOTE: The old updateCameraFollowing() and initializeCameraForCharacter() methods
+// have been moved to CharacterFollowCameraController and are no longer needed here.
 
 void InputHandler::SaveSceneToFile()
 {

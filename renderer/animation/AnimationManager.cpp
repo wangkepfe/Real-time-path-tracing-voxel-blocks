@@ -1,5 +1,6 @@
 #include "AnimationManager.h"
 #include "../util/DebugUtils.h"
+#include "../shaders/LinearMath.h"  // For slerp function
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -8,9 +9,11 @@
 
 AnimationManager::AnimationManager()
 {
-    // Initialize with identity matrices
-    m_primaryAnimation.clipIndex = -1;
-    m_primaryAnimation.isPlaying = false;
+    // Initialize manual blend state
+    m_manualBlend.isActive = false;
+    // Initialize additive animation state
+    m_additiveAnimation.isActive = false;
+    m_playbackSpeed = 1.0f;
 }
 
 AnimationManager::~AnimationManager()
@@ -49,178 +52,140 @@ void AnimationManager::setSkeleton(const Skeleton &skeleton)
     m_skeleton.uploadToGPU();
 }
 
-void AnimationManager::playAnimation(int clipIndex, bool loop, float blendTime)
-{
-    if (clipIndex < 0 || clipIndex >= static_cast<int>(m_animationClips.size()))
-        return;
-
-    if (blendTime > 0.0f && m_primaryAnimation.isPlaying)
-    {
-        blendToAnimation(clipIndex, blendTime, loop);
-    }
-    else
-    {
-        m_primaryAnimation.clipIndex = clipIndex;
-        m_primaryAnimation.currentTime = 0.0f;
-        m_primaryAnimation.isPlaying = true;
-        m_primaryAnimation.hasFinished = false;
-
-        AnimationClip *clip = getAnimationClip(clipIndex);
-        if (clip)
-        {
-            clip->isLooping = loop;
-        }
-    }
-}
-
-void AnimationManager::stopAnimation()
-{
-    m_primaryAnimation.isPlaying = false;
-    m_primaryAnimation.currentTime = 0.0f;
-    m_blendState.isBlending = false;
-}
-
-void AnimationManager::pauseAnimation()
-{
-    m_primaryAnimation.isPlaying = false;
-}
-
-void AnimationManager::resumeAnimation()
-{
-    if (m_primaryAnimation.clipIndex != -1)
-    {
-        m_primaryAnimation.isPlaying = true;
-    }
-}
-
 void AnimationManager::setPlaybackSpeed(float speed)
 {
-    AnimationClip *clip = getAnimationClip(m_primaryAnimation.clipIndex);
-    if (clip)
-    {
-        clip->playbackSpeed = speed;
-    }
+    m_playbackSpeed = std::max(0.1f, speed);
 }
 
-void AnimationManager::blendToAnimation(int clipIndex, float blendDuration, bool loop)
+void AnimationManager::startManualBlend(int anim1Index, int anim2Index)
 {
-    if (clipIndex < 0 || clipIndex >= static_cast<int>(m_animationClips.size()))
+    if (anim1Index < 0 || anim1Index >= static_cast<int>(m_animationClips.size()) ||
+        anim2Index < 0 || anim2Index >= static_cast<int>(m_animationClips.size()))
         return;
-
-    m_blendState.fromClipIndex = m_primaryAnimation.clipIndex;
-    m_blendState.toClipIndex = clipIndex;
-    m_blendState.blendTime = 0.0f;
-    m_blendState.blendDuration = blendDuration;
-    m_blendState.isBlending = true;
-
-    // Set up target animation
-    AnimationClip *targetClip = getAnimationClip(clipIndex);
-    if (targetClip)
-    {
-        targetClip->isLooping = loop;
-    }
+        
+    m_manualBlend.isActive = true;
+    m_manualBlend.anim1Index = anim1Index;
+    m_manualBlend.anim2Index = anim2Index;
+    m_manualBlend.blendRatio = 0.0f;
+    m_manualBlend.anim1Time = 0.0f;
+    m_manualBlend.anim2Time = 0.0f;
 }
 
-void AnimationManager::addAdditiveAnimation(int clipIndex, float weight)
+void AnimationManager::updateManualBlend(float ratio, float anim1Time, float anim2Time)
 {
-    if (clipIndex < 0 || clipIndex >= static_cast<int>(m_animationClips.size()))
+    if (!m_manualBlend.isActive)
         return;
-
-    AdditiveAnimation additive;
-    additive.clipIndex = clipIndex;
-    additive.weight = weight;
-    additive.currentTime = 0.0f;
-
-    m_additiveAnimations.push_back(additive);
+        
+    m_manualBlend.blendRatio = std::max(0.0f, std::min(1.0f, ratio));
+    m_manualBlend.anim1Time = anim1Time;
+    m_manualBlend.anim2Time = anim2Time;
 }
 
-void AnimationManager::clearAdditiveAnimations()
+void AnimationManager::stopManualBlend()
 {
-    m_additiveAnimations.clear();
+    m_manualBlend.isActive = false;
+}
+
+void AnimationManager::startAdditiveAnimation(int animationIndex, float speed)
+{
+    if (animationIndex < 0 || animationIndex >= static_cast<int>(m_animationClips.size()))
+        return;
+        
+    m_additiveAnimation.isActive = true;
+    m_additiveAnimation.animationIndex = animationIndex;
+    m_additiveAnimation.currentTime = 0.0f;
+    m_additiveAnimation.duration = m_animationClips[animationIndex].duration;
+    m_additiveAnimation.speed = speed;
+}
+
+void AnimationManager::stopAdditiveAnimation()
+{
+    m_additiveAnimation.isActive = false;
 }
 
 void AnimationManager::update(float deltaTime)
 {
-    static int animUpdateCount = 0;
-    animUpdateCount++;
-
     if (m_skeleton.joints.empty())
-    {
-        if (animUpdateCount % 120 == 0)
-        {
-            std::cout << "ANIM_DEBUG: AnimationManager::update " << animUpdateCount
-                      << " - NO SKELETON JOINTS!" << std::endl;
-        }
         return;
-    }
-
-    // Update primary animation
-    if (m_primaryAnimation.isPlaying && m_primaryAnimation.clipIndex != -1)
+    
+    bool needsUpdate = false;
+        
+    // Handle manual blending (base animation)
+    if (m_manualBlend.isActive)
     {
-        AnimationClip *clip = getAnimationClip(m_primaryAnimation.clipIndex);
-        if (clip)
+        // Get the animation clips
+        AnimationClip *anim1 = getAnimationClip(m_manualBlend.anim1Index);
+        AnimationClip *anim2 = getAnimationClip(m_manualBlend.anim2Index);
+        
+        if (anim1 && anim2)
         {
-            updateAnimation(m_primaryAnimation, *clip, deltaTime);
+            
+            // Evaluate both animations at their specified times
+            std::vector<Joint> joints1 = m_skeleton.joints;
+            std::vector<Joint> joints2 = m_skeleton.joints;
+            
+            evaluateAnimation(*anim1, m_manualBlend.anim1Time, joints1);
+            evaluateAnimation(*anim2, m_manualBlend.anim2Time, joints2);
+            
+            // Blend the results into skeleton
+            blendTwoEvaluatedAnimations(joints1, joints2, m_manualBlend.blendRatio);
+            needsUpdate = true;
         }
     }
-
-    // Update blend state
-    if (m_blendState.isBlending)
+    
+    // Handle additive animation (place animation)
+    if (m_additiveAnimation.isActive)
     {
-        m_blendState.blendTime += deltaTime;
-
-        if (m_blendState.blendTime >= m_blendState.blendDuration)
+        // Update additive animation time
+        m_additiveAnimation.currentTime += deltaTime * m_additiveAnimation.speed;
+        
+        // Check if animation is complete
+        if (m_additiveAnimation.currentTime >= m_additiveAnimation.duration)
         {
-            // Blend complete - switch to target animation
-            m_primaryAnimation.clipIndex = m_blendState.toClipIndex;
-            m_blendState.isBlending = false;
+            m_additiveAnimation.isActive = false;
         }
-    }
-
-    // Update additive animations
-    for (auto &additive : m_additiveAnimations)
-    {
-        AnimationClip *clip = getAnimationClip(additive.clipIndex);
-        if (clip)
+        else
         {
-            additive.currentTime += deltaTime * clip->playbackSpeed;
-            if (clip->isLooping && additive.currentTime > clip->duration)
+            // Apply additive animation on top of current skeleton state
+            AnimationClip *additiveClip = getAnimationClip(m_additiveAnimation.animationIndex);
+            if (additiveClip)
             {
-                additive.currentTime = fmod(additive.currentTime, clip->duration);
+                applyAdditiveAnimation(*additiveClip, m_additiveAnimation.currentTime, m_skeleton.joints);
+                needsUpdate = true;
             }
         }
     }
-
-    // Evaluate and blend all animations
-    if (m_primaryAnimation.isPlaying || m_blendState.isBlending || !m_additiveAnimations.empty())
+    
+    // Update joint transforms and upload to GPU if needed
+    if (needsUpdate)
     {
-        blendAnimations();
         m_skeleton.updateJointTransforms();
         m_skeleton.uploadToGPU();
     }
 }
 
-void AnimationManager::updateAnimation(AnimationState &state, const AnimationClip &clip, float deltaTime)
+void AnimationManager::blendTwoEvaluatedAnimations(const std::vector<Joint> &joints1, const std::vector<Joint> &joints2, float ratio)
 {
-    state.currentTime += deltaTime * clip.playbackSpeed;
-
-    if (state.currentTime > clip.duration)
+    // Blend the two animation results
+    for (size_t i = 0; i < m_skeleton.joints.size(); ++i)
     {
-        if (clip.isLooping)
-        {
-            state.currentTime = fmod(state.currentTime, clip.duration);
-        }
-        else
-        {
-            state.currentTime = clip.duration;
-            state.hasFinished = true;
-            state.isPlaying = false;
-        }
+        Joint &joint = m_skeleton.joints[i];
+        const Joint &joint1 = joints1[i];
+        const Joint &joint2 = joints2[i];
+        
+        // Linear interpolation for position and scale
+        joint.position = joint1.position * (1.0f - ratio) + joint2.position * ratio;
+        joint.scale = joint1.scale * (1.0f - ratio) + joint2.scale * ratio;
+        
+        
+        // Spherical interpolation for rotation
+        joint.rotation = slerp(joint1.rotation, joint2.rotation, ratio);
     }
 }
 
 void AnimationManager::evaluateAnimation(const AnimationClip &clip, float time, std::vector<Joint> &joints)
 {
+    
     // Reset all joints to bind pose first
     for (auto &joint : joints)
     {
@@ -238,6 +203,7 @@ void AnimationManager::evaluateAnimation(const AnimationClip &clip, float time, 
         {
             const AnimationSampler &sampler = clip.samplers[channel.samplerIndex];
             Joint &joint = joints[channel.targetJoint];
+            
 
             switch (channel.targetPath)
             {
@@ -246,7 +212,10 @@ void AnimationManager::evaluateAnimation(const AnimationClip &clip, float time, 
                 // Other joints should maintain their bind pose positions
                 if (joint.parentIndex == -1 || joint.name == "hip")
                 {
-                    joint.position = interpolateTranslation(sampler, time);
+                    
+                    Float3 translation = interpolateTranslation(sampler, time);
+                    joint.position = translation;
+                    
                 }
                 // For non-root joints, keep bind pose position
                 break;
@@ -261,126 +230,96 @@ void AnimationManager::evaluateAnimation(const AnimationClip &clip, float time, 
     }
 }
 
-void AnimationManager::blendAnimations()
-{
-    if (m_blendState.isBlending)
-    {
-        // Evaluate both animations
-        std::vector<Joint> fromJoints = m_skeleton.joints;
-        std::vector<Joint> toJoints = m_skeleton.joints;
-
-        if (m_blendState.fromClipIndex >= 0)
-        {
-            AnimationClip *fromClip = getAnimationClip(m_blendState.fromClipIndex);
-            if (fromClip)
-                evaluateAnimation(*fromClip, m_primaryAnimation.currentTime, fromJoints);
-        }
-
-        if (m_blendState.toClipIndex >= 0)
-        {
-            AnimationClip *toClip = getAnimationClip(m_blendState.toClipIndex);
-            if (toClip)
-                evaluateAnimation(*toClip, m_blendState.blendTime, toJoints);
-        }
-
-        // Blend between animations
-        float blendFactor = m_blendState.blendTime / m_blendState.blendDuration;
-        blendFactor = std::clamp(blendFactor, 0.0f, 1.0f);
-
-        for (size_t i = 0; i < m_skeleton.joints.size(); ++i)
-        {
-            Joint &joint = m_skeleton.joints[i];
-            const Joint &from = fromJoints[i];
-            const Joint &to = toJoints[i];
-
-            // Linear interpolation for position and scale
-            joint.position = from.position * (1.0f - blendFactor) + to.position * blendFactor;
-            joint.scale = from.scale * (1.0f - blendFactor) + to.scale * blendFactor;
-
-            // Spherical interpolation for rotation
-            joint.rotation = slerp(from.rotation, to.rotation, blendFactor);
-        }
-    }
-    else if (m_primaryAnimation.isPlaying && m_primaryAnimation.clipIndex != -1)
-    {
-        // Just evaluate primary animation
-        AnimationClip *clip = getAnimationClip(m_primaryAnimation.clipIndex);
-        if (clip)
-        {
-            evaluateAnimation(*clip, m_primaryAnimation.currentTime, m_skeleton.joints);
-        }
-    }
-
-    // Apply additive animations
-    if (!m_additiveAnimations.empty())
-    {
-        applyAdditiveAnimations();
-    }
-}
-
-void AnimationManager::applyAdditiveAnimations()
-{
-    for (const auto &additive : m_additiveAnimations)
-    {
-        AnimationClip *clip = getAnimationClip(additive.clipIndex);
-        if (!clip)
-            continue;
-
-        std::vector<Joint> additiveJoints = m_skeleton.joints;
-        evaluateAnimation(*clip, additive.currentTime, additiveJoints);
-
-        // Apply additive transformation
-        for (size_t i = 0; i < m_skeleton.joints.size(); ++i)
-        {
-            Joint &joint = m_skeleton.joints[i];
-            const Joint &additiveJoint = additiveJoints[i];
-
-            // Additive blending
-            joint.position = joint.position + additiveJoint.position * additive.weight;
-            joint.scale = joint.scale + (additiveJoint.scale - Float3(1.0f)) * additive.weight;
-
-            // For rotation, use quaternion multiplication for additive
-            Float4 additiveRot = slerp(
-                Float4(0.0f, 0.0f, 0.0f, 1.0f), additiveJoint.rotation, additive.weight);
-            joint.rotation = quaternionMultiply(joint.rotation, additiveRot);
-        }
-    }
-}
 
 Float3 AnimationManager::interpolateTranslation(const AnimationSampler &sampler, float time)
 {
-    if (sampler.inputTimes.empty() || sampler.outputTranslations.empty())
+    if (sampler.inputTimes.empty() || sampler.outputTranslations.empty()) {
+        std::cout << "interpolateTranslation: empty data - inputTimes: " << sampler.inputTimes.size() 
+                  << ", outputTranslations: " << sampler.outputTranslations.size() << std::endl;
         return Float3(0.0f);
+    }
 
     if (time <= sampler.inputTimes[0])
-        return sampler.outputTranslations[0];
+    {
+        // For CUBICSPLINE, return the value part of first keyframe
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputTranslations[1]; // Index 1 is the value (in_tangent=0, value=1, out_tangent=2)
+        else
+            return sampler.outputTranslations[0];
+    }
 
     if (time >= sampler.inputTimes.back())
-        return sampler.outputTranslations.back();
+    {
+        // For CUBICSPLINE, return the value part of last keyframe
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+        {
+            int lastIndex = static_cast<int>(sampler.inputTimes.size()) - 1;
+            return sampler.outputTranslations[lastIndex * 3 + 1]; // Last value
+        }
+        else
+            return sampler.outputTranslations.back();
+    }
 
     int keyIndex = findKeyframeIndex(sampler.inputTimes, time);
 
     if (keyIndex < 0 || keyIndex >= static_cast<int>(sampler.inputTimes.size() - 1))
-        return sampler.outputTranslations[0];
+    {
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputTranslations[1]; // First value
+        else
+            return sampler.outputTranslations[0];
+    }
 
     float t0 = sampler.inputTimes[keyIndex];
     float t1 = sampler.inputTimes[keyIndex + 1];
     float factor = (time - t0) / (t1 - t0);
 
-    const Float3 &v0 = sampler.outputTranslations[keyIndex];
-    const Float3 &v1 = sampler.outputTranslations[keyIndex + 1];
-
     switch (sampler.interpolation)
     {
     case AnimationSampler::STEP:
-        return v0;
+        return sampler.outputTranslations[keyIndex];
     case AnimationSampler::LINEAR:
-        return v0 * (1.0f - factor) + v1 * factor;
+    {
+        const Float3 &v0 = sampler.outputTranslations[keyIndex];
+        const Float3 &v1 = sampler.outputTranslations[keyIndex + 1];
+        Float3 result = v0 * (1.0f - factor) + v1 * factor;
+        
+        
+        return result;
+    }
     case AnimationSampler::CUBICSPLINE:
-        // TODO: Implement cubic spline interpolation
-        return v0 * (1.0f - factor) + v1 * factor;
+    {
+        // GLTF CUBICSPLINE interpolation using Hermite splines
+        // Data format: [in_tangent, value, out_tangent] for each keyframe
+        // So for keyframe i: data[i*3] = in_tangent, data[i*3+1] = value, data[i*3+2] = out_tangent
+        
+        if (sampler.outputTranslations.size() < (keyIndex + 1) * 3 + 2)
+            return sampler.outputTranslations[keyIndex * 3 + 1]; // Fallback to current value
+            
+        const Float3 &p0 = sampler.outputTranslations[keyIndex * 3 + 1];     // Current value
+        const Float3 &m0 = sampler.outputTranslations[keyIndex * 3 + 2];     // Current out-tangent
+        const Float3 &p1 = sampler.outputTranslations[(keyIndex + 1) * 3 + 1]; // Next value
+        const Float3 &m1 = sampler.outputTranslations[(keyIndex + 1) * 3];     // Next in-tangent
+        
+        float dt = t1 - t0;
+        
+        // Hermite basis functions
+        float t2 = factor * factor;
+        float t3 = t2 * factor;
+        
+        float h00 = 2 * t3 - 3 * t2 + 1;  // (2t³ - 3t² + 1)
+        float h10 = t3 - 2 * t2 + factor; // (t³ - 2t² + t)
+        float h01 = -2 * t3 + 3 * t2;     // (-2t³ + 3t²)
+        float h11 = t3 - t2;              // (t³ - t²)
+        
+        // Hermite interpolation: p(t) = h00*p0 + h10*dt*m0 + h01*p1 + h11*dt*m1
+        return p0 * h00 + m0 * (h10 * dt) + p1 * h01 + m1 * (h11 * dt);
+    }
     default:
-        return v0;
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputTranslations[keyIndex * 3 + 1];
+        else
+            return sampler.outputTranslations[keyIndex];
     }
 }
 
@@ -390,70 +329,157 @@ Float4 AnimationManager::interpolateRotation(const AnimationSampler &sampler, fl
         return Float4(0.0f, 0.0f, 0.0f, 1.0f);
 
     if (time <= sampler.inputTimes[0])
-        return sampler.outputRotations[0];
+    {
+        // For CUBICSPLINE, return the value part of first keyframe
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputRotations[1]; // Index 1 is the value
+        else
+            return sampler.outputRotations[0];
+    }
 
     if (time >= sampler.inputTimes.back())
-        return sampler.outputRotations.back();
+    {
+        // For CUBICSPLINE, return the value part of last keyframe
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+        {
+            int lastIndex = static_cast<int>(sampler.inputTimes.size()) - 1;
+            return sampler.outputRotations[lastIndex * 3 + 1]; // Last value
+        }
+        else
+            return sampler.outputRotations.back();
+    }
 
     int keyIndex = findKeyframeIndex(sampler.inputTimes, time);
 
     if (keyIndex < 0 || keyIndex >= static_cast<int>(sampler.inputTimes.size() - 1))
-        return sampler.outputRotations[0];
+    {
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputRotations[1]; // First value
+        else
+            return sampler.outputRotations[0];
+    }
 
     float t0 = sampler.inputTimes[keyIndex];
     float t1 = sampler.inputTimes[keyIndex + 1];
     float factor = (time - t0) / (t1 - t0);
 
-    const Float4 &q0 = sampler.outputRotations[keyIndex];
-    const Float4 &q1 = sampler.outputRotations[keyIndex + 1];
-
     switch (sampler.interpolation)
     {
     case AnimationSampler::STEP:
-        return q0;
+        return sampler.outputRotations[keyIndex];
     case AnimationSampler::LINEAR:
-    case AnimationSampler::CUBICSPLINE: // Fallback to linear for now
+    {
+        const Float4 &q0 = sampler.outputRotations[keyIndex];
+        const Float4 &q1 = sampler.outputRotations[keyIndex + 1];
         return slerp(q0, q1, factor);
+    }
+    case AnimationSampler::CUBICSPLINE:
+    {
+        // For quaternions in CUBICSPLINE, we still use SLERP between the value points
+        // The tangent data for quaternions is more complex and often we just interpolate values
+        // This is a simplified approach - for full CUBICSPLINE quaternion support, 
+        // we'd need squad interpolation which is quite complex
+        
+        if (sampler.outputRotations.size() < (keyIndex + 1) * 3 + 2)
+            return sampler.outputRotations[keyIndex * 3 + 1]; // Fallback to current value
+            
+        const Float4 &q0 = sampler.outputRotations[keyIndex * 3 + 1];     // Current value
+        const Float4 &q1 = sampler.outputRotations[(keyIndex + 1) * 3 + 1]; // Next value
+        
+        // Use SLERP for now - could be enhanced with SQUAD for true cubic interpolation
+        return slerp(q0, q1, factor);
+    }
     default:
-        return q0;
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputRotations[keyIndex * 3 + 1];
+        else
+            return sampler.outputRotations[keyIndex];
     }
 }
 
 Float3 AnimationManager::interpolateScale(const AnimationSampler &sampler, float time)
 {
-    // Same implementation as translation
     if (sampler.inputTimes.empty() || sampler.outputScales.empty())
         return Float3(1.0f);
 
     if (time <= sampler.inputTimes[0])
-        return sampler.outputScales[0];
+    {
+        // For CUBICSPLINE, return the value part of first keyframe
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputScales[1]; // Index 1 is the value (in_tangent=0, value=1, out_tangent=2)
+        else
+            return sampler.outputScales[0];
+    }
 
     if (time >= sampler.inputTimes.back())
-        return sampler.outputScales.back();
+    {
+        // For CUBICSPLINE, return the value part of last keyframe
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+        {
+            int lastIndex = static_cast<int>(sampler.inputTimes.size()) - 1;
+            return sampler.outputScales[lastIndex * 3 + 1]; // Last value
+        }
+        else
+            return sampler.outputScales.back();
+    }
 
     int keyIndex = findKeyframeIndex(sampler.inputTimes, time);
 
     if (keyIndex < 0 || keyIndex >= static_cast<int>(sampler.inputTimes.size() - 1))
-        return sampler.outputScales[0];
+    {
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputScales[1]; // First value
+        else
+            return sampler.outputScales[0];
+    }
 
     float t0 = sampler.inputTimes[keyIndex];
     float t1 = sampler.inputTimes[keyIndex + 1];
     float factor = (time - t0) / (t1 - t0);
 
-    const Float3 &v0 = sampler.outputScales[keyIndex];
-    const Float3 &v1 = sampler.outputScales[keyIndex + 1];
-
     switch (sampler.interpolation)
     {
     case AnimationSampler::STEP:
-        return v0;
+        return sampler.outputScales[keyIndex];
     case AnimationSampler::LINEAR:
+    {
+        const Float3 &v0 = sampler.outputScales[keyIndex];
+        const Float3 &v1 = sampler.outputScales[keyIndex + 1];
         return v0 * (1.0f - factor) + v1 * factor;
+    }
     case AnimationSampler::CUBICSPLINE:
-        // TODO: Implement cubic spline interpolation
-        return v0 * (1.0f - factor) + v1 * factor;
+    {
+        // GLTF CUBICSPLINE interpolation using Hermite splines
+        // Data format: [in_tangent, value, out_tangent] for each keyframe
+        // So for keyframe i: data[i*3] = in_tangent, data[i*3+1] = value, data[i*3+2] = out_tangent
+        
+        if (sampler.outputScales.size() < (keyIndex + 1) * 3 + 2)
+            return sampler.outputScales[keyIndex * 3 + 1]; // Fallback to current value
+            
+        const Float3 &p0 = sampler.outputScales[keyIndex * 3 + 1];     // Current value
+        const Float3 &m0 = sampler.outputScales[keyIndex * 3 + 2];     // Current out-tangent
+        const Float3 &p1 = sampler.outputScales[(keyIndex + 1) * 3 + 1]; // Next value
+        const Float3 &m1 = sampler.outputScales[(keyIndex + 1) * 3];     // Next in-tangent
+        
+        float dt = t1 - t0;
+        
+        // Hermite basis functions
+        float t2 = factor * factor;
+        float t3 = t2 * factor;
+        
+        float h00 = 2 * t3 - 3 * t2 + 1;  // (2t³ - 3t² + 1)
+        float h10 = t3 - 2 * t2 + factor; // (t³ - 2t² + t)
+        float h01 = -2 * t3 + 3 * t2;     // (-2t³ + 3t²)
+        float h11 = t3 - t2;              // (t³ - t²)
+        
+        // Hermite interpolation: p(t) = h00*p0 + h10*dt*m0 + h01*p1 + h11*dt*m1
+        return p0 * h00 + m0 * (h10 * dt) + p1 * h01 + m1 * (h11 * dt);
+    }
     default:
-        return v0;
+        if (sampler.interpolation == AnimationSampler::CUBICSPLINE)
+            return sampler.outputScales[keyIndex * 3 + 1];
+        else
+            return sampler.outputScales[keyIndex];
     }
 }
 
@@ -482,4 +508,46 @@ int AnimationManager::findKeyframeIndex(const std::vector<float> &times, float t
     }
 
     return std::max(0, right);
+}
+
+void AnimationManager::applyAdditiveAnimation(const AnimationClip &clip, float time, std::vector<Joint> &joints)
+{
+    // Apply additive animation - add rotations to current joint rotations
+    for (const auto &channel : clip.channels)
+    {
+        if (channel.targetJoint >= 0 && channel.targetJoint < static_cast<int>(joints.size()) &&
+            channel.samplerIndex >= 0 && channel.samplerIndex < static_cast<int>(clip.samplers.size()))
+        {
+            const AnimationSampler &sampler = clip.samplers[channel.samplerIndex];
+            Joint &joint = joints[channel.targetJoint];
+
+            switch (channel.targetPath)
+            {
+            case AnimationChannel::ROTATION:
+            {
+                // Get the additive rotation from the animation
+                Float4 additiveRotation = interpolateRotation(sampler, time);
+                
+                // Apply additive rotation by multiplying quaternions
+                // Result = currentRotation * additiveRotation
+                joint.rotation = quaternionMultiply(joint.rotation, additiveRotation);
+                break;
+            }
+            case AnimationChannel::TRANSLATION:
+            {
+                // For additive translation, add the translation offset
+                Float3 additiveTranslation = interpolateTranslation(sampler, time);
+                joint.position = joint.position + additiveTranslation;
+                break;
+            }
+            case AnimationChannel::SCALE:
+            {
+                // For additive scale, multiply scales
+                Float3 additiveScale = interpolateScale(sampler, time);
+                joint.scale = joint.scale * additiveScale;
+                break;
+            }
+            }
+        }
+    }
 }
