@@ -68,6 +68,7 @@ struct SystemParameter
     SurfObj UIBuffer;
 
     MaterialParameter *materialParameters;
+    unsigned int numMaterialParameters;  // Number of materials in materialParameters array
     InstanceLightMapping *instanceLightMapping;
     unsigned int numInstancedLightMesh;
 
@@ -83,6 +84,7 @@ struct SystemParameter
 
     LightInfo *lights;
     AliasTable *lightAliasTable;
+    unsigned int numLights;  // Number of lights in the lights array
     float accumulatedLocalLightLuminance;
 
     Float3 *edgeToHighlight;
@@ -111,6 +113,9 @@ struct GeometryInstanceData
 {
     Int3 *indices;
     VertexAttributes *attributes;
+    
+    unsigned int numIndices;   // Number of indices (count of Int3, not individual ints)
+    unsigned int numAttributes; // Number of vertex attributes
 
     int materialIndex;
 };

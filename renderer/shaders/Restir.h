@@ -386,9 +386,15 @@ INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir,
     }
     else
     {
-        LightInfo lightInfo = sysParam.lights[lightIndex];
-        TriangleLight triLight = TriangleLight::Create(lightInfo);
-        ls = triLight.calcSample(uv, surface.pos);
+        // Bounds check for light array access
+        if (lightIndex >= sysParam.numLights) {
+            ls = LightSample{}; // Return empty light sample
+        }
+        else {
+            LightInfo lightInfo = sysParam.lights[lightIndex];
+            TriangleLight triLight = TriangleLight::Create(lightInfo);
+            ls = triLight.calcSample(uv, surface.pos);
+        }
     }
     return ls;
 }

@@ -439,6 +439,9 @@ void VoxelEngine::updateInstances()
     
     buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
     
+    // Set the number of lights for shader bounds checking
+    scene.m_numLights = totalNumTriLights;
+    
     std::cout << "VoxelEngine DEBUG: buildAliasTable completed successfully" << std::endl;
     
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);

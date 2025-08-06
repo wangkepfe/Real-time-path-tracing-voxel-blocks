@@ -73,6 +73,7 @@ public:
     std::unordered_map<int, std::array<float, 12>> instanceTransformMatrices;
 
     LightInfo *m_lights = nullptr;
+    unsigned int m_numLights = 0;  // Number of lights in m_lights array
     AliasTable lightAliasTable;
     AliasTable *d_lightAliasTable = nullptr;
     float accumulatedLocalLightLuminance = 0.0f;

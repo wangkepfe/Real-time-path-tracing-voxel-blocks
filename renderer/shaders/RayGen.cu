@@ -56,9 +56,18 @@ __device__ __inline__ bool TraceNextPath(
     if (optixHitObjectIsHit())
     {
         const GeometryInstanceData *instanceData = reinterpret_cast<const GeometryInstanceData *>(optixHitObjectGetSbtDataPointer());
-        const MaterialParameter &parameters = sysParam.materialParameters[instanceData->materialIndex];
-        int materialId = parameters.materialId;
-        hint = materialId;
+        
+        // Defensive null pointer check
+        if (instanceData && instanceData->indices && instanceData->attributes) {
+            // Bounds check for material parameter access
+            unsigned int materialIndex = instanceData->materialIndex;
+            if (materialIndex >= sysParam.numMaterialParameters) {
+                materialIndex = 0; // Default to first material if out of bounds
+            }
+            const MaterialParameter &parameters = sysParam.materialParameters[materialIndex];
+            int materialId = parameters.materialId;
+            hint = materialId;
+        }
     }
     optixReorder(hint, NumOfBitsMaxBsdfIndex);
     optixInvoke(payload.x, payload.y);

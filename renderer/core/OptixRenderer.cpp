@@ -187,6 +187,7 @@ void OptixRenderer::render()
 
     // Handle light-related parameters safely to prevent null pointer access
     m_systemParameter.lights = scene.m_lights;
+    m_systemParameter.numLights = scene.m_numLights;
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
@@ -198,13 +199,22 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
 
+    // Debug: Check for errors before OptixLaunch
+    CUDA_CHECK(cudaPeekAtLastError());
+
     // Only launch OptixLaunch if we have a valid top object (scene is not empty)
     if (m_systemParameter.topObject != 0) {
         OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+        
+        // Check immediately after OptixLaunch with device sync
+        CUDA_CHECK(cudaDeviceSynchronize());
+        cudaError_t err = cudaPeekAtLastError();
+        if (err != cudaSuccess) {
+            std::cout << "ERROR: OptixLaunch kernels failed with CUDA error: " << cudaGetErrorString(err) << std::endl;
+        }
     }
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
-
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaPeekAtLastError());
 
@@ -317,6 +327,10 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                             unsigned int sbtIndex = entitySbtOffset + rayType;
                             m_sbtRecordGeometryInstanceData[sbtIndex].data.indices = (Int3 *)geometry.indices;
                             m_sbtRecordGeometryInstanceData[sbtIndex].data.attributes = (VertexAttributes *)geometry.attributes;
+                            
+                            // CRITICAL FIX: Add bounds information to prevent illegal memory access
+                            m_sbtRecordGeometryInstanceData[sbtIndex].data.numIndices = geometry.numIndices / 3; // Convert to triangle count
+                            m_sbtRecordGeometryInstanceData[sbtIndex].data.numAttributes = geometry.numAttributes;
                         }
                     }
                 }
@@ -592,6 +606,10 @@ void OptixRenderer::update()
                     {
                         m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
                         m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+                        
+                        // CRITICAL FIX: Add bounds information to prevent illegal memory access
+                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numIndices = geometry.numIndices / 3; // Convert to triangle count
+                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numAttributes = geometry.numAttributes;
                     }
                 }
             }
@@ -704,6 +722,10 @@ void OptixRenderer::update()
                         {
                             m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
                             m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+                            
+                            // CRITICAL FIX: Add bounds information to prevent illegal memory access
+                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numIndices = geometry.numIndices / 3; // Convert to triangle count
+                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numAttributes = geometry.numAttributes;
                         }
                     }
                 }
@@ -1467,6 +1489,12 @@ void OptixRenderer::init()
                 {
                     unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
+                    // Skip SBT creation if geometry has null pointers (empty geometry)
+                    assert(geometryIndex < m_geometries.size());
+                    if (m_geometries[geometryIndex].indices == nullptr || m_geometries[geometryIndex].attributes == nullptr) {
+                        continue; // Skip this geometry, no SBT records created
+                    }
+
                     for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
                     {
                         if (rayType == 0)
@@ -1478,10 +1506,16 @@ void OptixRenderer::init()
                             memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                         }
 
-                        assert(geometryIndex < m_geometries.size());
                         m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
                         m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
+                        
+                        // CRITICAL FIX: Add bounds information to prevent illegal memory access
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numIndices = m_geometries[geometryIndex].numIndices / 3; // Convert to triangle count
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numAttributes = m_geometries[geometryIndex].numAttributes;
+                        
+                        // Map objectId to material index (objectId 1->16 maps to material index 0->15)
+                        unsigned int materialIndex = (objectId >= 1) ? (objectId - 1) : 0;
+                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = materialIndex;
                         sbtRecordIndex++;
                     }
                 }
@@ -1495,6 +1529,12 @@ void OptixRenderer::init()
             // Instanced geometries are stored after all chunk-based geometries
             unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
 
+            // Skip SBT creation if geometry has null pointers (empty geometry)
+            assert(geometryIndex < m_geometries.size());
+            if (m_geometries[geometryIndex].indices == nullptr || m_geometries[geometryIndex].attributes == nullptr) {
+                continue; // Skip this geometry, no SBT records created
+            }
+
             for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
             {
                 if (rayType == 0)
@@ -1506,10 +1546,16 @@ void OptixRenderer::init()
                     memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                 }
 
-                assert(geometryIndex < m_geometries.size());
                 m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
                 m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
+                
+                // CRITICAL FIX: Add bounds information to prevent illegal memory access
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numIndices = m_geometries[geometryIndex].numIndices / 3; // Convert to triangle count
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numAttributes = m_geometries[geometryIndex].numAttributes;
+                
+                // Map objectId to material index (objectId 1->16 maps to material index 0->15)
+                unsigned int materialIndex = (objectId >= 1) ? (objectId - 1) : 0;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = materialIndex;
                 sbtRecordIndex++;
             }
         }
@@ -1538,6 +1584,11 @@ void OptixRenderer::init()
                     assert(geometryIndex < m_geometries.size());
                     m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
                     m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+                    
+                    // CRITICAL FIX: Add bounds information to prevent illegal memory access
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numIndices = m_geometries[geometryIndex].numIndices / 3; // Convert to triangle count
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numAttributes = m_geometries[geometryIndex].numAttributes;
+                    
                     // Use the correct material index for entities from the material array
                     unsigned int entityMaterialIndex = m_entityMaterialStartIndex + static_cast<unsigned int>(entity->getType());
                     m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = entityMaterialIndex;
@@ -1592,6 +1643,9 @@ void OptixRenderer::init()
     {
         CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        
+        // Set the number of material parameters for bounds checking
+        m_systemParameter.numMaterialParameters = (unsigned int)m_materialParameters.size();
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));

@@ -33,6 +33,12 @@ public:
     // Device function to perform sampling.
     __device__ unsigned int sample(float u, float &pmf) const
     {
+        // Handle empty alias table case
+        if (len == 0 || bins == nullptr) {
+            pmf = 0.0f;
+            return 0;
+        }
+        
         int offset = min(int(u * len), int(len - 1));
         float up = min(u * len - offset, 0.999999f);
 
@@ -51,7 +57,12 @@ public:
 
     // Host/device inline functions.
     __host__ __device__ unsigned int size() const { return len; }
-    __device__ float PMF(unsigned int index) const { return bins[index].p; }
+    __device__ float PMF(unsigned int index) const { 
+        if (len == 0 || bins == nullptr || index >= len) {
+            return 0.0f;
+        }
+        return bins[index].p; 
+    }
 
 private:
     AliasTableBin *bins = nullptr;

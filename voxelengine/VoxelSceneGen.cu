@@ -118,6 +118,14 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
         }
     }
 
+    // HACK DISABLED - Engine must be robust enough to handle missing block types
+    // for (int i = 1; i < BlockTypeNum; ++i)
+    // {
+    //     if (idx.x == 1 && idx.y == 1 && idx.z == i)
+    //     {
+    //         val.id = i;
+    //     }
+    // }
 
     unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width);
     voxels[linearId] = val;
@@ -404,14 +412,14 @@ void generateMesh(VertexAttributes **attr,
 
     // 4. Find how many faces are valid total
     cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    
+
     // Handle zero instances case - early exit with empty geometry
     if (currentFaceCount == 0)
     {
         maxFaceCount = 0;
         attrSize = 0;
         indicesSize = 0;
-        
+
         // Clean up existing geometry
         if (*attr != nullptr)
         {
@@ -423,17 +431,17 @@ void generateMesh(VertexAttributes **attr,
             cudaFree(*indices);
             *indices = nullptr;
         }
-        
+
         // Initialize empty face location vector
         faceLocation.assign(totalFaces, UINT_MAX);
-        
+
         // Cleanup and return early
         cudaFree(d_faceValid);
         cudaFree(d_faceLocation);
         cudaFree(d_faceValidPrefixSum);
         return;
     }
-    
+
     // maxFaceCount = currentFaceCount * 2;
     maxFaceCount = (totalFaces / 4 > 1u) ? (totalFaces / 4) : 1u; // Ensure minimum of 1 to avoid zero allocation
 
