@@ -66,11 +66,24 @@ __global__ void finalizeKernel(AliasTableBin *bins, int n)
 void AliasTable::update(const float *weights, unsigned int n, float &sumWeight)
 {
     len = n;
+    
+    // Handle zero elements case - early exit with empty table
+    if (n == 0)
+    {
+        sumWeight = 0.0f;
+        // Clean up any existing data
+        if (bins != nullptr)
+        {
+            cudaFree(bins);
+            bins = nullptr;
+        }
+        return;
+    }
+    
     constexpr bool g_use_cpu_build = true;
     if (g_use_cpu_build)
     {
         // Compute the sum of weights on the device using Thrust.
-
         thrust::device_ptr<const float> dev_weights(weights);
         sumWeight = thrust::reduce(dev_weights, dev_weights + n, 0.0f, thrust::plus<float>());
 
@@ -157,8 +170,20 @@ void AliasTable::update(const float *weights, unsigned int n, float &sumWeight)
         // GPU BUILD: build the alias table entirely on the device.
         // Assumes that 'weights' is a device pointer.
         // ----------------------------
+        
+        // Handle zero elements case in GPU path too (defensive programming)
+        if (n == 0)
+        {
+            sumWeight = 0.0f;
+            if (bins != nullptr)
+            {
+                cudaFree(bins);
+                bins = nullptr;
+            }
+            return;
+        }
+        
         // Compute sum of weights using Thrust.
-
         thrust::device_ptr<const float> dev_weights(weights);
         sumWeight = thrust::reduce(dev_weights, dev_weights + n, 0.0f, thrust::plus<float>());
 

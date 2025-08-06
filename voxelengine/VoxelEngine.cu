@@ -148,6 +148,18 @@ __global__ void extractRadianceKernel(const LightInfo *lights, float *d_radiance
 // Step 2. Build the device radiance array and update the alias table.
 void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &aliasTable, float &accumulatedLocalLightLuminance)
 {
+    // Handle zero lights case - early exit with empty alias table
+    if (totalLights == 0)
+    {
+        accumulatedLocalLightLuminance = 0.0f;
+        // Initialize empty alias table if not already done
+        if (!aliasTable.initialized())
+        {
+            aliasTable = AliasTable(); // Create empty alias table
+        }
+        return;
+    }
+
     // Allocate device memory to store one radiance weight per light.
     float *d_radiance = nullptr;
     cudaError_t err = cudaMalloc((void **)&d_radiance, totalLights * sizeof(float));
@@ -341,8 +353,22 @@ void VoxelEngine::updateInstances()
     if (scene.m_lights != nullptr)
     {
         cudaFree(scene.m_lights);
+        scene.m_lights = nullptr;
     }
-    cudaMalloc((void **)&scene.m_lights, totalNumTriLights * sizeof(LightInfo));
+    
+    // Handle zero triangle lights case - allocate dummy light to avoid null pointer
+    if (totalNumTriLights == 0)
+    {
+        // Allocate a single dummy light to avoid null pointer issues
+        cudaMalloc((void **)&scene.m_lights, 1 * sizeof(LightInfo));
+        // Initialize the dummy light with zero values
+        LightInfo dummyLight = {};
+        cudaMemcpy(scene.m_lights, &dummyLight, sizeof(LightInfo), cudaMemcpyHostToDevice);
+    }
+    else
+    {
+        cudaMalloc((void **)&scene.m_lights, totalNumTriLights * sizeof(LightInfo));
+    }
 
     // Generate light info
     unsigned int currentGlobalOffset = 0;
@@ -385,18 +411,36 @@ void VoxelEngine::updateInstances()
     if (scene.d_instanceLightMapping != nullptr)
     {
         cudaFree(scene.d_instanceLightMapping);
+        scene.d_instanceLightMapping = nullptr;
     }
     scene.numInstancedLightMesh = scene.instanceLightMapping.size();
-    size_t mappingSizeInBytes = scene.numInstancedLightMesh * sizeof(InstanceLightMapping);
-    cudaMalloc((void **)&scene.d_instanceLightMapping, mappingSizeInBytes);
-    cudaMemcpy(scene.d_instanceLightMapping, scene.instanceLightMapping.data(), mappingSizeInBytes, cudaMemcpyHostToDevice);
+    
+    // Handle zero instance light mapping case - allocate dummy mapping to avoid null pointer
+    if (scene.numInstancedLightMesh == 0)
+    {
+        // Allocate a single dummy mapping to avoid null pointer issues
+        cudaMalloc((void **)&scene.d_instanceLightMapping, 1 * sizeof(InstanceLightMapping));
+        InstanceLightMapping dummyMapping = {};
+        cudaMemcpy(scene.d_instanceLightMapping, &dummyMapping, sizeof(InstanceLightMapping), cudaMemcpyHostToDevice);
+    }
+    else
+    {
+        size_t mappingSizeInBytes = scene.numInstancedLightMesh * sizeof(InstanceLightMapping);
+        cudaMalloc((void **)&scene.d_instanceLightMapping, mappingSizeInBytes);
+        cudaMemcpy(scene.d_instanceLightMapping, scene.instanceLightMapping.data(), mappingSizeInBytes, cudaMemcpyHostToDevice);
+    }
 
     // Build alias table. If we have an existing table and the size is different
     if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights)
     {
         scene.lightAliasTable = AliasTable(); // trigger the destructor and constructor
     }
+    std::cout << "VoxelEngine DEBUG: About to call buildAliasTable with totalNumTriLights=" << totalNumTriLights << std::endl;
+    
     buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
+    
+    std::cout << "VoxelEngine DEBUG: buildAliasTable completed successfully" << std::endl;
+    
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 }
 
@@ -503,17 +547,6 @@ void VoxelEngine::reload()
 {
     auto &scene = Scene::Get();
 
-    // A hack to make sure all materials have a valid geometry across all chunks
-    for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
-    {
-        for (int blockId = 1; blockId < BlockTypeNum; ++blockId)
-        {
-            if (blockId < voxelChunks[chunkIndex].width)
-            {
-                voxelChunks[chunkIndex].data[GetLinearId(1, 1, blockId, voxelChunks[chunkIndex].width)] = blockId;
-            }
-        }
-    }
 
     // Upload voxel data from disk load for all chunks
     std::vector<Voxel *> d_dataChunks(chunkConfig.getTotalChunks());

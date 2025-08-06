@@ -19,8 +19,8 @@ Character::Character(const EntityTransform &transform)
     m_movement.yaw = transform.rotation.y;
     m_movement.targetYaw = transform.rotation.y;
 
-    // Initialize character at ground level
-    checkGroundCollision();
+    // Initialize character at ground level with collision check
+    initializeCharacterPosition();
 
     // Initialize animation clips after a short delay to ensure entity is loaded
     initializeAnimationClips();
@@ -1090,4 +1090,68 @@ void Character::triggerPlaceAnimation()
 
     // Start the additive place animation using multiple additive system
     getAnimationManager()->startMultipleAdditiveAnimation(m_animation.placeClipIndex, placeSpeed);
+}
+
+void Character::initializeCharacterPosition()
+{
+    EntityTransform transform = getTransform();
+    Float3 currentPos = transform.position;
+    
+    // Check if character's whole body is colliding with blocks
+    if (!isPositionValid(currentPos))
+    {
+        // Character is colliding, find the highest solid block within the character's footprint
+        float radius = m_physics.radius;
+        int blockX = static_cast<int>(floor(currentPos.x));
+        int blockZ = static_cast<int>(floor(currentPos.z));
+        
+        // Find the highest solid block in the area around the character
+        int maxSolidY = -1;
+        
+        // Check blocks in a circular area around the character
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                int checkX = blockX + dx;
+                int checkZ = blockZ + dz;
+                
+                // Only check if this position is within character's radius
+                Float3 blockCenter = Float3(checkX + 0.5f, 0, checkZ + 0.5f);
+                Float3 charCenter = Float3(currentPos.x, 0, currentPos.z);
+                if (length(blockCenter - charCenter) <= radius + 0.5f) // Add small margin
+                {
+                    // Find highest solid block at this X,Z position
+                    for (int y = 255; y >= 0; y--)
+                    {
+                        Voxel voxel = VoxelEngine::Get().getVoxelAtGlobal(checkX, y, checkZ);
+                        if (voxel.id != BlockTypeEmpty)
+                        {
+                            maxSolidY = std::max(maxSolidY, y);
+                            break; // Found highest solid block at this position
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (maxSolidY >= 0)
+        {
+            // Place character on top of the highest solid block
+            float newY = static_cast<float>(maxSolidY + 1) + 0.01f; // Small offset above ground
+            currentPos.y = newY;
+            
+            // Update transform
+            transform.position = currentPos;
+            setTransform(transform);
+            
+            // Reset physics state for safe initialization
+            m_physics.velocity = Float3(0.0f, 0.0f, 0.0f);
+            m_physics.isGrounded = true;
+            m_physics.canJump = true;
+        }
+    }
+    
+    // Final ground collision check to ensure proper state
+    checkGroundCollision();
 }

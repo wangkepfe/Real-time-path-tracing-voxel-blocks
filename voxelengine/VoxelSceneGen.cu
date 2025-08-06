@@ -71,7 +71,7 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
     Voxel val;
     val.id = BlockTypeEmpty;
 
-            float noiseVal = noise[idx.z * width + idx.x];
+    float noiseVal = noise[idx.z * width + idx.x];
 
     float terrainHeight = max(0.1f, (noiseVal * 1.4f - 0.7f + 0.25f) * width);
     terrainHeight = min(terrainHeight, width * 0.9f);
@@ -118,14 +118,6 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
         }
     }
 
-    // This makes sure all uninstanced material block has at least one block
-    for (int i = 1; i < BlockTypeNum; ++i)
-    {
-        if (idx.x == 1 && idx.y == 1 && idx.z == i)
-        {
-            val.id = i;
-        }
-    }
 
     unsigned int linearId = GetLinearId(idx.x, idx.y, idx.z, width);
     voxels[linearId] = val;
@@ -304,11 +296,9 @@ namespace
     }
 }
 
-
-
 // New multi-chunk initialization function
 void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int chunkIndex,
-                         const ChunkConfiguration &chunkConfig)
+                          const ChunkConfiguration &chunkConfig)
 {
     dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
     dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
@@ -328,9 +318,9 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
     unsigned int globalOffsetZ = chunkZ * VoxelChunk::width;
 
     PerlinNoiseGenerator noiseGenerator(4, 124); // Use same seed for all chunks
-    float freq = 1.0f / chunkConfig.getGlobalWidth(); // Use global frequency for continuity
+    constexpr float freq = 1.0f / 64.0f;
 
-        std::vector<float> noiseMap(noiseMapSize);
+    std::vector<float> noiseMap(noiseMapSize);
     for (int x = 0; x < voxelChunk.width; ++x)
     {
         for (int z = 0; z < voxelChunk.width; ++z)
@@ -340,8 +330,6 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
             float globalZ = globalOffsetZ + z;
             float noiseValue = noiseGenerator.getNoise(globalX * freq, globalZ * freq);
             noiseMap[z * voxelChunk.width + x] = noiseValue;
-
-
         }
     }
 
@@ -416,8 +404,38 @@ void generateMesh(VertexAttributes **attr,
 
     // 4. Find how many faces are valid total
     cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
+    
+    // Handle zero instances case - early exit with empty geometry
+    if (currentFaceCount == 0)
+    {
+        maxFaceCount = 0;
+        attrSize = 0;
+        indicesSize = 0;
+        
+        // Clean up existing geometry
+        if (*attr != nullptr)
+        {
+            cudaFree(*attr);
+            *attr = nullptr;
+        }
+        if (*indices != nullptr)
+        {
+            cudaFree(*indices);
+            *indices = nullptr;
+        }
+        
+        // Initialize empty face location vector
+        faceLocation.assign(totalFaces, UINT_MAX);
+        
+        // Cleanup and return early
+        cudaFree(d_faceValid);
+        cudaFree(d_faceLocation);
+        cudaFree(d_faceValidPrefixSum);
+        return;
+    }
+    
     // maxFaceCount = currentFaceCount * 2;
-    maxFaceCount = totalFaces / 4;
+    maxFaceCount = (totalFaces / 4 > 1u) ? (totalFaces / 4) : 1u; // Ensure minimum of 1 to avoid zero allocation
 
     attrSize = currentFaceCount * 4;
     indicesSize = currentFaceCount * 6;
@@ -830,4 +848,3 @@ void generateSea(VertexAttributes **attr,
         dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
     }
 }
-

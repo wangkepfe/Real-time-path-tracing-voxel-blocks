@@ -89,6 +89,28 @@ OptixTraversableHandle Scene::CreateGeometry(
     unsigned int indicesSize,
     bool allowUpdate)
 {
+    // Validate inputs to prevent CUDA errors
+    if (!d_attributes || !d_indices || attributeSize == 0 || indicesSize == 0) {
+        // Return null handle for empty geometry
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numAttributes = 0;
+        geometry.numIndices = 0;
+        geometry.gas = 0;
+        return 0;
+    }
+
+    // Check if indices size is multiple of 3 (valid triangles)
+    if (indicesSize % 3 != 0) {
+        // Return null handle for invalid triangle data
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numAttributes = 0;
+        geometry.numIndices = 0;
+        geometry.gas = 0;
+        return 0;
+    }
+
     const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributeSize;
     const size_t indicesSizeInBytes = sizeof(unsigned int) * indicesSize;
 
