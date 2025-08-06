@@ -101,7 +101,11 @@ void EntityTransform::getTransformMatrix(float matrix[12]) const
 Entity::Entity(EntityType type, const EntityTransform &transform)
     : m_type(type), m_transform(transform)
 {
-    loadGeometry();
+    bool success = loadGeometry();
+    if (!success)
+    {
+        std::cout << "Geometry loading FAILED" << std::endl;
+    }
 }
 
 Entity::~Entity()
@@ -159,7 +163,7 @@ void Entity::update(float deltaTime)
             return;
         }
 
-        skinningData.jointMatrices = (Mat4*)m_animationManager->getJointMatricesGPU();
+        skinningData.jointMatrices = (Mat4 *)m_animationManager->getJointMatricesGPU();
         skinningData.numJoints = m_animationManager->getJointCount();
         skinningData.enabled = true;
 
@@ -173,42 +177,6 @@ void Entity::update(float deltaTime)
         applySkinningToVertices(m_d_attributes, m_d_originalAttributes,
                                 m_attributeSize, skinningData);
     }
-}
-
-void Entity::playAnimation(const std::string &animationName, bool loop)
-{
-    assert(m_animationManager != nullptr);
-
-    // Find animation by name
-    for (size_t i = 0; i < m_animationClips.size(); ++i)
-    {
-        if (m_animationClips[i].name == animationName)
-        {
-            m_animationManager->playAnimation(static_cast<int>(i), loop);
-            return;
-        }
-    }
-}
-
-void Entity::playAnimation(int clipIndex, bool loop)
-{
-    assert(m_animationManager != nullptr);
-
-    m_animationManager->playAnimation(clipIndex, loop);
-}
-
-void Entity::stopAnimation()
-{
-    assert(m_animationManager != nullptr);
-
-    m_animationManager->stopAnimation();
-}
-
-void Entity::setAnimationSpeed(float speed)
-{
-    assert(m_animationManager != nullptr);
-
-    m_animationManager->setPlaybackSpeed(speed);
 }
 
 bool Entity::loadMinecraftCharacterGeometry()
@@ -237,13 +205,6 @@ bool Entity::loadMinecraftCharacterGeometry()
         for (const auto &clip : m_animationClips)
         {
             m_animationManager->addAnimationClip(clip);
-        }
-
-        // Start playing the first animation if available
-        if (!m_animationClips.empty())
-        {
-            std::cout << "Starting animation: " << m_animationClips[0].name << std::endl;
-            m_animationManager->playAnimation(0, true); // Play first animation looped
         }
 
         return true;

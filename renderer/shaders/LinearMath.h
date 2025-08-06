@@ -962,6 +962,13 @@ INL_HOST_DEVICE Float2 normalize(const Float2 &v)
 INL_HOST_DEVICE Float3 normalize(const Float3 &v)
 {
     float norm = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+    
+    // Protect against zero-length vectors and NaN
+    if (norm < 1e-8f || isnan(norm))
+    {
+        return Float3(0.0f, 0.0f, 1.0f); // Default forward direction
+    }
+    
     return Float3(v.x / norm, v.y / norm, v.z / norm);
 }
 INL_HOST_DEVICE Float3 sqrt3f(const Float3 &v) { return Float3(sqrtf(v.x), sqrtf(v.y), sqrtf(v.z)); }
@@ -1679,7 +1686,39 @@ INL_DEVICE Float2 ConcentricSampleDisk(Float2 u)
 
 INL_HOST_DEVICE Float3 YawPitchToDir(float yaw, float pitch)
 {
-    return normalize(Float3(sinf(yaw) * cosf(pitch), sinf(pitch), cosf(yaw) * cosf(pitch)));
+    // Validate input angles
+    if (isnan(yaw) || isnan(pitch))
+    {
+        return Float3(0.0f, 0.0f, 1.0f); // Default forward direction
+    }
+    
+    // Clamp pitch to valid range for trigonometric functions
+    pitch = clampf(pitch, -PI_OVER_2 + 0.01f, PI_OVER_2 - 0.01f);
+    
+    // Calculate direction vector
+    float sinYaw = sinf(yaw);
+    float cosYaw = cosf(yaw);
+    float sinPitch = sinf(pitch);
+    float cosPitch = cosf(pitch);
+    
+    // Validate trigonometric results
+    if (isnan(sinYaw) || isnan(cosYaw) || isnan(sinPitch) || isnan(cosPitch))
+    {
+        return Float3(0.0f, 0.0f, 1.0f); // Default forward direction
+    }
+    
+    Float3 direction = Float3(sinYaw * cosPitch, sinPitch, cosYaw * cosPitch);
+    
+    // The normalize function now has NaN protection, but add extra validation
+    Float3 result = normalize(direction);
+    
+    // Final validation
+    if (isnan(result.x) || isnan(result.y) || isnan(result.z))
+    {
+        return Float3(0.0f, 0.0f, 1.0f); // Default forward direction
+    }
+    
+    return result;
 }
 
 INL_HOST_DEVICE Float2 DirToYawPitch(Float3 dir)

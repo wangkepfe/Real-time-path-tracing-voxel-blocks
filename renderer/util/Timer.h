@@ -64,7 +64,8 @@ struct Timer
 
     float getDeltaTime() const
     {
-        return static_cast<float>(deltaTime);
+        // Convert from milliseconds to seconds for physics calculations
+        return static_cast<float>(deltaTime) / 1000.0f;
     }
 
     float getTime() const

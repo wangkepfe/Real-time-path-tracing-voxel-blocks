@@ -1,0 +1,92 @@
+# Global Settings Configuration File
+# Generated automatically
+
+denoising:
+  enableHitDistanceReconstruction: false
+  enablePrePass: false
+  enableTemporalAccumulation: true
+  enableHistoryFix: true
+  enableHistoryClamping: true
+  enableSpatialFiltering: true
+  enableAntiFirefly: false
+  enableRoughnessEdgeStopping: true
+  maxAccumulatedFrameNum: 30
+  maxFastAccumulatedFrameNum: 6
+  historyFixFrameNum: 3
+  prepassBlurRadius: 30
+  minHitDistanceWeight: 0.1
+  phiLuminance: 2
+  lobeAngleFraction: 0.5
+  roughnessFraction: 0.15
+  depthThreshold: 0.003
+  minLuminanceWeight: 0
+  atrousIterationNum: 5
+  luminanceEdgeStoppingRelaxation: 0.5
+  normalEdgeStoppingRelaxation: 0.3
+  roughnessEdgeStoppingRelaxation: 1
+  antilagAccelerationAmount: 0.3
+  antilagSpatialSigmaScale: 4.5
+  antilagTemporalSigmaScale: 0.5
+  antilagResetAmount: 0.5
+  historyClampingColorBoxSigmaScale: 2
+  historyFixBasePixelStride: 14
+  spatialVarianceEstimationHistoryThreshold: 3
+  disocclusionThreshold: 0.01
+  disocclusionThresholdAlternate: 0.05
+  confidenceDrivenRelaxationMultiplier: 0
+  confidenceDrivenLuminanceEdgeStoppingRelaxation: 0
+  confidenceDrivenNormalEdgeStoppingRelaxation: 0
+  denoisingRange: 500000
+
+postprocess:
+  postGain: 1
+  gain: 16
+  maxWhite: 1
+
+sky:
+  timeOfDay: 0.25
+  sunAxisAngle: 45
+  sunAxisRotate: 0
+  skyBrightness: 1
+
+character_movement:
+  walkMoveForce: 3
+  runMoveForce: 4.5
+  walkMaxSpeed: 2
+  runMaxSpeed: 3
+  jumpForce: 6
+  gravity: -9.81
+  friction: 1.5
+  rotationSpeed: 8
+  radius: 0.3
+  height: 1.8
+
+character_animation:
+  walkSpeedThreshold: 0.1
+  mediumSpeedThreshold: 1.0
+  runSpeedThreshold: 0.1
+  runMediumSpeedThreshold: 1.5
+  animationSpeed: 1
+  blendRatio: 0
+  placeAnimationSpeed: 1
+
+camera_movement:
+  moveSpeed: 3
+  cursorMoveSpeed: 0.001
+  fov: 90
+  followSpeed: 5
+  followDistance: 5
+  followHeight: 2.5
+  gameplayHeight: 1.5
+
+rendering:
+  maxFpsAllowed: 144
+  targetFPS: 60
+  dynamicResolution: false
+  vsync: false
+  windowWidth: 2560
+  windowHeight: 1440
+  maxRenderWidth: 2560
+  maxRenderHeight: 1440
+  minRenderWidth: 480
+  minRenderHeight: 270

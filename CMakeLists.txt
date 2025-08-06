@@ -55,8 +55,12 @@ set( HEADERS
     renderer/core/OptixRenderer.h
     renderer/core/Scene.h
     renderer/core/Entity.h
+    renderer/core/Character.h
     renderer/core/UI.h
     renderer/core/InputHandler.h
+    renderer/core/CameraController.h
+    renderer/core/FreeCameraController.h  
+    renderer/core/CharacterFollowCameraController.h
     renderer/core/GlobalSettings.h
     renderer/core/BufferManager.h
     renderer/core/RenderCamera.h
@@ -102,10 +106,15 @@ set( SOURCES
     renderer/core/OptixRenderer.cpp
     renderer/core/Scene.cpp
     renderer/core/Entity.cpp
+    renderer/core/Character.cpp
     renderer/core/UI.cpp
     renderer/core/InputHandler.cpp
+    renderer/core/CameraController.cpp
+    renderer/core/FreeCameraController.cpp
+    renderer/core/CharacterFollowCameraController.cpp
     renderer/core/BufferManager.cpp
     renderer/core/SceneConfig.cpp
+    renderer/core/GlobalSettings.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
     renderer/util/TextureUtils.cu
@@ -210,11 +219,13 @@ function(copy_game_data TARGET_NAME COPY_GLFW_GLEW)
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/models
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/textures
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/settings
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
         # Copy directories only if files are different
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:${TARGET_NAME}>/data/models
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:${TARGET_NAME}>/data/textures
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/settings $<TARGET_FILE_DIR:${TARGET_NAME}>/data/settings
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${PTX_DIR} $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
         # Copy NVTT DLL (needed by both targets)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:${TARGET_NAME}>/nvtt30200.dll
@@ -240,7 +251,12 @@ set( OFFLINE_SOURCES
     renderer/core/OptixRenderer.cpp
     renderer/core/Scene.cpp
     renderer/core/Entity.cpp
+    renderer/core/Character.cpp
+    renderer/core/CameraController.cpp
+    renderer/core/FreeCameraController.cpp
+    renderer/core/CharacterFollowCameraController.cpp
     renderer/core/BufferManager.cpp
+    renderer/core/GlobalSettings.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
     renderer/util/TextureUtils.cu

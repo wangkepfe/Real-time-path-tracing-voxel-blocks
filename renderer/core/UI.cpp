@@ -5,6 +5,8 @@
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
+#include "core/CameraController.h"
+#include "core/Character.h"
 
 void UI::init()
 {
@@ -43,6 +45,21 @@ void UI::update()
 
     auto &camera = RenderCamera::Get().camera;
 
+    // Get current camera mode name
+    const char* currentCameraMode = "Unknown";
+    if (inputHandler.getCurrentCameraController())
+    {
+        if (inputHandler.getCurrentMode() == AppMode::GUI)
+        {
+            currentCameraMode = "GUI";
+        }
+        else
+        {
+            currentCameraMode = inputHandler.getCurrentCameraController()->getName();
+        }
+    }
+
+    ImGui::Text("Camera Mode: %s", currentCameraMode);
     ImGui::Text("Frame = %d", backend.getFrameNum());
     ImGui::Text("Current FPS = %.1f", backend.getCurrentFPS());
     ImGui::Text("Current Render Width = %d", backend.getCurrentRenderWidth());
@@ -50,6 +67,21 @@ void UI::update()
     ImGui::Text("Scale: %.1f %%", backend.getCurrentRenderWidth() / (float)backend.getWidth() * 100.0f);
     ImGui::Text("Camera pos=(%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
     ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
+    
+    // Show character movement info if character exists
+    if (inputHandler.getCharacter())
+    {
+        auto character = inputHandler.getCharacter();
+        auto& movement = character->getMovement();
+        auto& physics = character->getPhysics();
+        
+        ImGui::Separator();
+        ImGui::Text("Character Speed: %.2f", movement.currentSpeed);
+        ImGui::Text("Character Move Dir: (%.2f, %.2f, %.2f)", movement.moveDirection.x, movement.moveDirection.y, movement.moveDirection.z);
+        ImGui::Text("Character Velocity: (%.2f, %.2f, %.2f)", physics.velocity.x, physics.velocity.y, physics.velocity.z);
+        ImGui::Text("Character Grounded: %s", physics.isGrounded ? "Yes" : "No");
+    }
+    
     ImGui::Text("Current selected block ID = %d", inputHandler.currentSelectedBlockId);
 
     if (ImGui::CollapsingHeader("Temporal Denoising", 0))
@@ -120,6 +152,114 @@ void UI::update()
             {
                 skyParams.needRegenerate = true;
             }
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Character Movement", ImGuiTreeNodeFlags_None))
+    {
+        CharacterMovementParams &characterMovementParams = GlobalSettings::GetCharacterMovementParams();
+        for (auto &item : characterMovementParams.GetValueList())
+        {
+            ImGui::SliderFloat(
+                std::get<1>(item).c_str(),
+                std::get<0>(item),
+                std::get<2>(item),
+                std::get<3>(item),
+                "%.3f",
+                std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Character Animation", ImGuiTreeNodeFlags_None))
+    {
+        CharacterAnimationParams &characterAnimationParams = GlobalSettings::GetCharacterAnimationParams();
+        for (auto &item : characterAnimationParams.GetValueList())
+        {
+            ImGui::SliderFloat(
+                std::get<1>(item).c_str(),
+                std::get<0>(item),
+                std::get<2>(item),
+                std::get<3>(item),
+                "%.3f",
+                std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Camera Movement", ImGuiTreeNodeFlags_None))
+    {
+        CameraMovementParams &cameraMovementParams = GlobalSettings::GetCameraMovementParams();
+        for (auto &item : cameraMovementParams.GetValueList())
+        {
+            ImGui::SliderFloat(
+                std::get<1>(item).c_str(),
+                std::get<0>(item),
+                std::get<2>(item),
+                std::get<3>(item),
+                "%.6f",
+                std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Rendering Settings", ImGuiTreeNodeFlags_None))
+    {
+        RenderingParams &renderingParams = GlobalSettings::GetRenderingParams();
+        
+        // Float parameters
+        for (auto &item : renderingParams.GetValueList())
+        {
+            ImGui::SliderFloat(
+                std::get<1>(item).c_str(),
+                std::get<0>(item),
+                std::get<2>(item),
+                std::get<3>(item),
+                "%.1f",
+                std::get<4>(item) ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
+        }
+        
+        // Boolean parameters
+        for (auto &item : renderingParams.GetBooleanValueList())
+        {
+            ImGui::Checkbox(item.second.c_str(), item.first);
+        }
+        
+        // Integer parameters
+        for (auto &item : renderingParams.GetIntValueList())
+        {
+            ImGui::InputInt(item.second.c_str(), item.first);
+        }
+    }
+
+    if (ImGui::CollapsingHeader("Global Settings Management", ImGuiTreeNodeFlags_None))
+    {
+        static char globalSettingsFileName[256] = "data/settings/global_settings.yaml";
+
+        ImGui::Text("Save/Load All Global Settings");
+        ImGui::InputText("Settings File", globalSettingsFileName, sizeof(globalSettingsFileName));
+
+        if (ImGui::Button("Save Global Settings"))
+        {
+            GlobalSettings::Get().SaveToYAML(std::string(globalSettingsFileName));
+        }
+        
+        ImGui::SameLine();
+        
+        if (ImGui::Button("Load Global Settings"))
+        {
+            GlobalSettings::Get().LoadFromYAML(std::string(globalSettingsFileName));
+        }
+
+        ImGui::Separator();
+        
+        if (ImGui::Button("Reset to Defaults"))
+        {
+            // Reset all settings to default values
+            GlobalSettings::Get().denoisingParams = DenoisingParams{};
+            GlobalSettings::Get().postProcessParams = PostProcessParams{};
+            GlobalSettings::Get().skyParams = SkyParams{};
+            GlobalSettings::Get().characterMovementParams = CharacterMovementParams{};
+            GlobalSettings::Get().characterAnimationParams = CharacterAnimationParams{};
+            GlobalSettings::Get().cameraMovementParams = CameraMovementParams{};
+            GlobalSettings::Get().renderingParams = RenderingParams{};
         }
     }
 

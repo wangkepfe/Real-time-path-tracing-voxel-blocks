@@ -106,6 +106,10 @@ int main(int argc, char *argv[])
     std::cout << "Frames to render: " << totalFrames << " (saving frames: 1, 4, 16, 64)" << std::endl;
     std::cout << "Output prefix: " << outputPrefix << std::endl;
 
+    // Load global settings from YAML file at startup
+    auto &globalSettings = GlobalSettings::Get();
+    globalSettings.LoadFromYAML("data/settings/global_settings.yaml");
+    
     // Set offline mode
     GlobalSettings::SetOfflineMode(true);
 

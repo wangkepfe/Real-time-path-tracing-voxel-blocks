@@ -2,14 +2,18 @@
 
 #include <iostream>
 #include <functional>
+#include <memory>
+#include "../shaders/LinearMath.h"
 
 struct GLFWwindow;
+class Character;
+class CameraController;
 
 enum class AppMode
 {
-    Gameplay,
-    Menu,
+    GUI,
     FreeMove,
+    CharacterFollow,
 };
 
 class InputHandler
@@ -37,12 +41,20 @@ public:
     }
 
     int currentSelectedBlockId = 1;
+    
+    // Character control
+    void setCharacter(Character* character);
+    Character* getCharacter() const { return m_character; }
+    
+    // Camera controller management
+    CameraController* getCurrentCameraController() const { return m_currentCameraController; }
+    AppMode getCurrentMode() const { return appmode; }
 
 private:
-    InputHandler() {}
-
-    float moveSpeed = 0.003f;
-    float cursorMoveSpeed = 0.001f;
+    InputHandler();
+    ~InputHandler(); // Need custom destructor for unique_ptr with incomplete type
+    void initializeCameraControllers();
+    void switchCameraController(AppMode newMode);
 
     double xpos = 0;
     double ypos = 0;
@@ -53,6 +65,10 @@ private:
     bool moveD = 0;
     bool moveC = 0;
     bool moveX = 0;
+    
+    // Speed modifier keys
+    bool slowMode = 0;   // Ctrl modifier
+    bool fastMode = 0;   // Shift modifier
 
     float deltax = 0;
     float deltay = 0;
@@ -61,8 +77,17 @@ private:
 
     std::function<void(int, int, int)> mouseButtonCallbackFunc;
 
-    AppMode appmode = AppMode::FreeMove;
-
-    float fallSpeed = 0.0f;
-    float height = 1.5f;
+    AppMode appmode = AppMode::GUI;
+    
+    // Legacy members still used in some places
+    float moveSpeed = 0.003f;
+    float cursorMoveSpeed = 0.001f;
+    
+    // Character control
+    Character* m_character = nullptr;
+    
+    // Unified camera management
+    std::unique_ptr<CameraController> m_freeCameraController;
+    std::unique_ptr<CameraController> m_characterFollowCameraController;  
+    CameraController* m_currentCameraController = nullptr;
 };

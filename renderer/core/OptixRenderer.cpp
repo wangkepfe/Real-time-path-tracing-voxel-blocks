@@ -8,6 +8,9 @@
 #include "core/GlobalSettings.h"
 #include "sky/Sky.h"
 #include "core/RenderCamera.h"
+#ifndef OFFLINE_MODE
+#include "core/InputHandler.h"
+#endif
 
 #include "util/BufferUtils.h"
 
@@ -147,11 +150,31 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
+    // CAMERA HISTORY UPDATE: Store PREVIOUS frame camera state before current frame processing
+    // This should happen BEFORE InputHandler updates the camera for the current frame
+    // The history camera should contain the camera state from the PREVIOUS frame
+    // TODO: Move this to happen before InputHandler::update() is called
+    
+    // UNIFIED CAMERA MANAGEMENT: Camera is updated ONLY by InputHandler
+    // OptixRenderer no longer calls camera.update() - this prevents position corruption
+    // The camera matrices are already updated by the active CameraController
+#ifndef OFFLINE_MODE
+    // Online mode: Camera is managed by InputHandler's CameraControllers
+    // No need to call camera.update() here - it's handled in InputHandler::update()
+#else
+    // Offline mode: For now, still use traditional camera update
+    // TODO: Integrate unified camera management with offline mode
     RenderCamera::Get().camera.update();
+#endif
 
-    m_systemParameter.camera = RenderCamera::Get().camera;
-    m_systemParameter.prevCamera = RenderCamera::Get().historyCamera;
+    // SYSTEM PARAMETERS: Read-only access to cameras for shader/denoiser
+    // Camera values are READ here, never modified
+    const Camera& currentCameraForShader = RenderCamera::Get().camera;
+    const Camera& historyCameraForShader = RenderCamera::Get().historyCamera;
+    
+    m_systemParameter.camera = currentCameraForShader;
+    m_systemParameter.prevCamera = historyCameraForShader;
+    
     m_systemParameter.timeInSecond = backend.getTimer().getTimeInSecond();
 
     const auto &skyModel = SkyModel::Get();

@@ -43,6 +43,9 @@ class MinecraftCharacterGenerator:
         self.parts = self.spec['parts']
         self.skeleton = self.spec.get('skeleton', [])
         self.scale_factor = scale_factor
+        
+        # Load animations from external file or inline
+        self.animations = self._load_animations()
 
         # Output mesh data
         self.vertices = []
@@ -56,6 +59,32 @@ class MinecraftCharacterGenerator:
         self.bone_to_index = {}
         for i, bone in enumerate(self.skeleton):
             self.bone_to_index[bone['name']] = i
+
+    def _load_animations(self) -> Dict:
+        """Load animations from external file or inline specification"""
+        # Check if animations are specified inline
+        if 'animations' in self.spec:
+            return self.spec['animations']
+        
+        # Check if there's an animationsFile reference
+        if 'animationsFile' in self.spec:
+            animations_file = self.spec['animationsFile']
+            try:
+                with open(animations_file, 'r') as f:
+                    animations_data = json.load(f)
+                return animations_data.get('animations', {})
+            except FileNotFoundError:
+                print(f"Warning: Animation file {animations_file} not found, using no animations")
+                return {}
+        
+        # Try to load default animations file
+        try:
+            with open('minecraft_character_animations.json', 'r') as f:
+                animations_data = json.load(f)
+            return animations_data.get('animations', {})
+        except FileNotFoundError:
+            print("Warning: No animations file found, using no animations")
+            return {}
 
     def normalize_uv(self, u: int, v: int) -> Tuple[float, float]:
         """Convert texture pixel coordinates to normalized UV coordinates"""
@@ -373,57 +402,119 @@ class MinecraftCharacterGenerator:
 
         return Mesh(self.vertices, self.uvs, self.indices, self.joint_indices, self.joint_weights)
 
-    def create_animation_data(self, animation_name: str = 'walk') -> Dict:
-        """Create animation data from JSON specification"""
-        if 'animations' not in self.spec or animation_name not in self.spec['animations']:
+    def create_all_animation_data(self) -> Dict:
+        """Create animation data for all animations from JSON specification"""
+        if not self.animations:
             # Return empty animation data if no animations defined
             return {
-                'time_data': np.array([0.0], dtype=np.float32).tobytes(),
-                'hip_translation_data': np.array([[0, 0, 0]], dtype=np.float32).tobytes(),
-                'right_leg_rotation_data': np.array([[0, 0, 0, 1]], dtype=np.float32).tobytes(),
-                'left_leg_rotation_data': np.array([[0, 0, 0, 1]], dtype=np.float32).tobytes(),
-                'right_arm_rotation_data': np.array([[0, 0, 0, 1]], dtype=np.float32).tobytes(),
-                'left_arm_rotation_data': np.array([[0, 0, 0, 1]], dtype=np.float32).tobytes(),
-                'keyframe_count': 1,
-                'has_animation': False
+                'animations': [],
+                'has_animations': False
             }
 
-        animation = self.spec['animations'][animation_name]
-        keyframes = animation['keyframes']
-        bones = animation['bones']
+        animations_data = []
+        
+        for anim_name, animation in self.animations.items():
+            keyframes = animation['keyframes']
+            bones = animation['bones']
+            interpolation = animation.get('interpolation', 'LINEAR')
 
-        # Convert keyframes to binary data
-        time_data = np.array(keyframes, dtype=np.float32).tobytes()
+            # Convert keyframes to binary data
+            time_data = np.array(keyframes, dtype=np.float32).tobytes()
 
-        # Extract bone transformation data
-        hip_translations = bones.get('hip', {}).get('translation', [[0, 0, 0]] * len(keyframes))
-        right_leg_rotations = bones.get('right_leg', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
-        left_leg_rotations = bones.get('left_leg', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
-        right_arm_rotations = bones.get('right_arm', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
-        left_arm_rotations = bones.get('left_arm', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
+            # Extract bone transformation data
+            hip_translations = bones.get('hip', {}).get('translation', [[0, 0, 0]] * len(keyframes))
+            torso_rotations = bones.get('torso', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
+            head_rotations = bones.get('head', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
+            right_leg_rotations = bones.get('right_leg', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
+            left_leg_rotations = bones.get('left_leg', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
+            right_arm_rotations = bones.get('right_arm', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
+            left_arm_rotations = bones.get('left_arm', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
 
-        # Apply scale factor to translation data
-        scaled_hip_translations = [[t[0] * self.scale_factor, t[1] * self.scale_factor, t[2] * self.scale_factor]
-                                  for t in hip_translations]
+            # Apply scale factor to translation data
+            scaled_hip_translations = [[t[0] * self.scale_factor, t[1] * self.scale_factor, t[2] * self.scale_factor]
+                                      for t in hip_translations]
 
-        # Convert to binary data
-        hip_translation_data = np.array(scaled_hip_translations, dtype=np.float32).tobytes()
-        right_leg_rotation_data = np.array(right_leg_rotations, dtype=np.float32).tobytes()
-        left_leg_rotation_data = np.array(left_leg_rotations, dtype=np.float32).tobytes()
-        right_arm_rotation_data = np.array(right_arm_rotations, dtype=np.float32).tobytes()
-        left_arm_rotation_data = np.array(left_arm_rotations, dtype=np.float32).tobytes()
+            # Handle CUBICSPLINE vs LINEAR data format
+            if interpolation == 'CUBICSPLINE':
+                # For CUBICSPLINE, we need in-tangent, value, out-tangent for each keyframe
+                # Since our JSON only has values, we'll create zero tangents for smooth interpolation
+                
+                # Expand hip translations: [in_tangent, value, out_tangent] for each keyframe
+                expanded_hip_translations = []
+                for translation in scaled_hip_translations:
+                    expanded_hip_translations.extend([[0, 0, 0], translation, [0, 0, 0]])
+                
+                # Expand rotations: [in_tangent, value, out_tangent] for each keyframe
+                expanded_torso_rotations = []
+                for rotation in torso_rotations:
+                    expanded_torso_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
+                expanded_head_rotations = []
+                for rotation in head_rotations:
+                    expanded_head_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
+                expanded_right_leg_rotations = []
+                for rotation in right_leg_rotations:
+                    expanded_right_leg_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
+                expanded_left_leg_rotations = []
+                for rotation in left_leg_rotations:
+                    expanded_left_leg_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
+                expanded_right_arm_rotations = []
+                for rotation in right_arm_rotations:
+                    expanded_right_arm_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
+                expanded_left_arm_rotations = []
+                for rotation in left_arm_rotations:
+                    expanded_left_arm_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
+                # Convert to binary data
+                hip_translation_data = np.array(expanded_hip_translations, dtype=np.float32).tobytes()
+                torso_rotation_data = np.array(expanded_torso_rotations, dtype=np.float32).tobytes()
+                head_rotation_data = np.array(expanded_head_rotations, dtype=np.float32).tobytes()
+                right_leg_rotation_data = np.array(expanded_right_leg_rotations, dtype=np.float32).tobytes()
+                left_leg_rotation_data = np.array(expanded_left_leg_rotations, dtype=np.float32).tobytes()
+                right_arm_rotation_data = np.array(expanded_right_arm_rotations, dtype=np.float32).tobytes()
+                left_arm_rotation_data = np.array(expanded_left_arm_rotations, dtype=np.float32).tobytes()
+                
+                # Update keyframe count for accessors (3x original for CUBICSPLINE)
+                accessor_keyframe_count = len(keyframes) * 3
+            else:
+                # LINEAR interpolation - use data as-is
+                hip_translation_data = np.array(scaled_hip_translations, dtype=np.float32).tobytes()
+                torso_rotation_data = np.array(torso_rotations, dtype=np.float32).tobytes()
+                head_rotation_data = np.array(head_rotations, dtype=np.float32).tobytes()
+                right_leg_rotation_data = np.array(right_leg_rotations, dtype=np.float32).tobytes()
+                left_leg_rotation_data = np.array(left_leg_rotations, dtype=np.float32).tobytes()
+                right_arm_rotation_data = np.array(right_arm_rotations, dtype=np.float32).tobytes()
+                left_arm_rotation_data = np.array(left_arm_rotations, dtype=np.float32).tobytes()
+                
+                # Use original keyframe count
+                accessor_keyframe_count = len(keyframes)
+
+            animation_data = {
+                'name': anim_name,
+                'display_name': animation.get('name', anim_name),
+                'duration': animation.get('duration', 1.0),
+                'interpolation': interpolation,
+                'keyframe_count': len(keyframes),
+                'accessor_keyframe_count': accessor_keyframe_count,
+                'time_data': time_data,
+                'hip_translation_data': hip_translation_data,
+                'torso_rotation_data': torso_rotation_data,
+                'head_rotation_data': head_rotation_data,
+                'right_leg_rotation_data': right_leg_rotation_data,
+                'left_leg_rotation_data': left_leg_rotation_data,
+                'right_arm_rotation_data': right_arm_rotation_data,
+                'left_arm_rotation_data': left_arm_rotation_data
+            }
+            
+            animations_data.append(animation_data)
 
         return {
-            'time_data': time_data,
-            'hip_translation_data': hip_translation_data,
-            'right_leg_rotation_data': right_leg_rotation_data,
-            'left_leg_rotation_data': left_leg_rotation_data,
-            'right_arm_rotation_data': right_arm_rotation_data,
-            'left_arm_rotation_data': left_arm_rotation_data,
-            'keyframe_count': len(keyframes),
-            'has_animation': True,
-            'animation_name': animation.get('name', animation_name),
-            'duration': animation.get('duration', 1.0)
+            'animations': animations_data,
+            'has_animations': len(animations_data) > 0
         }
 
     def create_inverse_bind_matrices(self) -> np.ndarray:
@@ -461,8 +552,8 @@ class MinecraftCharacterGenerator:
         joint_indices = np.array(mesh.joint_indices, dtype=np.uint16)
         joint_weights = np.array(mesh.joint_weights, dtype=np.float32)
 
-        # Create animation data
-        animation_data = self.create_animation_data()
+        # Create animation data for all animations
+        all_animations = self.create_all_animation_data()
 
         # Create inverse bind matrices
         inverse_bind_matrices = self.create_inverse_bind_matrices()
@@ -496,28 +587,45 @@ class MinecraftCharacterGenerator:
                               joint_weights_length + index_length + inverse_bind_matrices_length)
 
         # Add animation data if present
-        if animation_data.get('has_animation', False):
-            # Animation data offsets
-            time_offset = total_buffer_length
-            time_length = len(animation_data['time_data'])
-            hip_trans_offset = time_offset + time_length
-            hip_trans_length = len(animation_data['hip_translation_data'])
-            right_leg_rot_offset = hip_trans_offset + hip_trans_length
-            right_leg_rot_length = len(animation_data['right_leg_rotation_data'])
-            left_leg_rot_offset = right_leg_rot_offset + right_leg_rot_length
-            left_leg_rot_length = len(animation_data['left_leg_rotation_data'])
-            right_arm_rot_offset = left_leg_rot_offset + left_leg_rot_length
-            right_arm_rot_length = len(animation_data['right_arm_rotation_data'])
-            left_arm_rot_offset = right_arm_rot_offset + right_arm_rot_length
-            left_arm_rot_length = len(animation_data['left_arm_rotation_data'])
+        animation_offsets = []
+        if all_animations.get('has_animations', False):
+            current_offset = total_buffer_length
+            
+            for animation in all_animations['animations']:
+                # Calculate offsets for this animation
+                offsets = {
+                    'time_offset': current_offset,
+                    'time_length': len(animation['time_data']),
+                    'hip_trans_offset': current_offset + len(animation['time_data']),
+                    'hip_trans_length': len(animation['hip_translation_data']),
+                    'torso_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']),
+                    'torso_rot_length': len(animation['torso_rotation_data']),
+                    'head_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']),
+                    'head_rot_length': len(animation['head_rotation_data']),
+                    'right_leg_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']),
+                    'right_leg_rot_length': len(animation['right_leg_rotation_data']),
+                    'left_leg_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']),
+                    'left_leg_rot_length': len(animation['left_leg_rotation_data']),
+                    'right_arm_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']) + len(animation['left_leg_rotation_data']),
+                    'right_arm_rot_length': len(animation['right_arm_rotation_data']),
+                    'left_arm_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']) + len(animation['left_leg_rotation_data']) + len(animation['right_arm_rotation_data']),
+                    'left_arm_rot_length': len(animation['left_arm_rotation_data'])
+                }
+                
+                animation_offsets.append(offsets)
+                
+                # Append animation data to buffer
+                buffer_data += (animation['time_data'] + animation['hip_translation_data'] +
+                               animation['torso_rotation_data'] + animation['head_rotation_data'] + 
+                               animation['right_leg_rotation_data'] + animation['left_leg_rotation_data'] + 
+                               animation['right_arm_rotation_data'] + animation['left_arm_rotation_data'])
 
-            # Append animation data to buffer
-            buffer_data += (animation_data['time_data'] + animation_data['hip_translation_data'] +
-                           animation_data['right_leg_rotation_data'] + animation_data['left_leg_rotation_data'] +
-                           animation_data['right_arm_rotation_data'] + animation_data['left_arm_rotation_data'])
-
-            total_buffer_length += (time_length + hip_trans_length + right_leg_rot_length +
-                                   left_leg_rot_length + right_arm_rot_length + left_arm_rot_length)
+                # Update current offset for next animation
+                animation_length = (offsets['time_length'] + offsets['hip_trans_length'] + offsets['torso_rot_length'] + 
+                                  offsets['head_rot_length'] + offsets['right_leg_rot_length'] + offsets['left_leg_rot_length'] + 
+                                  offsets['right_arm_rot_length'] + offsets['left_arm_rot_length'])
+                current_offset += animation_length
+                total_buffer_length += animation_length
 
         buffer_uri = f"data:application/octet-stream;base64,{base64.b64encode(buffer_data).decode()}"
 
@@ -636,24 +744,41 @@ class MinecraftCharacterGenerator:
         }
 
         # Add animations if present
-        if animation_data.get('has_animation', False):
-            gltf["animations"] = [{
-                "name": animation_data['animation_name'],
-                "samplers": [
-                    {"input": 6, "output": 7, "interpolation": "LINEAR"},  # Hip translation
-                    {"input": 6, "output": 8, "interpolation": "LINEAR"},  # Right leg rotation
-                    {"input": 6, "output": 9, "interpolation": "LINEAR"},  # Left leg rotation
-                    {"input": 6, "output": 10, "interpolation": "LINEAR"},  # Right arm rotation
-                    {"input": 6, "output": 11, "interpolation": "LINEAR"}   # Left arm rotation
-                ],
-                "channels": [
-                    {"sampler": 0, "target": {"node": joints[self.bone_to_index['hip']], "path": "translation"}},
-                    {"sampler": 1, "target": {"node": joints[self.bone_to_index['right_leg']], "path": "rotation"}},
-                    {"sampler": 2, "target": {"node": joints[self.bone_to_index['left_leg']], "path": "rotation"}},
-                    {"sampler": 3, "target": {"node": joints[self.bone_to_index['right_arm']], "path": "rotation"}},
-                    {"sampler": 4, "target": {"node": joints[self.bone_to_index['left_arm']], "path": "rotation"}}
-                ]
-            }]
+        if all_animations.get('has_animations', False):
+            gltf_animations = []
+            accessor_index = 6  # Start after the main mesh accessors (0-5)
+            
+            for i, animation in enumerate(all_animations['animations']):
+                # Get interpolation type from JSON, default to LINEAR if not specified
+                interpolation = animation.get('interpolation', 'LINEAR')
+                
+                animation_gltf = {
+                    "name": animation['display_name'],
+                    "samplers": [
+                        {"input": accessor_index, "output": accessor_index + 1, "interpolation": interpolation},  # Hip translation
+                        {"input": accessor_index, "output": accessor_index + 2, "interpolation": interpolation},  # Torso rotation
+                        {"input": accessor_index, "output": accessor_index + 3, "interpolation": interpolation},  # Head rotation
+                        {"input": accessor_index, "output": accessor_index + 4, "interpolation": interpolation},  # Right leg rotation
+                        {"input": accessor_index, "output": accessor_index + 5, "interpolation": interpolation},  # Left leg rotation
+                        {"input": accessor_index, "output": accessor_index + 6, "interpolation": interpolation},  # Right arm rotation
+                        {"input": accessor_index, "output": accessor_index + 7, "interpolation": interpolation}   # Left arm rotation
+                    ],
+                    "channels": [
+                        {"sampler": 0, "target": {"node": joints[self.bone_to_index['hip']], "path": "translation"}},
+                        {"sampler": 1, "target": {"node": joints[self.bone_to_index['torso']], "path": "rotation"}},
+                        {"sampler": 2, "target": {"node": joints[self.bone_to_index['head']], "path": "rotation"}},
+                        {"sampler": 3, "target": {"node": joints[self.bone_to_index['right_leg']], "path": "rotation"}},
+                        {"sampler": 4, "target": {"node": joints[self.bone_to_index['left_leg']], "path": "rotation"}},
+                        {"sampler": 5, "target": {"node": joints[self.bone_to_index['right_arm']], "path": "rotation"}},
+                        {"sampler": 6, "target": {"node": joints[self.bone_to_index['left_arm']], "path": "rotation"}}
+                    ]
+                }
+                gltf_animations.append(animation_gltf)
+                
+                # Move to the next set of accessors (8 accessors per animation: 1 time + 7 outputs)
+                accessor_index += 8
+            
+            gltf["animations"] = gltf_animations
 
         # Add accessors for mesh data
         gltf["accessors"] = [
@@ -698,47 +823,65 @@ class MinecraftCharacterGenerator:
         ]
 
         # Add animation accessors if present
-        if animation_data.get('has_animation', False):
-            gltf["accessors"].extend([
-                {
-                    "bufferView": 6,
-                    "componentType": 5126,  # FLOAT
-                    "count": animation_data['keyframe_count'],
-                    "type": "SCALAR",
-                    "max": [animation_data['duration']],
-                    "min": [0.0]
-                },
-                {
-                    "bufferView": 7,
-                    "componentType": 5126,  # FLOAT
-                    "count": animation_data['keyframe_count'],
-                    "type": "VEC3"
-                },
-                {
-                    "bufferView": 8,
-                    "componentType": 5126,  # FLOAT
-                    "count": animation_data['keyframe_count'],
-                    "type": "VEC4"
-                },
-                {
-                    "bufferView": 9,
-                    "componentType": 5126,  # FLOAT
-                    "count": animation_data['keyframe_count'],
-                    "type": "VEC4"
-                },
-                {
-                    "bufferView": 10,
-                    "componentType": 5126,  # FLOAT
-                    "count": animation_data['keyframe_count'],
-                    "type": "VEC4"
-                },
-                {
-                    "bufferView": 11,
-                    "componentType": 5126,  # FLOAT
-                    "count": animation_data['keyframe_count'],
-                    "type": "VEC4"
-                }
-            ])
+        if all_animations.get('has_animations', False):
+            buffer_view_index = 6  # Start after the main mesh buffer views (0-5)
+            
+            for animation in all_animations['animations']:
+                gltf["accessors"].extend([
+                    {
+                        "bufferView": buffer_view_index,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['keyframe_count'],  # Time data always uses original keyframe count
+                        "type": "SCALAR",
+                        "max": [animation['duration']],
+                        "min": [0.0]
+                    },
+                    {
+                        "bufferView": buffer_view_index + 1,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],  # Use accessor count for animation data
+                        "type": "VEC3"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 2,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 3,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 4,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 5,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 6,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 7,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
+                    }
+                ])
+                
+                # Move to next set of buffer views (8 buffer views per animation)
+                buffer_view_index += 8
 
         # Add buffer views for mesh data
         gltf["bufferViews"] = [
@@ -780,39 +923,50 @@ class MinecraftCharacterGenerator:
         ]
 
         # Add animation buffer views if present
-        if animation_data.get('has_animation', False):
-            gltf["bufferViews"].extend([
-                {
-                    "buffer": 0,
-                    "byteOffset": time_offset,
-                    "byteLength": time_length
-                },
-                {
-                    "buffer": 0,
-                    "byteOffset": hip_trans_offset,
-                    "byteLength": hip_trans_length
-                },
-                {
-                    "buffer": 0,
-                    "byteOffset": right_leg_rot_offset,
-                    "byteLength": right_leg_rot_length
-                },
-                {
-                    "buffer": 0,
-                    "byteOffset": left_leg_rot_offset,
-                    "byteLength": left_leg_rot_length
-                },
-                {
-                    "buffer": 0,
-                    "byteOffset": right_arm_rot_offset,
-                    "byteLength": right_arm_rot_length
-                },
-                {
-                    "buffer": 0,
-                    "byteOffset": left_arm_rot_offset,
-                    "byteLength": left_arm_rot_length
-                }
-            ])
+        if all_animations.get('has_animations', False):
+            for offsets in animation_offsets:
+                gltf["bufferViews"].extend([
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['time_offset'],
+                        "byteLength": offsets['time_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['hip_trans_offset'],
+                        "byteLength": offsets['hip_trans_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['torso_rot_offset'],
+                        "byteLength": offsets['torso_rot_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['head_rot_offset'],
+                        "byteLength": offsets['head_rot_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['right_leg_rot_offset'],
+                        "byteLength": offsets['right_leg_rot_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['left_leg_rot_offset'],
+                        "byteLength": offsets['left_leg_rot_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['right_arm_rot_offset'],
+                        "byteLength": offsets['right_arm_rot_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['left_arm_rot_offset'],
+                        "byteLength": offsets['left_arm_rot_length']
+                    }
+                ])
 
         # Add buffer
         gltf["buffers"] = [{
@@ -833,9 +987,10 @@ class MinecraftCharacterGenerator:
         print(f"  Overlay meshes scaled 1.1x from center to avoid face clashing")
         print(f"  Texel-to-mesh mapping ensures square aspect ratios")
         print(f"  Skeletal animation with proper skinning enabled")
-        if animation_data.get('has_animation', False):
-            print(f"  Animation: {animation_data['animation_name']} ({animation_data['duration']}s cycle)")
-            print(f"  Animation keyframes: {animation_data['keyframe_count']}")
+        if all_animations.get('has_animations', False):
+            print(f"  Animations: {len(all_animations['animations'])} defined")
+            for animation in all_animations['animations']:
+                print(f"    - {animation['display_name']} ({animation['duration']}s cycle, {animation['keyframe_count']} keyframes)")
         else:
             print(f"  No animations defined in specification")
 

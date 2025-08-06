@@ -3,8 +3,12 @@
 #include "Block.h"
 
 #include "core/Scene.h"
+#ifndef OFFLINE_MODE
 #include "core/InputHandler.h"
+#endif
 #include "core/RenderCamera.h"
+#include "core/Character.h"
+#include "core/SceneConfig.h"
 
 #include "util/ModelUtils.h"
 #include "shaders/ShaderDebugUtils.h"
@@ -198,8 +202,8 @@ unsigned int VoxelEngine::getChunkIndex(unsigned int chunkX, unsigned int chunkY
 }
 
 void VoxelEngine::globalToChunkCoords(unsigned int globalX, unsigned int globalY, unsigned int globalZ,
-                                    unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
-                                    unsigned int &localX, unsigned int &localY, unsigned int &localZ) const
+                                      unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
+                                      unsigned int &localX, unsigned int &localY, unsigned int &localZ) const
 {
     chunkX = globalX / VoxelChunk::width;
     chunkY = globalY / VoxelChunk::width;
@@ -211,8 +215,8 @@ void VoxelEngine::globalToChunkCoords(unsigned int globalX, unsigned int globalY
 }
 
 void VoxelEngine::chunkToGlobalCoords(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ,
-                                    unsigned int localX, unsigned int localY, unsigned int localZ,
-                                    unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const
+                                      unsigned int localX, unsigned int localY, unsigned int localZ,
+                                      unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const
 {
     globalX = chunkX * VoxelChunk::width + localX;
     globalY = chunkY * VoxelChunk::width + localY;
@@ -353,7 +357,7 @@ void VoxelEngine::updateInstances()
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
             unsigned int numTriPerInstance = sceneGeometryIndicesSize[arrayIndex] / 3;
-            unsigned int numTriLight = numTriPerInstance * numInstances;
+            // unsigned int numTriLight = numTriPerInstance * numInstances; // Unused variable
 
             std::vector<std::array<float, 12>> transforms;
             unsigned int lightOffset = currentGlobalOffset;
@@ -396,10 +400,8 @@ void VoxelEngine::updateInstances()
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 }
 
-
-
 // Multi-chunk version with chunk-specific face tracking
-void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks)
+void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel *> &d_dataChunks)
 {
     auto &scene = Scene::Get();
 
@@ -436,9 +438,11 @@ void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunk
 
 void VoxelEngine::init()
 {
+#ifndef OFFLINE_MODE
     // Input handling
     auto &inputHandler = InputHandler::Get();
     inputHandler.setMouseButtonCallbackFunc(MouseButtonCallback);
+#endif
 
     auto &scene = Scene::Get();
 
@@ -472,7 +476,7 @@ void VoxelEngine::init()
     voxelChunks.resize(chunkConfig.getTotalChunks());
 
     // Initialize all chunks
-    std::vector<Voxel*> d_dataChunks(chunkConfig.getTotalChunks());
+    std::vector<Voxel *> d_dataChunks(chunkConfig.getTotalChunks());
     for (unsigned int i = 0; i < chunkConfig.getTotalChunks(); ++i)
     {
         initVoxelsMultiChunk(voxelChunks[i], &d_dataChunks[i], i, chunkConfig);
@@ -482,7 +486,7 @@ void VoxelEngine::init()
     updateUninstancedMeshes(d_dataChunks);
 
     // Free device data for all chunks
-    for (auto& d_data : d_dataChunks)
+    for (auto &d_data : d_dataChunks)
     {
         freeDeviceVoxelData(d_data);
     }
@@ -512,7 +516,7 @@ void VoxelEngine::reload()
     }
 
     // Upload voxel data from disk load for all chunks
-    std::vector<Voxel*> d_dataChunks(chunkConfig.getTotalChunks());
+    std::vector<Voxel *> d_dataChunks(chunkConfig.getTotalChunks());
     for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
     {
         size_t totalVoxels = VoxelChunk::width * VoxelChunk::width * VoxelChunk::width;
@@ -524,7 +528,7 @@ void VoxelEngine::reload()
     updateUninstancedMeshes(d_dataChunks);
 
     // Free device data for all chunks
-    for (auto& d_data : d_dataChunks)
+    for (auto &d_data : d_dataChunks)
     {
         freeDeviceVoxelData(d_data);
     }
@@ -570,14 +574,14 @@ void VoxelEngine::update()
     static int voxelFrameCounter = 0;
     voxelFrameCounter++;
 
-        const float targetFPS = 30.0f; // 30 FPS for smooth animation
+    const float targetFPS = 30.0f; // 30 FPS for smooth animation
     deltaTime = 1.0f / targetFPS;
     currentTime = voxelFrameCounter * deltaTime; // Simulated time progression
 #endif
 
     for (size_t i = 0; i < scene.getEntityCount(); ++i)
     {
-        Entity* entity = scene.getEntity(i);
+        Entity *entity = scene.getEntity(i);
         if (entity)
         {
             entity->update(deltaTime);
@@ -746,7 +750,11 @@ void VoxelEngine::update()
     {
         leftMouseButtonClicked = false;
 
+#ifndef OFFLINE_MODE
         int blockId = InputHandler::Get().currentSelectedBlockId;
+#else
+        int blockId = 1; // Default block ID for offline mode
+#endif
 
         auto &scene = Scene::Get();
 
@@ -889,7 +897,6 @@ void VoxelEngine::initEntities()
 
     // Clear any existing entities
     scene.clearEntities();
-
     // Create a hardcoded Minecraft character entity
     // Position it in front of the current camera for guaranteed visibility
     EntityTransform transform;
@@ -902,21 +909,40 @@ void VoxelEngine::initEntities()
     // Check if camera values are valid (not NaN, not zero vector)
     bool validCameraPos = !isnan(cameraPos.x) && !isnan(cameraPos.y) && !isnan(cameraPos.z);
     bool validCameraDir = !isnan(cameraDir.x) && !isnan(cameraDir.y) && !isnan(cameraDir.z) &&
-                         (cameraDir.x != 0.0f || cameraDir.y != 0.0f || cameraDir.z != 0.0f);
+                          (cameraDir.x != 0.0f || cameraDir.y != 0.0f || cameraDir.z != 0.0f);
 
-    // CENTER minecraft character for debugging based on scene camera
-    // Camera from scene_export.yaml: pos=[35.6184, 11.8733, 42.0387], dir=[-0.321564, -0.0129988, -0.946799]
-    Float3 sceneCamera = Float3(35.6184f, 11.8733f, 42.0387f);
-    Float3 sceneCameraDir = Float3(-0.321564f, -0.0129988f, -0.946799f);
+    // Use character position from scene config if available
+    // Try to load from scene config file first
+    std::string sceneConfigFile = "data/scene/scene_export.yaml";
+    SceneConfig sceneConfig;
+    bool configLoaded = SceneConfigParser::LoadFromFile(sceneConfigFile, sceneConfig);
 
-    // Place minecraft character 6 units in front of scene camera for guaranteed center visibility
-    Float3 normalizedDir = sceneCameraDir.normalize();
-    transform.position = sceneCamera + normalizedDir * 6.0f;
+    if (configLoaded)
+    {
+        // Use character position from config
+        transform.position = sceneConfig.character.position;
+        transform.rotation = sceneConfig.character.rotation;
+        transform.scale = sceneConfig.character.scale;
+    }
+    else
+    {
+        // Fallback to default position
+        transform.position = Float3(16.0f, 10.0f, 16.0f);
+        transform.rotation = Float3(0.0f, 0.0f, 0.0f);
+        transform.scale = Float3(1.0f, 1.0f, 1.0f);
+        std::cout << "Failed to load scene config file" << std::endl;
+    }
 
-    transform.rotation = Float3(0.0f, 0.0f, 0.0f);   // No rotation
-    transform.scale = Float3(1.0f, 1.0f, 1.0f);     // Use natural GLTF model scale (respects GLTF scaling)
+    // Create Character instead of Entity for controllable character
+    auto minecraftCharacter = std::make_unique<Character>(transform);
 
-    auto minecraftEntity = std::make_unique<Entity>(EntityTypeMinecraftCharacter, transform);
+#ifndef OFFLINE_MODE
+    // Set up the character with the input handler for control
+    auto &inputHandler = InputHandler::Get();
+    Character *characterPtr = minecraftCharacter.get();
+    inputHandler.setCharacter(characterPtr);
+#endif
 
-    scene.addEntity(std::move(minecraftEntity));
+    // Add character to scene (Character inherits from Entity)
+    scene.addEntity(std::move(minecraftCharacter));
 }

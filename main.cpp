@@ -6,6 +6,7 @@
 #include "core/Backend.h"
 #include "core/OptixRenderer.h"
 #include "core/BufferManager.h"
+#include "core/GlobalSettings.h"
 #include "util/TextureUtils.h"
 
 #include "voxelengine.h"
@@ -17,10 +18,14 @@ int main(int argc, char *argv[])
 
     try
     {
+        auto &globalSettings = GlobalSettings::Get();
         auto &ui = UI::Get();
         auto &bufferManager = BufferManager::Get();
         auto &textureManager = TextureManager::Get();
         auto &voxelengine = VoxelEngine::Get();
+
+        // Load global settings from YAML file at startup
+        globalSettings.LoadFromYAML("data/settings/global_settings.yaml");
 
         voxelengine.init();
         backend.init();
