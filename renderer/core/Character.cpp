@@ -328,10 +328,37 @@ void Character::updatePhysics(float deltaTime)
                 if (currentStepSize <= 0) break;
                 
                 Float3 testPosition = safePosition + moveDirection * currentStepSize;
-                float testGroundHeight = getTerrainHeightAt(testPosition);
-                float testDropDistance = testPosition.y - testGroundHeight;
                 
-                if (testDropDistance <= 1.0f)
+                // Check safety for the entire character footprint, not just center
+                bool isStepSafe = true;
+                float radius = m_physics.radius;
+                
+                // Check multiple points within character's circular footprint
+                const int footprintChecks = 8;
+                for (int i = 0; i < footprintChecks && isStepSafe; i++)
+                {
+                    float angle = (2.0f * M_PI * i) / footprintChecks;
+                    Float3 footprintOffset = Float3(cos(angle) * radius, 0, sin(angle) * radius);
+                    Float3 footprintPos = testPosition + footprintOffset;
+                    
+                    float footprintGroundHeight = getTerrainHeightAt(footprintPos);
+                    float footprintDropDistance = footprintPos.y - footprintGroundHeight;
+                    
+                    if (footprintDropDistance > 1.0f)
+                    {
+                        isStepSafe = false;
+                    }
+                }
+                
+                // Also check the center
+                float centerGroundHeight = getTerrainHeightAt(testPosition);
+                float centerDropDistance = testPosition.y - centerGroundHeight;
+                if (centerDropDistance > 1.0f)
+                {
+                    isStepSafe = false;
+                }
+                
+                if (isStepSafe)
                 {
                     // This step is safe, accept it
                     safePosition = testPosition;
@@ -350,10 +377,35 @@ void Character::updatePhysics(float deltaTime)
                     for (Float3 perpDir : {perpendicular1, perpendicular2})
                     {
                         Float3 edgeTestPos = safePosition + perpDir * currentStepSize;
+                        
+                        // Check safety for entire footprint
+                        bool isEdgeSafe = true;
+                        
+                        // Check footprint points
+                        for (int i = 0; i < footprintChecks && isEdgeSafe; i++)
+                        {
+                            float angle = (2.0f * M_PI * i) / footprintChecks;
+                            Float3 footprintOffset = Float3(cos(angle) * radius, 0, sin(angle) * radius);
+                            Float3 footprintPos = edgeTestPos + footprintOffset;
+                            
+                            float footprintGroundHeight = getTerrainHeightAt(footprintPos);
+                            float footprintDropDistance = footprintPos.y - footprintGroundHeight;
+                            
+                            if (footprintDropDistance > 1.0f)
+                            {
+                                isEdgeSafe = false;
+                            }
+                        }
+                        
+                        // Check center
                         float edgeGroundHeight = getTerrainHeightAt(edgeTestPos);
                         float edgeDropDistance = edgeTestPos.y - edgeGroundHeight;
+                        if (edgeDropDistance > 1.0f)
+                        {
+                            isEdgeSafe = false;
+                        }
                         
-                        if (edgeDropDistance <= 1.0f)
+                        if (isEdgeSafe)
                         {
                             edgeDirection = perpDir;
                             foundEdge = true;
@@ -363,15 +415,8 @@ void Character::updatePhysics(float deltaTime)
                     
                     if (foundEdge)
                     {
-                        // Move along the edge instead
-                        Float3 edgeTestPos = safePosition + edgeDirection * currentStepSize;
-                        float edgeGroundHeight = getTerrainHeightAt(edgeTestPos);
-                        float edgeDropDistance = edgeTestPos.y - edgeGroundHeight;
-                        
-                        if (edgeDropDistance <= 1.0f)
-                        {
-                            safePosition = edgeTestPos;
-                        }
+                        // Move along the edge instead - already validated as safe above
+                        safePosition = safePosition + edgeDirection * currentStepSize;
                     }
                     break; // Stop stepping forward
                 }
