@@ -31,6 +31,7 @@ struct CharacterMovement
     bool moveRight = false;
     bool jump = false;
     bool isRunning = false; // Whether running mode is active
+    bool isSneaking = false; // Whether sneaking mode is active
 
     Float3 moveDirection = Float3(0.0f, 0.0f, 0.0f);
     float moveSpeed = 3.0f;
@@ -59,6 +60,7 @@ struct CharacterAnimation
     int walkClipIndex = -1;  // Index of walk animation clip
     int runClipIndex = -1;   // Index of run animation clip
     int placeClipIndex = -1; // Index of place animation clip
+    int sneakClipIndex = -1; // Index of sneak animation clip
 
     // Animation blending ratios
     float blendRatio = 0.0f;     // Blend ratio for current animation pair
@@ -89,7 +91,7 @@ public:
     void update(float deltaTime) override;
 
     // Character movement control
-    void setMovementInput(bool forward, bool backward, bool left, bool right, bool jump, bool isRunning);
+    void setMovementInput(bool forward, bool backward, bool left, bool right, bool jump, bool isRunning, bool isSneaking = false);
     void setMovementDirection(const Float3 &direction);
     void setYaw(float yaw);
     void updateSmoothRotation(float deltaTime);

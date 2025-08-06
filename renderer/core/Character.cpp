@@ -47,14 +47,25 @@ void Character::update(float deltaTime)
     updateAnimationTimes(deltaTime);
 }
 
-void Character::setMovementInput(bool forward, bool backward, bool left, bool right, bool jump, bool isRunning)
+void Character::setMovementInput(bool forward, bool backward, bool left, bool right, bool jump, bool isRunning, bool isSneaking)
 {
     m_movement.moveForward = forward;
     m_movement.moveBackward = backward;
     m_movement.moveLeft = left;
     m_movement.moveRight = right;
     m_movement.jump = jump && m_physics.canJump && m_physics.isGrounded;
-    m_movement.isRunning = isRunning;
+    
+    // Sneaking and running are mutually exclusive
+    if (isSneaking && isRunning)
+    {
+        m_movement.isSneaking = isSneaking; // Prioritize sneaking
+        m_movement.isRunning = false;
+    }
+    else
+    {
+        m_movement.isRunning = isRunning;
+        m_movement.isSneaking = isSneaking;
+    }
 }
 
 void Character::setMovementDirection(const Float3 &direction)
@@ -177,8 +188,20 @@ void Character::updateMovement(float deltaTime)
         // Character moves in the direction it's currently facing, not the input direction
         Float3 currentFacingDirection = getForwardVector();
 
-        // Use appropriate force based on running mode
-        float moveForce = m_movement.isRunning ? GlobalSettings::GetCharacterMovementParams().runMoveForce : GlobalSettings::GetCharacterMovementParams().walkMoveForce;
+        // Use appropriate force based on movement mode (sneak < walk < run)
+        float moveForce;
+        if (m_movement.isSneaking)
+        {
+            moveForce = GlobalSettings::GetCharacterMovementParams().walkMoveForce * 0.4f; // Sneak is slower than walk
+        }
+        else if (m_movement.isRunning)
+        {
+            moveForce = GlobalSettings::GetCharacterMovementParams().runMoveForce;
+        }
+        else
+        {
+            moveForce = GlobalSettings::GetCharacterMovementParams().walkMoveForce;
+        }
 
         Float3 forceVector = currentFacingDirection * moveForce;
         applyForce(forceVector);
@@ -248,9 +271,21 @@ void Character::updatePhysics(float deltaTime)
         return;
     }
 
-    // Clamp horizontal speed based on running mode
+    // Clamp horizontal speed based on movement mode
     auto &globalMovement = GlobalSettings::GetCharacterMovementParams();
-    float currentMaxSpeed = m_movement.isRunning ? globalMovement.runMaxSpeed : globalMovement.walkMaxSpeed;
+    float currentMaxSpeed;
+    if (m_movement.isSneaking)
+    {
+        currentMaxSpeed = globalMovement.walkMaxSpeed * 0.4f; // Sneak is slower than walk
+    }
+    else if (m_movement.isRunning)
+    {
+        currentMaxSpeed = globalMovement.runMaxSpeed;
+    }
+    else
+    {
+        currentMaxSpeed = globalMovement.walkMaxSpeed;
+    }
 
     Float3 horizontalVel = Float3(m_physics.velocity.x, 0.0f, m_physics.velocity.z);
     float horizontalSpeed = length(horizontalVel);
@@ -271,6 +306,80 @@ void Character::updatePhysics(float deltaTime)
     }
 
     Float3 newPosition = currentPos + positionDelta;
+
+    // Sneak mode: proactively constrain movement to stay on safe ground
+    if (m_movement.isSneaking && m_physics.isGrounded)
+    {
+        // Step-by-step movement validation - move in small increments to stay safe
+        Float3 originalMovement = newPosition - currentPos;
+        float totalDistance = length(originalMovement);
+        
+        if (totalDistance > 0.001f)
+        {
+            Float3 moveDirection = normalize(originalMovement);
+            const float stepSize = 0.05f; // Small step size for precision
+            int maxSteps = static_cast<int>(totalDistance / stepSize) + 1;
+            
+            Float3 safePosition = currentPos;
+            
+            for (int step = 0; step < maxSteps; step++)
+            {
+                float currentStepSize = std::min(stepSize, totalDistance - (step * stepSize));
+                if (currentStepSize <= 0) break;
+                
+                Float3 testPosition = safePosition + moveDirection * currentStepSize;
+                float testGroundHeight = getTerrainHeightAt(testPosition);
+                float testDropDistance = testPosition.y - testGroundHeight;
+                
+                if (testDropDistance <= 1.0f)
+                {
+                    // This step is safe, accept it
+                    safePosition = testPosition;
+                }
+                else
+                {
+                    // This step would be unsafe, stop here and try edge sliding
+                    // Find the edge direction by testing perpendicular movements
+                    Float3 edgeDirection = Float3(0, 0, 0);
+                    bool foundEdge = false;
+                    
+                    // Test perpendicular directions to find edge
+                    Float3 perpendicular1 = Float3(-moveDirection.z, 0, moveDirection.x);
+                    Float3 perpendicular2 = Float3(moveDirection.z, 0, -moveDirection.x);
+                    
+                    for (Float3 perpDir : {perpendicular1, perpendicular2})
+                    {
+                        Float3 edgeTestPos = safePosition + perpDir * currentStepSize;
+                        float edgeGroundHeight = getTerrainHeightAt(edgeTestPos);
+                        float edgeDropDistance = edgeTestPos.y - edgeGroundHeight;
+                        
+                        if (edgeDropDistance <= 1.0f)
+                        {
+                            edgeDirection = perpDir;
+                            foundEdge = true;
+                            break;
+                        }
+                    }
+                    
+                    if (foundEdge)
+                    {
+                        // Move along the edge instead
+                        Float3 edgeTestPos = safePosition + edgeDirection * currentStepSize;
+                        float edgeGroundHeight = getTerrainHeightAt(edgeTestPos);
+                        float edgeDropDistance = edgeTestPos.y - edgeGroundHeight;
+                        
+                        if (edgeDropDistance <= 1.0f)
+                        {
+                            safePosition = edgeTestPos;
+                        }
+                    }
+                    break; // Stop stepping forward
+                }
+            }
+            
+            newPosition = safePosition;
+        }
+    }
 
     // Check and resolve collisions
     resolveCollisions(newPosition);
@@ -710,11 +819,12 @@ void Character::initializeAnimationClips()
         return;
 
     // Find animation clip indices by name
-    // GLTF has animations: "Walk", "Idle", "Run", "Place"
+    // GLTF has animations: "Walk", "Idle", "Run", "Place", "Sneak"
     m_animation.walkClipIndex = 0;  // First animation is "Walk"
     m_animation.idleClipIndex = 1;  // Second animation is "Idle"
     m_animation.runClipIndex = 2;   // Third animation is "Run"
     m_animation.placeClipIndex = 3; // Fourth animation is "Place"
+    m_animation.sneakClipIndex = 4; // Fifth animation is "Sneak"
 
     // Start with idle animation
     m_animation.blendRatio = 0.0f;
@@ -834,6 +944,24 @@ void Character::updateTwoStageAnimation(float deltaTime)
             setAnimationSpeed(scaledSpeed);
         }
     }
+    
+    // Handle sneaking animation as additive
+    if (m_movement.isSneaking)
+    {
+        // Start sneaking additive animation if not already active
+        if (!getAnimationManager()->hasMultipleAdditiveAnimation(m_animation.sneakClipIndex))
+        {
+            getAnimationManager()->startMultipleAdditiveAnimation(m_animation.sneakClipIndex, 1.0f);
+        }
+    }
+    else
+    {
+        // Stop sneaking additive animation if active
+        if (getAnimationManager()->hasMultipleAdditiveAnimation(m_animation.sneakClipIndex))
+        {
+            getAnimationManager()->stopMultipleAdditiveAnimation(m_animation.sneakClipIndex);
+        }
+    }
 }
 
 void Character::updateAnimationTimes(float deltaTime)
@@ -908,13 +1036,13 @@ void Character::triggerPlaceAnimation()
         return;
 
     // Don't start a new place animation if one is already playing
-    if (getAnimationManager()->isAdditiveAnimationActive())
+    if (getAnimationManager()->hasMultipleAdditiveAnimation(m_animation.placeClipIndex))
         return;
 
     // Get place animation speed from global settings
     auto &globalAnimation = GlobalSettings::GetCharacterAnimationParams();
     float placeSpeed = globalAnimation.placeAnimationSpeed;
 
-    // Start the additive place animation
-    getAnimationManager()->startAdditiveAnimation(m_animation.placeClipIndex, placeSpeed);
+    // Start the additive place animation using multiple additive system
+    getAnimationManager()->startMultipleAdditiveAnimation(m_animation.placeClipIndex, placeSpeed);
 }

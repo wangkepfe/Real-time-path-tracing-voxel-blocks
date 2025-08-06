@@ -30,6 +30,17 @@ struct AdditiveAnimationState
     float speed = 1.0f;
 };
 
+// Multiple additive animations support
+struct MultipleAdditiveAnimations
+{
+    std::vector<AdditiveAnimationState> animations;
+    
+    void addAnimation(int animationIndex, float speed = 1.0f);
+    void removeAnimation(int animationIndex);
+    void clearAll();
+    bool hasAnimation(int animationIndex) const;
+};
+
 // Animation manager class for handling skeletal animation
 class AnimationManager
 {
@@ -54,10 +65,16 @@ public:
     void updateManualBlend(float ratio, float anim1Time, float anim2Time);
     void stopManualBlend();
 
-    // Additive animation system for place animation
+    // Additive animation system for place animation (legacy single additive)
     void startAdditiveAnimation(int animationIndex, float speed = 1.0f);
     void stopAdditiveAnimation();
     bool isAdditiveAnimationActive() const { return m_additiveAnimation.isActive; }
+    
+    // Multiple additive animations system
+    void startMultipleAdditiveAnimation(int animationIndex, float speed = 1.0f);
+    void stopMultipleAdditiveAnimation(int animationIndex);
+    void stopAllMultipleAdditiveAnimations();
+    bool hasMultipleAdditiveAnimation(int animationIndex) const;
 
     // Update animation (call every frame)
     void update(float deltaTime);
@@ -74,12 +91,14 @@ private:
     // Animation state - simplified
     ManualBlendState m_manualBlend;
     AdditiveAnimationState m_additiveAnimation;
+    MultipleAdditiveAnimations m_multipleAdditiveAnimations;
     float m_playbackSpeed = 1.0f;
 
     // Internal methods
     void evaluateAnimation(const AnimationClip &clip, float time, std::vector<Joint> &joints);
     void blendTwoEvaluatedAnimations(const std::vector<Joint> &joints1, const std::vector<Joint> &joints2, float ratio);
     void applyAdditiveAnimation(const AnimationClip &clip, float time, std::vector<Joint> &joints);
+    void applyMultipleAdditiveAnimations(std::vector<Joint> &joints);
 
     // Interpolation methods
     Float3 interpolateTranslation(const AnimationSampler &sampler, float time);

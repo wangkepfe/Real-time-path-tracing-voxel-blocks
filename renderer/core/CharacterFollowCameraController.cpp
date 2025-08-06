@@ -58,12 +58,13 @@ void CharacterFollowCameraController::updateCamera(Camera& camera, float deltaTi
     // Set the character movement direction in world space
     m_character->setMovementDirection(moveDirection);
     
-    // Determine running mode: active when fast mode is on and there's movement input
+    // Determine movement modes: running and sneaking are mutually exclusive
     bool hasMovementInput = m_moveW || m_moveS || m_moveA || m_moveD;
-    bool isRunning = m_fastMode && hasMovementInput;
+    bool isRunning = m_fastMode && hasMovementInput && !m_slowMode; // Can't run while sneaking
+    bool isSneaking = m_slowMode; // Ctrl activates sneaking mode
     
     // Update character with input
-    m_character->setMovementInput(m_moveW, m_moveS, m_moveA, m_moveD, m_moveC, isRunning);
+    m_character->setMovementInput(m_moveW, m_moveS, m_moveA, m_moveD, m_moveC, isRunning, isSneaking);
     
     // Update character
     m_character->update(deltaTime);

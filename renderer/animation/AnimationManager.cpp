@@ -156,6 +156,51 @@ void AnimationManager::update(float deltaTime)
         }
     }
     
+    // Handle multiple additive animations (including sneak animation)
+    if (!m_multipleAdditiveAnimations.animations.empty())
+    {
+        // Update all active multiple additive animations
+        for (auto it = m_multipleAdditiveAnimations.animations.begin(); it != m_multipleAdditiveAnimations.animations.end();)
+        {
+            if (it->isActive)
+            {
+                // Update animation time
+                it->currentTime += deltaTime * it->speed;
+                
+                // For looping animations (like sneak), wrap around
+                AnimationClip *clip = getAnimationClip(it->animationIndex);
+                if (clip && it->currentTime >= it->duration)
+                {
+                    if (clip->isLooping)
+                    {
+                        it->currentTime = fmod(it->currentTime, it->duration);
+                    }
+                    else
+                    {
+                        // Non-looping animation finished - remove it completely
+                        it = m_multipleAdditiveAnimations.animations.erase(it);
+                        needsUpdate = true;
+                        continue;
+                    }
+                }
+                
+                needsUpdate = true;
+                ++it;
+            }
+            else
+            {
+                // Remove inactive animations
+                it = m_multipleAdditiveAnimations.animations.erase(it);
+            }
+        }
+        
+        // Apply all active multiple additive animations
+        if (!m_multipleAdditiveAnimations.animations.empty())
+        {
+            applyMultipleAdditiveAnimations(m_skeleton.joints);
+        }
+    }
+    
     // Update joint transforms and upload to GPU if needed
     if (needsUpdate)
     {
@@ -547,6 +592,111 @@ void AnimationManager::applyAdditiveAnimation(const AnimationClip &clip, float t
                 joint.scale = joint.scale * additiveScale;
                 break;
             }
+            }
+        }
+    }
+}
+
+// MultipleAdditiveAnimations implementation
+void MultipleAdditiveAnimations::addAnimation(int animationIndex, float speed)
+{
+    // Check if animation already exists
+    for (auto &anim : animations)
+    {
+        if (anim.animationIndex == animationIndex)
+        {
+            // Update existing animation - restart it
+            anim.speed = speed;
+            anim.currentTime = 0.0f;
+            anim.isActive = true;
+            // Duration will be updated by AnimationManager::startMultipleAdditiveAnimation
+            return;
+        }
+    }
+    
+    // Add new animation
+    AdditiveAnimationState newAnim;
+    newAnim.isActive = true;
+    newAnim.animationIndex = animationIndex;
+    newAnim.currentTime = 0.0f;
+    newAnim.duration = 0.0f; // Will be set by AnimationManager
+    newAnim.speed = speed;
+    animations.push_back(newAnim);
+}
+
+void MultipleAdditiveAnimations::removeAnimation(int animationIndex)
+{
+    animations.erase(std::remove_if(animations.begin(), animations.end(),
+        [animationIndex](const AdditiveAnimationState &anim) {
+            return anim.animationIndex == animationIndex;
+        }), animations.end());
+}
+
+void MultipleAdditiveAnimations::clearAll()
+{
+    animations.clear();
+}
+
+bool MultipleAdditiveAnimations::hasAnimation(int animationIndex) const
+{
+    for (const auto &anim : animations)
+    {
+        if (anim.animationIndex == animationIndex && anim.isActive)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// AnimationManager multiple additive animations methods
+void AnimationManager::startMultipleAdditiveAnimation(int animationIndex, float speed)
+{
+    if (animationIndex < 0 || animationIndex >= static_cast<int>(m_animationClips.size()))
+        return;
+        
+    // Set duration for the animation
+    AdditiveAnimationState newAnim;
+    newAnim.duration = m_animationClips[animationIndex].duration;
+    
+    m_multipleAdditiveAnimations.addAnimation(animationIndex, speed);
+    
+    // Update duration in the added animation
+    for (auto &anim : m_multipleAdditiveAnimations.animations)
+    {
+        if (anim.animationIndex == animationIndex)
+        {
+            anim.duration = newAnim.duration;
+            break;
+        }
+    }
+}
+
+void AnimationManager::stopMultipleAdditiveAnimation(int animationIndex)
+{
+    m_multipleAdditiveAnimations.removeAnimation(animationIndex);
+}
+
+void AnimationManager::stopAllMultipleAdditiveAnimations()
+{
+    m_multipleAdditiveAnimations.clearAll();
+}
+
+bool AnimationManager::hasMultipleAdditiveAnimation(int animationIndex) const
+{
+    return m_multipleAdditiveAnimations.hasAnimation(animationIndex);
+}
+
+void AnimationManager::applyMultipleAdditiveAnimations(std::vector<Joint> &joints)
+{
+    for (auto &anim : m_multipleAdditiveAnimations.animations)
+    {
+        if (anim.isActive)
+        {
+            AnimationClip *additiveClip = getAnimationClip(anim.animationIndex);
+            if (additiveClip)
+            {
+                applyAdditiveAnimation(*additiveClip, anim.currentTime, joints);
             }
         }
     }

@@ -423,6 +423,7 @@ class MinecraftCharacterGenerator:
 
             # Extract bone transformation data
             hip_translations = bones.get('hip', {}).get('translation', [[0, 0, 0]] * len(keyframes))
+            torso_rotations = bones.get('torso', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
             head_rotations = bones.get('head', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
             right_leg_rotations = bones.get('right_leg', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
             left_leg_rotations = bones.get('left_leg', {}).get('rotation', [[0, 0, 0, 1]] * len(keyframes))
@@ -444,6 +445,10 @@ class MinecraftCharacterGenerator:
                     expanded_hip_translations.extend([[0, 0, 0], translation, [0, 0, 0]])
                 
                 # Expand rotations: [in_tangent, value, out_tangent] for each keyframe
+                expanded_torso_rotations = []
+                for rotation in torso_rotations:
+                    expanded_torso_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
+                
                 expanded_head_rotations = []
                 for rotation in head_rotations:
                     expanded_head_rotations.extend([[0, 0, 0, 0], rotation, [0, 0, 0, 0]])
@@ -466,6 +471,7 @@ class MinecraftCharacterGenerator:
                 
                 # Convert to binary data
                 hip_translation_data = np.array(expanded_hip_translations, dtype=np.float32).tobytes()
+                torso_rotation_data = np.array(expanded_torso_rotations, dtype=np.float32).tobytes()
                 head_rotation_data = np.array(expanded_head_rotations, dtype=np.float32).tobytes()
                 right_leg_rotation_data = np.array(expanded_right_leg_rotations, dtype=np.float32).tobytes()
                 left_leg_rotation_data = np.array(expanded_left_leg_rotations, dtype=np.float32).tobytes()
@@ -477,6 +483,7 @@ class MinecraftCharacterGenerator:
             else:
                 # LINEAR interpolation - use data as-is
                 hip_translation_data = np.array(scaled_hip_translations, dtype=np.float32).tobytes()
+                torso_rotation_data = np.array(torso_rotations, dtype=np.float32).tobytes()
                 head_rotation_data = np.array(head_rotations, dtype=np.float32).tobytes()
                 right_leg_rotation_data = np.array(right_leg_rotations, dtype=np.float32).tobytes()
                 left_leg_rotation_data = np.array(left_leg_rotations, dtype=np.float32).tobytes()
@@ -495,6 +502,7 @@ class MinecraftCharacterGenerator:
                 'accessor_keyframe_count': accessor_keyframe_count,
                 'time_data': time_data,
                 'hip_translation_data': hip_translation_data,
+                'torso_rotation_data': torso_rotation_data,
                 'head_rotation_data': head_rotation_data,
                 'right_leg_rotation_data': right_leg_rotation_data,
                 'left_leg_rotation_data': left_leg_rotation_data,
@@ -590,15 +598,17 @@ class MinecraftCharacterGenerator:
                     'time_length': len(animation['time_data']),
                     'hip_trans_offset': current_offset + len(animation['time_data']),
                     'hip_trans_length': len(animation['hip_translation_data']),
-                    'head_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']),
+                    'torso_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']),
+                    'torso_rot_length': len(animation['torso_rotation_data']),
+                    'head_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']),
                     'head_rot_length': len(animation['head_rotation_data']),
-                    'right_leg_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['head_rotation_data']),
+                    'right_leg_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']),
                     'right_leg_rot_length': len(animation['right_leg_rotation_data']),
-                    'left_leg_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']),
+                    'left_leg_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']),
                     'left_leg_rot_length': len(animation['left_leg_rotation_data']),
-                    'right_arm_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']) + len(animation['left_leg_rotation_data']),
+                    'right_arm_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']) + len(animation['left_leg_rotation_data']),
                     'right_arm_rot_length': len(animation['right_arm_rotation_data']),
-                    'left_arm_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']) + len(animation['left_leg_rotation_data']) + len(animation['right_arm_rotation_data']),
+                    'left_arm_rot_offset': current_offset + len(animation['time_data']) + len(animation['hip_translation_data']) + len(animation['torso_rotation_data']) + len(animation['head_rotation_data']) + len(animation['right_leg_rotation_data']) + len(animation['left_leg_rotation_data']) + len(animation['right_arm_rotation_data']),
                     'left_arm_rot_length': len(animation['left_arm_rotation_data'])
                 }
                 
@@ -606,13 +616,13 @@ class MinecraftCharacterGenerator:
                 
                 # Append animation data to buffer
                 buffer_data += (animation['time_data'] + animation['hip_translation_data'] +
-                               animation['head_rotation_data'] + animation['right_leg_rotation_data'] +
-                               animation['left_leg_rotation_data'] + animation['right_arm_rotation_data'] +
-                               animation['left_arm_rotation_data'])
+                               animation['torso_rotation_data'] + animation['head_rotation_data'] + 
+                               animation['right_leg_rotation_data'] + animation['left_leg_rotation_data'] + 
+                               animation['right_arm_rotation_data'] + animation['left_arm_rotation_data'])
 
                 # Update current offset for next animation
-                animation_length = (offsets['time_length'] + offsets['hip_trans_length'] + offsets['head_rot_length'] + 
-                                  offsets['right_leg_rot_length'] + offsets['left_leg_rot_length'] + 
+                animation_length = (offsets['time_length'] + offsets['hip_trans_length'] + offsets['torso_rot_length'] + 
+                                  offsets['head_rot_length'] + offsets['right_leg_rot_length'] + offsets['left_leg_rot_length'] + 
                                   offsets['right_arm_rot_length'] + offsets['left_arm_rot_length'])
                 current_offset += animation_length
                 total_buffer_length += animation_length
@@ -746,25 +756,27 @@ class MinecraftCharacterGenerator:
                     "name": animation['display_name'],
                     "samplers": [
                         {"input": accessor_index, "output": accessor_index + 1, "interpolation": interpolation},  # Hip translation
-                        {"input": accessor_index, "output": accessor_index + 2, "interpolation": interpolation},  # Head rotation
-                        {"input": accessor_index, "output": accessor_index + 3, "interpolation": interpolation},  # Right leg rotation
-                        {"input": accessor_index, "output": accessor_index + 4, "interpolation": interpolation},  # Left leg rotation
-                        {"input": accessor_index, "output": accessor_index + 5, "interpolation": interpolation},  # Right arm rotation
-                        {"input": accessor_index, "output": accessor_index + 6, "interpolation": interpolation}   # Left arm rotation
+                        {"input": accessor_index, "output": accessor_index + 2, "interpolation": interpolation},  # Torso rotation
+                        {"input": accessor_index, "output": accessor_index + 3, "interpolation": interpolation},  # Head rotation
+                        {"input": accessor_index, "output": accessor_index + 4, "interpolation": interpolation},  # Right leg rotation
+                        {"input": accessor_index, "output": accessor_index + 5, "interpolation": interpolation},  # Left leg rotation
+                        {"input": accessor_index, "output": accessor_index + 6, "interpolation": interpolation},  # Right arm rotation
+                        {"input": accessor_index, "output": accessor_index + 7, "interpolation": interpolation}   # Left arm rotation
                     ],
                     "channels": [
                         {"sampler": 0, "target": {"node": joints[self.bone_to_index['hip']], "path": "translation"}},
-                        {"sampler": 1, "target": {"node": joints[self.bone_to_index['head']], "path": "rotation"}},
-                        {"sampler": 2, "target": {"node": joints[self.bone_to_index['right_leg']], "path": "rotation"}},
-                        {"sampler": 3, "target": {"node": joints[self.bone_to_index['left_leg']], "path": "rotation"}},
-                        {"sampler": 4, "target": {"node": joints[self.bone_to_index['right_arm']], "path": "rotation"}},
-                        {"sampler": 5, "target": {"node": joints[self.bone_to_index['left_arm']], "path": "rotation"}}
+                        {"sampler": 1, "target": {"node": joints[self.bone_to_index['torso']], "path": "rotation"}},
+                        {"sampler": 2, "target": {"node": joints[self.bone_to_index['head']], "path": "rotation"}},
+                        {"sampler": 3, "target": {"node": joints[self.bone_to_index['right_leg']], "path": "rotation"}},
+                        {"sampler": 4, "target": {"node": joints[self.bone_to_index['left_leg']], "path": "rotation"}},
+                        {"sampler": 5, "target": {"node": joints[self.bone_to_index['right_arm']], "path": "rotation"}},
+                        {"sampler": 6, "target": {"node": joints[self.bone_to_index['left_arm']], "path": "rotation"}}
                     ]
                 }
                 gltf_animations.append(animation_gltf)
                 
-                # Move to the next set of accessors (7 accessors per animation: 1 time + 6 outputs)
-                accessor_index += 7
+                # Move to the next set of accessors (8 accessors per animation: 1 time + 7 outputs)
+                accessor_index += 8
             
             gltf["animations"] = gltf_animations
 
@@ -859,11 +871,17 @@ class MinecraftCharacterGenerator:
                         "componentType": 5126,  # FLOAT
                         "count": animation['accessor_keyframe_count'],
                         "type": "VEC4"
+                    },
+                    {
+                        "bufferView": buffer_view_index + 7,
+                        "componentType": 5126,  # FLOAT
+                        "count": animation['accessor_keyframe_count'],
+                        "type": "VEC4"
                     }
                 ])
                 
-                # Move to next set of buffer views (7 buffer views per animation)
-                buffer_view_index += 7
+                # Move to next set of buffer views (8 buffer views per animation)
+                buffer_view_index += 8
 
         # Add buffer views for mesh data
         gltf["bufferViews"] = [
@@ -917,6 +935,11 @@ class MinecraftCharacterGenerator:
                         "buffer": 0,
                         "byteOffset": offsets['hip_trans_offset'],
                         "byteLength": offsets['hip_trans_length']
+                    },
+                    {
+                        "buffer": 0,
+                        "byteOffset": offsets['torso_rot_offset'],
+                        "byteLength": offsets['torso_rot_length']
                     },
                     {
                         "buffer": 0,
