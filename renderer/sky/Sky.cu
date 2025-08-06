@@ -9,6 +9,7 @@
 
 #include <thrust/device_ptr.h>
 #include <thrust/reduce.h>
+#include <cub/cub.cuh>
 
 __constant__ float cSkyConfigs[90];
 __constant__ float cSkyRadiances[10];
@@ -374,13 +375,41 @@ void SkyModel::update()
         Sky KERNEL_ARGS2(GetGridDim(skyRes.x, skyRes.y / 2, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferManager.GetBuffer2D(SkyBuffer), skyPdf, skyRes, sunDir, skyParams);
 
-        thrust::device_ptr<const float> dSkyPdf(skyPdf);
-        float sumSkyPdf = thrust::reduce(dSkyPdf + skyRes.x * skyRes.y / 2, dSkyPdf + skyRes.x * skyRes.y, 0.0f, thrust::plus<float>());
+        // Use CUB for reduction instead of thrust to avoid device ordinal issues
+        int startIdx = skyRes.x * skyRes.y / 2;
+        int totalSize = skyRes.x * skyRes.y;
+        
+        void *d_temp_storage = nullptr;
+        size_t temp_storage_bytes = 0;
+        float *d_sum_result = nullptr;
+        
+        cudaMalloc((void**)&d_sum_result, sizeof(float));
+        
+        // Get temp storage size and allocate
+        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, skyPdf, d_sum_result, totalSize);
+        cudaMalloc(&d_temp_storage, temp_storage_bytes);
+        
+        // Calculate total sum
+        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, skyPdf, d_sum_result, totalSize);
+        float totalSkyPdf = 0.0f;
+        cudaMemcpy(&totalSkyPdf, d_sum_result, sizeof(float), cudaMemcpyDeviceToHost);
+        
+        // Calculate first half sum
+        cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, skyPdf, d_sum_result, startIdx);
+        float firstHalfPdf = 0.0f;
+        cudaMemcpy(&firstHalfPdf, d_sum_result, sizeof(float), cudaMemcpyDeviceToHost);
+        
+        // Second half is total minus first half
+        float sumSkyPdf = totalSkyPdf - firstHalfPdf;
+        
+        cudaFree(d_temp_storage);
+        cudaFree(d_sum_result);
 
         SkyLowerHemisphere KERNEL_ARGS2(GetGridDim(skyRes.x, skyRes.y / 2, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferManager.GetBuffer2D(SkyBuffer), skyPdf, skyRes, sumSkyPdf);
 
         skyAliasTable.update(skyPdf, skyRes.x * skyRes.y, sumSkyPdf);
+        
         cudaMemcpy(d_skyAliasTable, &skyAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 
         // Generate sun on GPU

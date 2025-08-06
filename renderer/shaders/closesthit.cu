@@ -308,7 +308,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool skipSunSample = !isThinfilm && (dot(state.normal, sysParam.sunDir) < 0.0f || dot(state.geoNormal, sysParam.sunDir) < 0.0f);
 
-    const int numLocalLightSamples = 8;
+    const int numLocalLightSamples = (sysParam.accumulatedLocalLightLuminance > 0.0f) ? 8 : 0;
     const int numSunLightSamples = skipSunSample ? 0 : 1;
     const int numSkyLightSamples = 1;
     const int numBrdfSamples = 1;

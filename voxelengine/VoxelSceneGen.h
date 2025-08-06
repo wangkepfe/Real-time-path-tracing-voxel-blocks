@@ -9,7 +9,7 @@
 // Chunk configuration structure to avoid circular dependencies
 struct ChunkConfiguration
 {
-    unsigned int chunksX = 2;  // 2x2x1 for testing
+    unsigned int chunksX = 2;
     unsigned int chunksY = 1;
     unsigned int chunksZ = 2;
 
@@ -24,7 +24,7 @@ class VoxelEngine;
 
 // Multi-chunk voxel initialization
 void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int chunkIndex,
-                         const ChunkConfiguration &chunkConfig);
+                          const ChunkConfiguration &chunkConfig);
 
 void generateMesh(VertexAttributes **attr,
                   unsigned int **indices,

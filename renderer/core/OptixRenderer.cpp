@@ -133,7 +133,9 @@ void OptixRenderer::clear()
     CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
     CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    if (m_d_sbtRecordGeometryInstanceData) {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    }
 
     OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
@@ -183,6 +185,7 @@ void OptixRenderer::render()
     m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
     m_systemParameter.accumulatedLocalLightLuminance = scene.accumulatedLocalLightLuminance;
 
+    // Handle light-related parameters safely to prevent null pointer access
     m_systemParameter.lights = scene.m_lights;
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
@@ -195,7 +198,10 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
 
-    OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+    // Only launch OptixLaunch if we have a valid top object (scene is not empty)
+    if (m_systemParameter.topObject != 0) {
+        OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
@@ -331,48 +337,59 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
             CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
         }
 
-        // Build the new BVH in the inactive slot
-        CUdeviceptr d_instances;
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, cudaStream));
+        // Handle case where there are no instances to prevent CUDA errors
+        if (m_instances.empty()) {
+            // Set to null handle for empty scene
+            m_systemParameter.topObject = 0;
+            // Swap the buffer index even for empty scenes
+            m_currentIasIdx = nextIndex;
+        }
+        else {
+            // Build the new BVH in the inactive slot
+            CUdeviceptr d_instances;
+            const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+            CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+            CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                                       cudaMemcpyHostToDevice, cudaStream));
 
-        OptixBuildInput instanceInput = {};
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+            OptixBuildInput instanceInput = {};
+            instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+            instanceInput.instanceArray.instances = d_instances;
+            instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
 
-        OptixAccelBuildOptions accelBuildOptions = {};
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+            OptixAccelBuildOptions accelBuildOptions = {};
+            accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+            accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-        OptixAccelBufferSizes iasBufferSizes = {};
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+            OptixAccelBufferSizes iasBufferSizes = {};
+            OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
 
-        CUdeviceptr d_tmp;
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+            CUdeviceptr d_tmp;
+            CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
-        // Build the acceleration structure into the new buffer
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
+            // Build the acceleration structure into the new buffer
+            OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
+                                              &accelBuildOptions, &instanceInput, 1,
+                                              d_tmp, iasBufferSizes.tempSizeInBytes,
+                                              m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
+                                              &m_systemParameter.topObject, nullptr, 0));
 
-        // Clean up temporary allocations
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances));
+            // Clean up temporary allocations
+            CUDA_CHECK(cudaFree((void *)d_tmp));
+            CUDA_CHECK(cudaFree((void *)d_instances));
 
-        // Swap the buffer index
-        m_currentIasIdx = nextIndex;
+            // Swap the buffer index
+            m_currentIasIdx = nextIndex;
+        }
 
-        // Upload updated SBT records
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
-                                   sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
-                                   cudaMemcpyHostToDevice, cudaStream));
+        // Upload updated SBT records only if we have instances
+        if (m_d_sbtRecordGeometryInstanceData && !m_sbtRecordGeometryInstanceData.empty()) {
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
+                                       sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
+                                       cudaMemcpyHostToDevice, cudaStream));
+        }
     }
 }
 
@@ -579,23 +596,28 @@ void OptixRenderer::update()
                 }
             }
         }
-        // Upload SBT
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        // Upload SBT only if we have instances
+        if (m_d_sbtRecordGeometryInstanceData && !m_sbtRecordGeometryInstanceData.empty()) {
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        }
 
         // Instanced
         for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
         {
-            for (int instanceId : scene.geometryInstanceIdMap[objectId])
-            {
-                OptixInstance instance = {};
-                memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-                instance.instanceId = instanceId;
-                instance.visibilityMask = 255;
-                instance.sbtOffset = objectId * numTypesOfRays;
-                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
-                m_instances.push_back(instance);
-                instanceIds.insert(instanceId);
+            // Only create instances if BLAS handle is valid
+            if (objectIdxToBlasHandleMap[objectId] != 0) {
+                for (int instanceId : scene.geometryInstanceIdMap[objectId])
+                {
+                    OptixInstance instance = {};
+                    memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                    instance.instanceId = instanceId;
+                    instance.visibilityMask = 255;
+                    instance.sbtOffset = objectId * numTypesOfRays;
+                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                    instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+                    m_instances.push_back(instance);
+                    instanceIds.insert(instanceId);
+                }
             }
         }
 
@@ -708,22 +730,27 @@ void OptixRenderer::update()
                 }
                 else
                 {
-                    instanceIds.insert(instanceId);
+                    // Only create instances if BLAS handle is valid
+                    if (objectIdxToBlasHandleMap[objectId] != 0) {
+                        instanceIds.insert(instanceId);
 
-                    OptixInstance instance = {};
-                    memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-                    instance.instanceId = instanceId;
-                    instance.visibilityMask = 255;
-                    instance.sbtOffset = objectId * numTypesOfRays;
-                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                    instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+                        OptixInstance instance = {};
+                        memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                        instance.instanceId = instanceId;
+                        instance.visibilityMask = 255;
+                        instance.sbtOffset = objectId * numTypesOfRays;
+                        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                        instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
 
-                    m_instances.push_back(instance);
+                        m_instances.push_back(instance);
+                    }
                 }
             }
         }
-        // Upload SBT
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        // Upload SBT only if we have instances
+        if (m_d_sbtRecordGeometryInstanceData && !m_sbtRecordGeometryInstanceData.empty()) {
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        }
     }
 
     // Rebuild BVH
@@ -737,46 +764,56 @@ void OptixRenderer::update()
         if (m_d_ias[nextIndex] != 0)
         {
             CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
+            m_d_ias[nextIndex] = 0;
         }
 
-        // Build the new BVH in the inactive slot.
-        CUdeviceptr d_instances;
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, cudaStream));
+        // Handle case where there are no instances to prevent CUDA errors
+        if (m_instances.empty()) {
+            // Set to null handle for empty scene
+            m_systemParameter.topObject = 0;
+            // Swap the buffer index even for empty scenes
+            m_currentIasIdx = nextIndex;
+        }
+        else {
+            // Build the new BVH in the inactive slot.
+            CUdeviceptr d_instances;
+            const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+            CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+            CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                                       cudaMemcpyHostToDevice, cudaStream));
 
-        OptixBuildInput instanceInput = {};
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+            OptixBuildInput instanceInput = {};
+            instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+            instanceInput.instanceArray.instances = d_instances;
+            instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
 
-        OptixAccelBuildOptions accelBuildOptions = {};
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+            OptixAccelBuildOptions accelBuildOptions = {};
+            accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+            accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-        OptixAccelBufferSizes iasBufferSizes = {};
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+            OptixAccelBufferSizes iasBufferSizes = {};
+            OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
 
-        CUdeviceptr d_tmp;
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+            CUdeviceptr d_tmp;
+            CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
-        // Build the acceleration structure into the new buffer.
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
+            // Build the acceleration structure into the new buffer.
+            OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
+                                              &accelBuildOptions, &instanceInput, 1,
+                                              d_tmp, iasBufferSizes.tempSizeInBytes,
+                                              m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
+                                              &m_systemParameter.topObject, nullptr, 0));
 
-        // Synchronize and clean up temporary allocations.
-        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances));
+            // Synchronize and clean up temporary allocations.
+            CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+            CUDA_CHECK(cudaFree((void *)d_tmp));
+            CUDA_CHECK(cudaFree((void *)d_instances));
 
-        // Swap the buffer index.
-        m_currentIasIdx = nextIndex;
+            // Swap the buffer index.
+            m_currentIasIdx = nextIndex;
+        }
     }
 
     scene.sceneUpdateObjectId.clear();
@@ -1066,22 +1103,29 @@ void OptixRenderer::init()
         {
             // Create empty geometry if no data available
             GeometryData geometry = {};
+            geometry.indices = nullptr;
+            geometry.attributes = nullptr;
+            geometry.numAttributes = 0;
+            geometry.numIndices = 0;
+            geometry.gas = 0;
             m_geometries.push_back(geometry);
             objectIdxToBlasHandleMap[objectId] = 0;
         }
 
-        // Create instances for this object type
-        for (int instanceId : scene.geometryInstanceIdMap[objectId])
-        {
-            OptixInstance instance = {};
-            memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-            instance.instanceId = instanceId;
-            instance.visibilityMask = 255;
-            instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset continuing from uninstanced geometry
-            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
-            m_instances.push_back(instance);
-            instanceIds.insert(instanceId);
+        // Create instances for this object type only if BLAS handle is valid
+        if (objectIdxToBlasHandleMap[objectId] != 0) {
+            for (int instanceId : scene.geometryInstanceIdMap[objectId])
+            {
+                OptixInstance instance = {};
+                memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+                instance.instanceId = instanceId;
+                instance.visibilityMask = 255;
+                instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset continuing from uninstanced geometry
+                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+                m_instances.push_back(instance);
+                instanceIds.insert(instanceId);
+            }
         }
 
         // Advance sbtOffset for next instanced geometry type
@@ -1128,45 +1172,53 @@ void OptixRenderer::init()
 
     // Build BVH
     {
-        CUdeviceptr d_instances;
+        // Handle case where there are no instances to prevent CUDA errors
+        if (m_instances.empty()) {
+            // Set to null handle for empty scene
+            m_systemParameter.topObject = 0;
+            // Don't build IAS for empty scene
+        }
+        else {
+            CUdeviceptr d_instances;
 
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+            const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
 
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+            CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+            CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
-        OptixBuildInput instanceInput = {};
+            OptixBuildInput instanceInput = {};
 
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+            instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+            instanceInput.instanceArray.instances = d_instances;
+            instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
 
-        OptixAccelBuildOptions accelBuildOptions = {};
+            OptixAccelBuildOptions accelBuildOptions = {};
 
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+            accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+            accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-        OptixAccelBufferSizes iasBufferSizes = {};
+            OptixAccelBufferSizes iasBufferSizes = {};
 
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+            OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[0], iasBufferSizes.outputSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void **)&m_d_ias[0], iasBufferSizes.outputSizeInBytes));
 
-        CUdeviceptr d_tmp;
+            CUdeviceptr d_tmp;
 
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+            CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
-        auto &backend = Backend::Get();
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[0], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
+            auto &backend = Backend::Get();
+            OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
+                                              &accelBuildOptions, &instanceInput, 1,
+                                              d_tmp, iasBufferSizes.tempSizeInBytes,
+                                              m_d_ias[0], iasBufferSizes.outputSizeInBytes,
+                                              &m_systemParameter.topObject, nullptr, 0));
 
-        CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+            CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
+            CUDA_CHECK(cudaFree((void *)d_tmp));
+            CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
+        }
     }
 
     // Options
@@ -1495,8 +1547,14 @@ void OptixRenderer::init()
             }
         }
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        // Only allocate and copy SBT data if we have instances
+        if (totalInstances > 0) {
+            CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays));
+            CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        }
+        else {
+            m_d_sbtRecordGeometryInstanceData = nullptr;
+        }
     }
 
     // Direct callables
