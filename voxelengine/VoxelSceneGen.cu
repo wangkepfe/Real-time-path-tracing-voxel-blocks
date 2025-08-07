@@ -71,7 +71,7 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
     Voxel val;
     val.id = BlockTypeEmpty;
 
-            float noiseVal = noise[idx.z * width + idx.x];
+    float noiseVal = noise[idx.z * width + idx.x];
 
     float terrainHeight = max(0.1f, (noiseVal * 1.4f - 0.7f + 0.25f) * width);
     terrainHeight = min(terrainHeight, width * 0.9f);
@@ -115,15 +115,6 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
             {
                 val.id = BlockTypeRocks;
             }
-        }
-    }
-
-    // This makes sure all uninstanced material block has at least one block
-    for (int i = 1; i < BlockTypeNum; ++i)
-    {
-        if (idx.x == 1 && idx.y == 1 && idx.z == i)
-        {
-            val.id = i;
         }
     }
 
@@ -304,11 +295,9 @@ namespace
     }
 }
 
-
-
 // New multi-chunk initialization function
 void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int chunkIndex,
-                         const ChunkConfiguration &chunkConfig)
+                          const ChunkConfiguration &chunkConfig)
 {
     dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
     dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
@@ -327,10 +316,10 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
     unsigned int globalOffsetX = chunkX * VoxelChunk::width;
     unsigned int globalOffsetZ = chunkZ * VoxelChunk::width;
 
-    PerlinNoiseGenerator noiseGenerator(4, 124); // Use same seed for all chunks
+    PerlinNoiseGenerator noiseGenerator(4, 124);      // Use same seed for all chunks
     float freq = 1.0f / chunkConfig.getGlobalWidth(); // Use global frequency for continuity
 
-        std::vector<float> noiseMap(noiseMapSize);
+    std::vector<float> noiseMap(noiseMapSize);
     for (int x = 0; x < voxelChunk.width; ++x)
     {
         for (int z = 0; z < voxelChunk.width; ++z)
@@ -340,8 +329,6 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
             float globalZ = globalOffsetZ + z;
             float noiseValue = noiseGenerator.getNoise(globalX * freq, globalZ * freq);
             noiseMap[z * voxelChunk.width + x] = noiseValue;
-
-
         }
     }
 
@@ -390,15 +377,6 @@ void generateMesh(VertexAttributes **attr,
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaPeekAtLastError());
 
-    // std::vector<unsigned int> h_faceValid(totalFaces);
-    // cudaMemcpy(h_faceValid.data(), d_faceValid, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    // std::cout << "face valid id = " << id << std::endl;
-    // for (auto val : h_faceValid)
-    // {
-    //     std::cout << val << " ";
-    // }
-    // std::cout << std::endl;
-
     // 3. Prefix sum on face validity
     unsigned int *d_faceValidPrefixSum;
     cudaMalloc(&d_faceValidPrefixSum, totalFaces * sizeof(unsigned int));
@@ -416,7 +394,6 @@ void generateMesh(VertexAttributes **attr,
 
     // 4. Find how many faces are valid total
     cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    // maxFaceCount = currentFaceCount * 2;
     maxFaceCount = totalFaces / 4;
 
     attrSize = currentFaceCount * 4;
@@ -442,6 +419,25 @@ void generateMesh(VertexAttributes **attr,
 
     faceLocation.resize(totalFaces);
     cudaMemcpy(faceLocation.data(), d_faceLocation, totalFaces * sizeof(unsigned int), cudaMemcpyDeviceToHost);
+
+    // If no geometry was generated, create a degenerate triangle as placeholder
+    if (indicesSize == 0)
+    {
+        // Create a single degenerate triangle (all vertices at same position)
+        attrSize = 3;
+        indicesSize = 3;
+        currentFaceCount = 1;
+
+        // Set all vertices to origin
+        (*attr)[0].vertex = Float3(0.0f, 0.0f, 0.0f);
+        (*attr)[1].vertex = Float3(0.0f, 0.0f, 0.0f);
+        (*attr)[2].vertex = Float3(0.0f, 0.0f, 0.0f);
+
+        // Set indices to reference the vertices
+        (*indices)[0] = 0;
+        (*indices)[1] = 1;
+        (*indices)[2] = 2;
+    }
 
     if (0)
     {
@@ -830,4 +826,3 @@ void generateSea(VertexAttributes **attr,
         dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
     }
 }
-

@@ -308,7 +308,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool skipSunSample = !isThinfilm && (dot(state.normal, sysParam.sunDir) < 0.0f || dot(state.geoNormal, sysParam.sunDir) < 0.0f);
 
-    const int numLocalLightSamples = 8;
+    const int numLocalLightSamples = sysParam.accumulatedLocalLightLuminance > 0.0f ? 8 : 0;
     const int numSunLightSamples = skipSunSample ? 0 : 1;
     const int numSkyLightSamples = 1;
     const int numBrdfSamples = 1;
@@ -496,7 +496,7 @@ extern "C" __global__ void __closesthit__radiance()
                     lightSourcePdf = sysParam.skyAliasTable->PMF(sampledSkyIdx);
                 }
             }
-            else
+            else if (numLocalLightSamples > 0)
             {
                 lightIndex = shadowRayData.lightIdx;
 
@@ -587,24 +587,6 @@ extern "C" __global__ void __closesthit__radiance()
         UInt2 visibilityRayPayload = splitPointer(&isLightVisible);
         Float3 shadowRayOrig = surface.isThinfilm ? (dot(sampleDir, surface.state.normal) > 0.0f ? frontPos : backPos) : frontPos;
 
-        // DEBUG: Shadow ray parameters for minecraft character
-        if (OPTIX_CENTER_PIXEL() && instanceData->materialIndex == 16) {
-            OPTIX_DEBUG_PRINT(shadowRayOrig.x);
-            OPTIX_DEBUG_PRINT(shadowRayOrig.y);
-            OPTIX_DEBUG_PRINT(shadowRayOrig.z);
-            OPTIX_DEBUG_PRINT(sampleDir.x);
-            OPTIX_DEBUG_PRINT(sampleDir.y);
-            OPTIX_DEBUG_PRINT(sampleDir.z);
-            OPTIX_DEBUG_PRINT(maxDistance);
-            OPTIX_DEBUG_PRINT(frontPos.x);
-            OPTIX_DEBUG_PRINT(frontPos.y);
-            OPTIX_DEBUG_PRINT(frontPos.z);
-            OPTIX_DEBUG_PRINT(backPos.x);
-            OPTIX_DEBUG_PRINT(backPos.y);
-            OPTIX_DEBUG_PRINT(backPos.z);
-            OPTIX_DEBUG_PRINT(surface.isThinfilm);
-        }
-
         optixTraverse(usePrevBvh ? sysParam.prevTopObject : sysParam.topObject,
                       (float3)shadowRayOrig,
                       (float3)sampleDir,
@@ -682,7 +664,7 @@ extern "C" __global__ void __closesthit__radiance()
             LightSample candidateLightSample = {};
             if (IsValidDIReservoir(prevReservoir))
             {
-                candidateLightSample = GetLightSampleFromReservoir(prevReservoir, surface);
+                candidateLightSample = GetLightSampleFromReservoir(prevReservoir, surface, numLocalLightSamples > 0);
                 neighborWeight = GetLightSampleTargetPdfForSurface(candidateLightSample, surface);
             }
 
@@ -713,7 +695,7 @@ extern "C" __global__ void __closesthit__radiance()
                 Surface temporalSurface;
                 GetPrevSurface(temporalSurface, idx);
 
-                LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface);
+                LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface, numLocalLightSamples > 0);
 
                 float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
 

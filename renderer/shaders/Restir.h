@@ -361,7 +361,7 @@ INL_DEVICE bool GetPrevSurface(Surface &surface, Int2 pixelPosition)
     return true;
 }
 
-INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir, const Surface &surface)
+INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir, const Surface &surface, bool hasLocalLights)
 {
     LightSample ls = {};
     unsigned int lightIndex = GetDIReservoirLightIndex(reservoir);
@@ -384,7 +384,7 @@ INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir,
         int sampledSunIdx = y * sysParam.sunRes.x + x;
         ls = createSunLightSample(sampledSunIdx);
     }
-    else
+    else if (hasLocalLights)
     {
         LightInfo lightInfo = sysParam.lights[lightIndex];
         TriangleLight triLight = TriangleLight::Create(lightInfo);
