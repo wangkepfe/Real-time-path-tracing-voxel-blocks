@@ -1,6 +1,7 @@
 #include "core/Backend.h"
 #include "core/OfflineBackend.h"
 #include "util/DebugUtils.h"
+#include "util/FileUtils.h"
 #include "OptixRenderer.h"
 #include "core/Scene.h"
 #include "core/BufferManager.h"
@@ -13,19 +14,6 @@
 #endif
 
 #include "util/BufferUtils.h"
-
-// Helper function to get CUDA stream from either backend
-CUstream getCurrentCudaStream()
-{
-    if (GlobalSettings::IsOfflineMode())
-    {
-        return OfflineBackend::Get().getCudaStream();
-    }
-    else
-    {
-        return Backend::Get().getCudaStream();
-    }
-}
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -50,38 +38,74 @@ CUstream getCurrentCudaStream()
 #include "voxelengine/Block.h"
 #include "voxelengine/VoxelEngine.h"
 
-namespace
+// Helper function to get CUDA stream from either backend
+CUstream getCurrentCudaStream()
 {
-
-    std::string ReadPtx(std::string const &filename)
+    if (GlobalSettings::IsOfflineMode())
     {
-        // std::filesystem::path cwd = std::filesystem::current_path();
-        //  std::cout << "The current directory is " << cwd.string() << std::endl;
+        return OfflineBackend::Get().getCudaStream();
+    }
+    else
+    {
+        return Backend::Get().getCudaStream();
+    }
+}
 
-        std::ifstream inputPtx(filename);
+// Helper function to build Instance Acceleration Structure (IAS)
+void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex)
+{
+    // Upload instances to GPU
+    CUdeviceptr d_instances;
+    const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+    CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+    CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                               cudaMemcpyHostToDevice, cudaStream));
 
-        if (!inputPtx)
-        {
-            std::cerr << "ERROR: ReadPtx() Failed to open file " << filename << '\n';
-            return std::string();
-        }
+    // Setup build input
+    OptixBuildInput instanceInput = {};
+    instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+    instanceInput.instanceArray.instances = d_instances;
+    instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
 
-        std::stringstream ptx;
+    // Setup build options
+    OptixAccelBuildOptions accelBuildOptions = {};
+    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-        ptx << inputPtx.rdbuf();
+    // Compute memory requirements
+    OptixAccelBufferSizes iasBufferSizes = {};
+    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-        if (inputPtx.fail())
-        {
-            std::cerr << "ERROR: ReadPtx() Failed to read file " << filename << '\n';
-            return std::string();
-        }
-
-        return ptx.str();
+    // Free existing buffer if needed
+    if (m_d_ias[targetIasIndex] != 0)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_ias[targetIasIndex]));
     }
 
-} // namespace
+    // Allocate output and temp buffers
+    CUDA_CHECK(cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes));
+    
+    CUdeviceptr d_tmp;
+    CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
 
-static constexpr bool g_useGeometrySquareLight = false;
+    // Build the acceleration structure
+    OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
+                                      &accelBuildOptions, &instanceInput, 1,
+                                      d_tmp, iasBufferSizes.tempSizeInBytes,
+                                      m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes,
+                                      &m_systemParameter.topObject, nullptr, 0));
+
+    // Synchronize and cleanup
+    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    CUDA_CHECK(cudaFree((void *)d_tmp));
+    CUDA_CHECK(cudaFree((void *)d_instances));
+
+    // Update current index if requested
+    if (swapCurrentIndex)
+    {
+        m_currentIasIdx = targetIasIndex;
+    }
+}
 
 class OptixLogger
 {
@@ -285,48 +309,9 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         m_systemParameter.prevTopObject = m_systemParameter.topObject;
 
         int nextIndex = (m_currentIasIdx + 1) % 2;
-        if (m_d_ias[nextIndex] != 0)
-        {
-            CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
-        }
-
-        // Build the new BVH in the inactive slot
-        CUdeviceptr d_instances;
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, cudaStream));
-
-        OptixBuildInput instanceInput = {};
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-        OptixAccelBuildOptions accelBuildOptions = {};
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-        OptixAccelBufferSizes iasBufferSizes = {};
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
-
-        CUdeviceptr d_tmp;
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-        // Build the acceleration structure into the new buffer
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
-
-        // Clean up temporary allocations
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances));
-
-        // Swap the buffer index
-        m_currentIasIdx = nextIndex;
+        
+        // Build the new BVH in the inactive slot using helper function
+        buildInstanceAccelerationStructure(cudaStream, nextIndex, true);
 
         // Upload updated SBT records
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
@@ -693,49 +678,9 @@ void OptixRenderer::update()
         m_systemParameter.prevTopObject = m_systemParameter.topObject;
 
         int nextIndex = (m_currentIasIdx + 1) % 2;
-        if (m_d_ias[nextIndex] != 0)
-        {
-            CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
-        }
-
-        // Build the new BVH in the inactive slot.
-        CUdeviceptr d_instances;
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, cudaStream));
-
-        OptixBuildInput instanceInput = {};
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-        OptixAccelBuildOptions accelBuildOptions = {};
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-        OptixAccelBufferSizes iasBufferSizes = {};
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
-
-        CUdeviceptr d_tmp;
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-        // Build the acceleration structure into the new buffer.
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
-
-        // Synchronize and clean up temporary allocations.
-        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances));
-
-        // Swap the buffer index.
-        m_currentIasIdx = nextIndex;
+        
+        // Build the new BVH in the inactive slot using helper function
+        buildInstanceAccelerationStructure(cudaStream, nextIndex, true);
     }
 
     scene.sceneUpdateObjectId.clear();
@@ -1085,48 +1030,8 @@ void OptixRenderer::init()
         }
     }
 
-    // Build BVH
-    {
-        CUdeviceptr d_instances;
-
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-
-        OptixBuildInput instanceInput = {};
-
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-        OptixAccelBuildOptions accelBuildOptions = {};
-
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-        OptixAccelBufferSizes iasBufferSizes = {};
-
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[0], iasBufferSizes.outputSizeInBytes));
-
-        CUdeviceptr d_tmp;
-
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-        auto &backend = Backend::Get();
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[0], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
-
-        CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
-
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
-    }
+    // Build BVH using helper function
+    buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0, false);
 
     // Options
     OptixModuleCompileOptions moduleCompileOptions = {};
@@ -1150,7 +1055,7 @@ void OptixRenderer::init()
 
     // Raygen
     {
-        std::string ptxRaygeneration = ReadPtx("ptx/RayGen.ptx");
+        std::string ptxRaygeneration = ReadFileToString("ptx/RayGen.ptx");
         OptixModule moduleRaygeneration;
         OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration));
 
@@ -1169,7 +1074,7 @@ void OptixRenderer::init()
 
     // Miss
     {
-        std::string ptxMiss = ReadPtx("ptx/Miss.ptx");
+        std::string ptxMiss = ReadFileToString("ptx/Miss.ptx");
         OptixModule moduleMiss;
         OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss));
 
@@ -1208,7 +1113,7 @@ void OptixRenderer::init()
 
     // Closest hit
     {
-        std::string ptxClosesthit = ReadPtx("ptx/ClosestHit.ptx");
+        std::string ptxClosesthit = ReadFileToString("ptx/ClosestHit.ptx");
         OptixModule moduleClosesthit;
         OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit));
 
@@ -1237,7 +1142,7 @@ void OptixRenderer::init()
 
     // Direct callables
     {
-        // std::string ptxBsdf = ReadPtx("ptx/Bsdf.ptx");
+        // std::string ptxBsdf = ReadFileToString("ptx/Bsdf.ptx");
         // OptixModule moduleBsdf;
         // OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxBsdf.c_str(), ptxBsdf.size(), nullptr, nullptr, &moduleBsdf));
 

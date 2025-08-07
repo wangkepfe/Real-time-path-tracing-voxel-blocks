@@ -46,6 +46,7 @@ private:
     OptixRenderer() {}
 
     void updateAnimatedEntities(CUstream cudaStream, float currentTime);
+    void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex = false);
 
     int m_width;
     int m_height;
