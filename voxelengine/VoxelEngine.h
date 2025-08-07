@@ -2,6 +2,7 @@
 
 #include "VoxelSceneGen.h"
 #include "VoxelChunk.h"
+#include "ChunkGeometryBuffer.h"
 
 #include "shaders/SystemParameter.h"
 #include <cassert>
@@ -37,12 +38,12 @@ public:
 
     bool leftMouseButtonClicked = false;
 
-    // Chunk-specific face tracking buffers
-    // Structure: [chunkIndex][objectId]
-    std::vector<std::vector<unsigned int>> currentFaceCount;
-    std::vector<std::vector<unsigned int>> maxFaceCount;
-    std::vector<std::vector<std::vector<unsigned int>>> freeFaces;
+    // Professional geometry buffer management
+    ChunkGeometryManager geometryManager;
+
+    // Legacy face tracking (still needed for updateSingleVoxelGlobal compatibility)
     std::vector<std::vector<std::vector<unsigned int>>> faceLocation;
+    std::vector<std::vector<std::vector<unsigned int>>> freeFaces;
 
     // Helper functions for coordinate conversion
     unsigned int getChunkIndex(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ) const;
@@ -61,6 +62,12 @@ private:
     void initInstanceGeometry();
     void updateInstances();
     void updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks);
+    
+    // UNIFIED BLOCK PLACEMENT SYSTEM
+    void placeUninstancedBlock(const Int3& pos, unsigned int blockId, int objectId, Scene& scene);
+    void placeInstancedBlock(const Int3& pos, unsigned int blockId, int objectId, unsigned int originalBlockId, unsigned int deleteBlockId, Scene& scene);
+    void removeUninstancedBlock(const Int3& pos, unsigned int blockId, int objectId, Scene& scene);
+    void removeInstancedBlock(const Int3& pos, unsigned int blockId, int objectId, Scene& scene);
 
     VoxelEngine()
     {

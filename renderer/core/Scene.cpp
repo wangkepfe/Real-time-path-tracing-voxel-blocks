@@ -1,5 +1,6 @@
 #include "core/Scene.h"
 #include "shaders/LinearMath.h"
+#include <vector>
 
 Scene::Scene()
 {
@@ -30,6 +31,36 @@ Scene::~Scene()
 
     // Note: Geometry memory is owned and freed by OptixRenderer::clear()
     // Scene only holds pointers to this memory, so we don't free it here to avoid double-free errors
+}
+
+OptixTraversableHandle Scene::CreateDummyGeometry(
+    OptixFunctionTable &api,
+    OptixDeviceContext &context,
+    CUstream cudaStream,
+    GeometryData &geometry)
+{
+    printf("CREATING DUMMY GEOMETRY: Fallback for empty scene\n");
+    
+    // Create a single tiny triangle as dummy geometry
+    std::vector<VertexAttributes> dummyVertices(3);
+    dummyVertices[0] = {Float3(0.0f, 0.0f, 0.0f), Float2(0.0f, 0.0f), Int4(0), Float4(0.0f)};
+    dummyVertices[1] = {Float3(0.1f, 0.0f, 0.0f), Float2(1.0f, 0.0f), Int4(0), Float4(0.0f)};
+    dummyVertices[2] = {Float3(0.0f, 0.1f, 0.0f), Float2(0.0f, 1.0f), Int4(0), Float4(0.0f)};
+    
+    std::vector<unsigned int> dummyIndices = {0, 1, 2};
+    
+    // Allocate GPU memory
+    VertexAttributes *d_attributes;
+    unsigned int *d_indices;
+    
+    CUDA_CHECK(cudaMalloc(&d_attributes, sizeof(VertexAttributes) * 3));
+    CUDA_CHECK(cudaMalloc(&d_indices, sizeof(unsigned int) * 3));
+    
+    CUDA_CHECK(cudaMemcpy(d_attributes, dummyVertices.data(), sizeof(VertexAttributes) * 3, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_indices, dummyIndices.data(), sizeof(unsigned int) * 3, cudaMemcpyHostToDevice));
+    
+    // Use existing CreateGeometry function for consistency
+    return CreateGeometry(api, context, cudaStream, geometry, d_attributes, d_indices, 3, 3);
 }
 
 void Scene::initChunkGeometry(unsigned int numChunksParam, unsigned int numObjects)
@@ -89,9 +120,12 @@ OptixTraversableHandle Scene::CreateGeometry(
     unsigned int indicesSize,
     bool allowUpdate)
 {
-    // Validate inputs to prevent CUDA errors
-    if (!d_attributes || !d_indices || attributeSize == 0 || indicesSize == 0) {
-        // Return null handle for empty geometry
+    // BULLETPROOF VALIDATION: Comprehensive input validation to prevent CUDA errors
+    
+    // 1. NULL pointer validation
+    if (!d_attributes || !d_indices) {
+        printf("GEOMETRY VALIDATION ERROR: Null geometry pointers (d_attributes=%p, d_indices=%p)\n", 
+               d_attributes, d_indices);
         geometry.indices = nullptr;
         geometry.attributes = nullptr;
         geometry.numAttributes = 0;
@@ -99,10 +133,23 @@ OptixTraversableHandle Scene::CreateGeometry(
         geometry.gas = 0;
         return 0;
     }
-
-    // Check if indices size is multiple of 3 (valid triangles)
+    
+    // 2. Empty geometry validation
+    if (attributeSize == 0 || indicesSize == 0) {
+        printf("GEOMETRY VALIDATION INFO: Empty geometry (vertices=%u, indices=%u) - skipping\n", 
+               attributeSize, indicesSize);
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numAttributes = 0;
+        geometry.numIndices = 0;
+        geometry.gas = 0;
+        return 0;
+    }
+    
+    // 3. Triangle count validation
     if (indicesSize % 3 != 0) {
-        // Return null handle for invalid triangle data
+        printf("GEOMETRY VALIDATION ERROR: Invalid triangle count (indices=%u, not multiple of 3)\n", 
+               indicesSize);
         geometry.indices = nullptr;
         geometry.attributes = nullptr;
         geometry.numAttributes = 0;
@@ -110,6 +157,70 @@ OptixTraversableHandle Scene::CreateGeometry(
         geometry.gas = 0;
         return 0;
     }
+    
+    // 4. Minimum geometry threshold
+    if (indicesSize < 3 || attributeSize < 3) {
+        printf("GEOMETRY VALIDATION ERROR: Insufficient geometry data (vertices=%u, indices=%u)\n", 
+               attributeSize, indicesSize);
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numAttributes = 0;
+        geometry.numIndices = 0;
+        geometry.gas = 0;
+        return 0;
+    }
+    
+    // 5. CRITICAL: Index bounds validation - prevent illegal memory access
+    // Read indices on CPU to validate bounds (expensive but necessary for stability)
+    std::vector<unsigned int> hostIndices(indicesSize);
+    cudaError_t copyResult = cudaMemcpy(hostIndices.data(), d_indices, 
+                                       sizeof(unsigned int) * indicesSize, 
+                                       cudaMemcpyDeviceToHost);
+    
+    if (copyResult != cudaSuccess) {
+        printf("GEOMETRY VALIDATION ERROR: Failed to copy indices for validation: %s\n", 
+               cudaGetErrorString(copyResult));
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numAttributes = 0;
+        geometry.numIndices = 0;
+        geometry.gas = 0;
+        return 0;
+    }
+    
+    // Check all triangle vertex indices are within bounds
+    unsigned int maxValidIndex = attributeSize - 1;
+    for (unsigned int i = 0; i < indicesSize; i++) {
+        if (hostIndices[i] >= attributeSize) {
+            printf("GEOMETRY VALIDATION ERROR: Index out of bounds at position %u: index=%u, max_valid=%u\n", 
+                   i, hostIndices[i], maxValidIndex);
+            geometry.indices = nullptr;
+            geometry.attributes = nullptr;
+            geometry.numAttributes = 0;
+            geometry.numIndices = 0;
+            geometry.gas = 0;
+            return 0;
+        }
+    }
+    
+    // 6. Memory size validation to prevent overflow
+    const size_t maxReasonableGeometry = 1024 * 1024 * 1024; // 1GB limit
+    const size_t totalGeometrySize = (sizeof(VertexAttributes) * attributeSize) + 
+                                    (sizeof(unsigned int) * indicesSize);
+    
+    if (totalGeometrySize > maxReasonableGeometry) {
+        printf("GEOMETRY VALIDATION ERROR: Geometry too large (%zu bytes > %zu bytes limit)\n", 
+               totalGeometrySize, maxReasonableGeometry);
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numAttributes = 0;
+        geometry.numIndices = 0;
+        geometry.gas = 0;
+        return 0;
+    }
+    
+    printf("GEOMETRY VALIDATION SUCCESS: vertices=%u, triangles=%u, size=%zu bytes\n", 
+           attributeSize, indicesSize/3, totalGeometrySize);
 
     const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributeSize;
     const size_t indicesSizeInBytes = sizeof(unsigned int) * indicesSize;
@@ -171,6 +282,49 @@ OptixTraversableHandle Scene::CreateGeometry(
     geometry.numIndices = indicesSize;
     geometry.gas = d_gas;
 
+    printf("GEOMETRY TRACKING: Created geometry with numIndices=%zu, numAttributes=%zu, d_indices=%p, d_attributes=%p\n", 
+           geometry.numIndices, geometry.numAttributes, geometry.indices, geometry.attributes);
+    
+    // DEBUG: Sample vertices from both beginning and end of buffer
+    if (attributeSize >= 6) {
+        std::vector<VertexAttributes> sampleVertices(6);
+        
+        // Get first 3 vertices
+        cudaError_t copyResult1 = cudaMemcpy(sampleVertices.data(), d_attributes, 
+                                           sizeof(VertexAttributes) * 3, cudaMemcpyDeviceToHost);
+        
+        // Get last 3 vertices  
+        cudaError_t copyResult2 = cudaMemcpy(&sampleVertices[3], 
+                                           d_attributes + (attributeSize - 3), 
+                                           sizeof(VertexAttributes) * 3, cudaMemcpyDeviceToHost);
+        
+        if (copyResult1 == cudaSuccess && copyResult2 == cudaSuccess) {
+            printf("VERTEX DEBUG: First 3 vertices:\n");
+            for (int i = 0; i < 3; i++) {
+                printf("  v[%d]: pos=(%.2f, %.2f, %.2f) texcoord=(%.2f, %.2f)\n", i,
+                       sampleVertices[i].vertex.x, sampleVertices[i].vertex.y, sampleVertices[i].vertex.z,
+                       sampleVertices[i].texcoord.x, sampleVertices[i].texcoord.y);
+            }
+            printf("VERTEX DEBUG: Last 3 vertices (indices %u-%u):\n", attributeSize-3, attributeSize-1);
+            for (int i = 3; i < 6; i++) {
+                printf("  v[%d]: pos=(%.2f, %.2f, %.2f) texcoord=(%.2f, %.2f)\n", attributeSize-6+i,
+                       sampleVertices[i].vertex.x, sampleVertices[i].vertex.y, sampleVertices[i].vertex.z,
+                       sampleVertices[i].texcoord.x, sampleVertices[i].texcoord.y);
+            }
+        }
+    }
+    
+    // DEBUG: Sample a few triangle indices to verify they're valid
+    if (indicesSize >= 3) {
+        std::vector<unsigned int> sampleIndices(3);
+        cudaError_t copyResult = cudaMemcpy(sampleIndices.data(), d_indices, 
+                                          sizeof(unsigned int) * 3, cudaMemcpyDeviceToHost);
+        if (copyResult == cudaSuccess) {
+            printf("INDEX DEBUG: First triangle indices: (%u, %u, %u) - max vertex index should be < %u\n",
+                   sampleIndices[0], sampleIndices[1], sampleIndices[2], attributeSize);
+        }
+    }
+
     return traversableHandle;
 }
 
@@ -184,11 +338,35 @@ OptixTraversableHandle Scene::UpdateGeometry(
     unsigned int attributeSize,
     unsigned int indicesSize)
 {
-    // Validate inputs
-    if (!d_attributes || !d_indices || attributeSize == 0 || indicesSize == 0 || geometry.gas == 0) {
+    // BULLETPROOF VALIDATION: UpdateGeometry input validation
+    
+    // 1. NULL pointer validation
+    if (!d_attributes || !d_indices) {
+        printf("UPDATE GEOMETRY ERROR: Null pointers (d_attributes=%p, d_indices=%p)\n", 
+               d_attributes, d_indices);
         return 0;
     }
-
+    
+    // 2. Empty geometry validation
+    if (attributeSize == 0 || indicesSize == 0) {
+        printf("UPDATE GEOMETRY ERROR: Empty geometry (vertices=%u, indices=%u)\n", 
+               attributeSize, indicesSize);
+        return 0;
+    }
+    
+    // 3. Existing GAS validation
+    if (geometry.gas == 0) {
+        printf("UPDATE GEOMETRY ERROR: No existing GAS to update\n");
+        return 0;
+    }
+    
+    // 4. Triangle count validation
+    if (indicesSize % 3 != 0) {
+        printf("UPDATE GEOMETRY ERROR: Invalid triangle count (indices=%u, not multiple of 3)\n", 
+               indicesSize);
+        return 0;
+    }
+    
     const size_t attributesSizeInBytes = sizeof(VertexAttributes) * attributeSize;
     const size_t indicesSizeInBytes = sizeof(unsigned int) * indicesSize;
 

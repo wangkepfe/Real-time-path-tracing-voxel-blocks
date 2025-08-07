@@ -113,10 +113,6 @@ struct GeometryInstanceData
 {
     Int3 *indices;
     VertexAttributes *attributes;
-    
-    unsigned int numIndices;   // Number of indices (count of Int3, not individual ints)
-    unsigned int numAttributes; // Number of vertex attributes
-
     int materialIndex;
 };
 

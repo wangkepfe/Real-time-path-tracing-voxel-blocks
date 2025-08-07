@@ -20,28 +20,9 @@ extern "C" __global__ void __closesthit__radiance()
     // Get triangle data
     const GeometryInstanceData *instanceData = reinterpret_cast<const GeometryInstanceData *>(optixGetSbtDataPointer());
 
-    // CRITICAL FIX: Add defensive null pointer checks
-    if (!instanceData || !instanceData->indices || !instanceData->attributes) {
-        rayData->shouldTerminate = true;
-        return;
-    }
-
     const unsigned int instanceId = optixGetInstanceId();
     const unsigned int meshTriangleIndex = optixGetPrimitiveIndex();
-
-    // CRITICAL FIX: Bounds check triangle index access - ROOT CAUSE FIXED!
-    if (meshTriangleIndex >= instanceData->numIndices) {
-        rayData->shouldTerminate = true;
-        return;
-    }
-
     const Int3 tri = instanceData->indices[meshTriangleIndex];
-
-    // CRITICAL FIX: Bounds check vertex attribute access
-    if (tri.x >= instanceData->numAttributes || tri.y >= instanceData->numAttributes || tri.z >= instanceData->numAttributes) {
-        rayData->shouldTerminate = true;
-        return;
-    }
 
     const VertexAttributes &va0 = instanceData->attributes[tri.x];
     const VertexAttributes &va1 = instanceData->attributes[tri.y];
@@ -98,10 +79,17 @@ extern "C" __global__ void __closesthit__radiance()
     // CRITICAL FIX: Bounds check material parameter access
     unsigned int materialIndex = instanceData->materialIndex;
     if (materialIndex >= sysParam.numMaterialParameters) {
-        rayData->shouldTerminate = true;
-        return;
+        materialIndex = 0; // Default to first material if out of bounds
     }
+    
     const MaterialParameter &parameters = sysParam.materialParameters[materialIndex];
+    
+    // DEBUG: Print hit information for placed blocks (material index 3 = brown_mud_leaves_01)
+    if (materialIndex == 3 && OPTIX_CENTER_PIXEL()) {
+        printf("HIT DEBUG: Ray hit placed block (instanceId=%u, materialIndex=%u, triangleIdx=%u)\n", 
+               instanceId, materialIndex, meshTriangleIndex);
+        printf("HIT DEBUG: Hit position: (%.2f, %.2f, %.2f)\n", frontPos.x, frontPos.y, frontPos.z);
+    }
 
     int materialId = parameters.materialId;
     bool isEmissive = parameters.isEmissive;

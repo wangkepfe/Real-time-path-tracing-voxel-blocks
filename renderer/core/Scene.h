@@ -125,6 +125,12 @@ public:
         unsigned int *d_indices,
         unsigned int attributeSize,
         unsigned int indicesSize);
+    
+    static OptixTraversableHandle CreateDummyGeometry(
+        OptixFunctionTable &api,
+        OptixDeviceContext &context,
+        CUstream cudaStream,
+        GeometryData &geometry);
 
 private:
     Scene();

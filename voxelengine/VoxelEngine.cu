@@ -463,19 +463,16 @@ void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel *> &d_dataChun
             scene.getChunkGeometryAttributeSize(chunkIndex, objectId) = 0;
             scene.getChunkGeometryIndicesSize(chunkIndex, objectId) = 0;
 
-            // Reset chunk-specific face tracking data
-            currentFaceCount[chunkIndex][objectId] = 0;
-            maxFaceCount[chunkIndex][objectId] = 0;
+            // Reset chunk geometry buffer
+            geometryManager.getBuffer(chunkIndex, objectId).reset();
 
-            // Generate mesh for this specific chunk and object
+            // Generate mesh using new geometry buffer system
             generateMesh(
                 scene.getChunkGeometryAttributes(chunkIndex, objectId),
                 scene.getChunkGeometryIndices(chunkIndex, objectId),
-                faceLocation[chunkIndex][objectId],
                 scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
                 scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
-                currentFaceCount[chunkIndex][objectId],
-                maxFaceCount[chunkIndex][objectId],
+                geometryManager.getBuffer(chunkIndex, objectId),
                 voxelChunks[chunkIndex],
                 d_dataChunks[chunkIndex],
                 blockId);
@@ -502,21 +499,30 @@ void VoxelEngine::init()
     // Initialize instanced geometry buffers
     scene.initInstancedGeometry(GetNumInstancedBlockTypes());
 
-    // Initialize chunk-specific face tracking buffers
+    // Initialize professional geometry buffer management
     unsigned int numChunks = chunkConfig.getTotalChunks();
     unsigned int numObjects = GetNumUninstancedBlockTypes();
 
+    // Initialize the new geometry manager
+    geometryManager.initialize(numChunks, numObjects);
+
+    // Legacy face location tracking (still needed for some operations)
     faceLocation.resize(numChunks);
-    currentFaceCount.resize(numChunks);
-    maxFaceCount.resize(numChunks);
     freeFaces.resize(numChunks);
 
     for (unsigned int chunkIndex = 0; chunkIndex < numChunks; ++chunkIndex)
     {
         faceLocation[chunkIndex].resize(numObjects);
-        currentFaceCount[chunkIndex].resize(numObjects);
-        maxFaceCount[chunkIndex].resize(numObjects);
         freeFaces[chunkIndex].resize(numObjects);
+        
+        // Initialize face location arrays for each object
+        for (unsigned int objectId = 0; objectId < numObjects; ++objectId)
+        {
+            // Calculate total possible faces for a chunk (width^3 voxels * 6 faces per voxel)
+            size_t totalFaces = VoxelChunk::width * VoxelChunk::width * VoxelChunk::width * 6;
+            faceLocation[chunkIndex][objectId].assign(totalFaces, UINT_MAX);
+            freeFaces[chunkIndex][objectId].clear(); // Start with no free faces
+        }
     }
 
     // Init multiple voxel chunks
@@ -798,59 +804,20 @@ void VoxelEngine::update()
         {
             if (hitSurface)
             {
-                unsigned int newVal = 0;
                 int objectId = BlockIdToObjectId(deleteBlockId);
 
+                // UNIFIED BLOCK REMOVAL SYSTEM
+                // Step 1: Always update voxel data first (for collision system consistency)
+                setVoxelAtGlobal(deletePos.x, deletePos.y, deletePos.z, 0);
+                
+                // Step 2: Handle geometry based on block type
                 if (IsUninstancedBlockType(deleteBlockId))
                 {
-                    // Determine which chunk this voxel belongs to
-                    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
-                    globalToChunkCoords(deletePos.x, deletePos.y, deletePos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
-                    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
-
-                    updateSingleVoxelGlobal(
-                        deletePos.x, deletePos.y, deletePos.z,
-                        newVal,
-                        voxelChunks,
-                        chunkConfig,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        faceLocation[chunkIndex][objectId],
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
-                        currentFaceCount[chunkIndex][objectId],
-                        maxFaceCount[chunkIndex][objectId],
-                        freeFaces[chunkIndex][objectId]);
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(0);
-                    scene.sceneUpdateChunkId.push_back(chunkIndex);
+                    removeUninstancedBlock(deletePos, deleteBlockId, objectId, scene);
                 }
                 else if (IsInstancedBlockType(deleteBlockId))
                 {
-                    setVoxelAtGlobal(deletePos.x, deletePos.y, deletePos.z, newVal);
-
-                    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
-
-                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
-                    geometryInstanceIdMap[objectId].erase(instanceId);
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(instanceId);
-
-                    if (IsBaseLightBlockType(deleteBlockId))
-                    {
-                        int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = BlockIdToObjectId(childBlockId);
-
-                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
-                        geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
-
-                        scene.sceneUpdateObjectId.push_back(childObjectIdx);
-                        scene.sceneUpdateInstanceId.push_back(childInstanceId);
-                    }
+                    removeInstancedBlock(deletePos, deleteBlockId, objectId, scene);
                 }
             }
         }
@@ -863,65 +830,19 @@ void VoxelEngine::update()
                 unsigned int newVal = blockId;
                 int objectId = BlockIdToObjectId(blockId);
 
+                // UNIFIED BLOCK PLACEMENT SYSTEM - FIX ORDER
+                // Step 1: Handle geometry BEFORE updating voxel data (so geometry sees old value)
                 if (IsUninstancedBlockType(blockId))
                 {
-                    // Determine which chunk this voxel belongs to
-                    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
-                    globalToChunkCoords(createPos.x, createPos.y, createPos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
-                    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
-
-                    updateSingleVoxelGlobal(
-                        createPos.x, createPos.y, createPos.z,
-                        newVal,
-                        voxelChunks,
-                        chunkConfig,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        faceLocation[chunkIndex][objectId],
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
-                        currentFaceCount[chunkIndex][objectId],
-                        maxFaceCount[chunkIndex][objectId],
-                        freeFaces[chunkIndex][objectId]);
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(0);
-                    scene.sceneUpdateChunkId.push_back(chunkIndex);
+                    placeUninstancedBlock(createPos, newVal, objectId, scene);
                 }
                 else if (IsInstancedBlockType(blockId))
                 {
-                    setVoxelAtGlobal(createPos.x, createPos.y, createPos.z, newVal);
-
-                    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
-                    std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
-
-                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
-                    geometryInstanceIdMap[objectId].insert(instanceId);
-
-                    std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)createPos.x,
-                                                       0.0f, 1.0f, 0.0f, (float)createPos.y,
-                                                       0.0f, 0.0f, 1.0f, (float)createPos.z};
-                    instanceTransformMatrices[instanceId] = transform;
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(instanceId);
-
-                    if (IsBaseLightBlockType(deleteBlockId))
-                    {
-                        int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = childBlockId - 1;
-
-                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
-                        geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
-
-                        instanceTransformMatrices[childInstanceId] = transform;
-
-                        scene.sceneUpdateObjectId.push_back(childObjectIdx);
-                        scene.sceneUpdateInstanceId.push_back(childInstanceId);
-                    }
+                    placeInstancedBlock(createPos, newVal, objectId, blockId, deleteBlockId, scene);
                 }
+                
+                // Step 2: Update voxel data AFTER geometry (for collision system consistency)
+                setVoxelAtGlobal(createPos.x, createPos.y, createPos.z, newVal);
             }
         }
     }
@@ -981,4 +902,279 @@ void VoxelEngine::initEntities()
 
     // Add character to scene (Character inherits from Entity)
     scene.addEntity(std::move(minecraftCharacter));
+}
+
+// ================================================================================
+// UNIFIED BLOCK PLACEMENT SYSTEM
+// ================================================================================
+
+void VoxelEngine::placeUninstancedBlock(const Int3& pos, unsigned int blockId, int objectId, Scene& scene)
+{
+    printf("PLACE DEBUG: Placing block ID %u at world position (%d, %d, %d)\n", 
+           blockId, pos.x, pos.y, pos.z);
+           
+    // Determine which chunk this voxel belongs to
+    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+    globalToChunkCoords(pos.x, pos.y, pos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
+    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+    
+    printf("PLACE DEBUG: Block placed in chunk %u at local coords (%u, %u, %u)\n",
+           chunkIndex, localX, localY, localZ);
+
+    // PROPER FIX: Use CPU-accessible temporary buffers for updateSingleVoxelGlobal, then copy to GPU
+    ChunkGeometryBuffer& buffer = geometryManager.getBuffer(chunkIndex, objectId);
+    unsigned int localCurrentFaceCount = buffer.getCurrentFaceCount();
+    unsigned int localMaxFaceCount = buffer.getCapacity();
+    
+    // Create CPU-accessible temporary buffers for the legacy updateSingleVoxelGlobal function
+    std::vector<VertexAttributes> tempVertices(localMaxFaceCount * 4);
+    std::vector<unsigned int> tempIndices(localMaxFaceCount * 6);
+    
+    // Copy existing GPU data to CPU temporary buffers if there's existing data
+    if (localCurrentFaceCount > 0) {
+        CUDA_CHECK(cudaMemcpy(tempVertices.data(), buffer.getVertexBuffer(), 
+                             localCurrentFaceCount * 4 * sizeof(VertexAttributes), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(tempIndices.data(), buffer.getIndexBuffer(),
+                             localCurrentFaceCount * 6 * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    }
+    
+    // Create temporary CPU pointers for the legacy function
+    VertexAttributes* tempVertexPtr = tempVertices.data();
+    unsigned int* tempIndexPtr = tempIndices.data();
+    unsigned int tempAttrSize = localCurrentFaceCount * 4;
+    unsigned int tempIndicesSize = localCurrentFaceCount * 6;
+    
+    // Store original face count to detect if we need more capacity
+    unsigned int originalFaceCount = localCurrentFaceCount;
+    
+    // CRITICAL: Store original voxel value BEFORE the call, so we can restore it if geometry creation fails
+    // Note: chunkX, chunkY, chunkZ, localX, localY, localZ already declared above
+    unsigned int vid = GetLinearId(localX, localY, localZ, VoxelChunk::width);
+    unsigned int originalVoxelValue = voxelChunks[chunkIndex].data[vid].id;
+    
+    printf("VOXEL BACKUP: Storing original voxel value %u at (%u,%u,%u) before geometry attempt\n",
+           originalVoxelValue, localX, localY, localZ);
+    
+    updateSingleVoxelGlobal(
+        pos.x, pos.y, pos.z,
+        blockId,
+        voxelChunks,
+        chunkConfig,
+        tempVertexPtr,
+        tempIndexPtr,
+        faceLocation[chunkIndex][objectId],
+        tempAttrSize,
+        tempIndicesSize,
+        localCurrentFaceCount,
+        localMaxFaceCount,
+        freeFaces[chunkIndex][objectId]);
+    
+    // CAPACITY GROWTH: Check if geometry creation failed due to capacity limits
+    if (localCurrentFaceCount == originalFaceCount && localCurrentFaceCount >= localMaxFaceCount) {
+        printf("CAPACITY DEBUG: Block placement failed due to capacity (%u/%u). Growing buffer...\n", 
+               localCurrentFaceCount, localMaxFaceCount);
+        
+        // Calculate how much capacity we might need (estimate 6 faces per new block)
+        unsigned int newCapacity = localMaxFaceCount + 32; // Add capacity for ~5 more blocks
+        
+        if (buffer.ensureCapacity(newCapacity)) {
+            // CRITICAL: Update Scene geometry pointers immediately after buffer reallocation
+            *scene.getChunkGeometryAttributes(chunkIndex, objectId) = buffer.getVertexBuffer();
+            *scene.getChunkGeometryIndices(chunkIndex, objectId) = buffer.getIndexBuffer();
+            
+            printf("POINTER DEBUG: Updated scene pointers after reallocation - vertices=%p, indices=%p\n", 
+                   buffer.getVertexBuffer(), buffer.getIndexBuffer());
+            
+            // VOXEL RESTORATION: Since the first call updated voxel data but failed to create geometry,
+            // we need to restore the original voxel value and retry properly
+            printf("VOXEL DEBUG: Before restore - current voxel value=%u, original value=%u\n", 
+                   voxelChunks[chunkIndex].data[vid].id, originalVoxelValue);
+            
+            // Restore original voxel value using the value we stored before the first attempt
+            voxelChunks[chunkIndex].data[vid].id = originalVoxelValue;
+            
+            printf("VOXEL DEBUG: After restore - voxel value is now=%u (should be %u)\n", 
+                   voxelChunks[chunkIndex].data[vid].id, originalVoxelValue);
+            
+            // Resize our temporary buffers 
+            tempVertices.resize(newCapacity * 4);
+            tempIndices.resize(newCapacity * 6);
+            
+            // Copy existing data to new larger buffers
+            if (localCurrentFaceCount > 0) {
+                // Copy from GPU buffer to CPU temporary buffer
+                CUDA_CHECK(cudaMemcpy(tempVertices.data(), buffer.getVertexBuffer(),
+                                     localCurrentFaceCount * 4 * sizeof(VertexAttributes), cudaMemcpyDeviceToHost));
+                CUDA_CHECK(cudaMemcpy(tempIndices.data(), buffer.getIndexBuffer(),
+                                     localCurrentFaceCount * 6 * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+            }
+            
+            // Update pointers and retry the operation
+            tempVertexPtr = tempVertices.data();
+            tempIndexPtr = tempIndices.data();
+            localMaxFaceCount = newCapacity;
+            
+            printf("CAPACITY DEBUG: Retrying block placement with new capacity %u\n", localMaxFaceCount);
+            
+            // Retry the updateSingleVoxelGlobal call with more capacity and restored voxel state
+            updateSingleVoxelGlobal(
+                pos.x, pos.y, pos.z,
+                blockId,
+                voxelChunks,
+                chunkConfig,
+                tempVertexPtr,
+                tempIndexPtr,
+                faceLocation[chunkIndex][objectId],
+                tempAttrSize,
+                tempIndicesSize,
+                localCurrentFaceCount,
+                localMaxFaceCount,
+                freeFaces[chunkIndex][objectId]);
+        }
+    }
+    
+    // Copy the updated data back to GPU buffers
+    if (tempAttrSize > 0 && tempIndicesSize > 0) {
+        CUDA_CHECK(cudaMemcpy(buffer.getVertexBuffer(), tempVertices.data(),
+                             tempAttrSize * sizeof(VertexAttributes), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(buffer.getIndexBuffer(), tempIndices.data(),
+                             tempIndicesSize * sizeof(unsigned int), cudaMemcpyHostToDevice));
+        
+        // Update the scene geometry pointers to point to the buffer
+        *scene.getChunkGeometryAttributes(chunkIndex, objectId) = buffer.getVertexBuffer();
+        *scene.getChunkGeometryIndices(chunkIndex, objectId) = buffer.getIndexBuffer();
+        scene.getChunkGeometryAttributeSize(chunkIndex, objectId) = tempAttrSize;
+        scene.getChunkGeometryIndicesSize(chunkIndex, objectId) = tempIndicesSize;
+        
+        printf("CAPACITY DEBUG: Successfully updated buffer with %u faces (capacity: %u)\n", 
+               localCurrentFaceCount, buffer.getCapacity());
+    }
+    
+    // Note: The legacy updateSingleVoxelGlobal modifies currentFaceCount and maxFaceCount,
+    // but we can't sync these back to the geometry buffer without more complex integration
+
+    printf("PLACE DEBUG: After geometry update - attributes=%zu, indices=%zu\n",
+           scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+           scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+
+    // Trigger scene update
+    scene.needSceneUpdate = true;
+    scene.sceneUpdateObjectId.push_back(objectId);
+    scene.sceneUpdateInstanceId.push_back(0);
+    scene.sceneUpdateChunkId.push_back(chunkIndex);
+}
+
+void VoxelEngine::placeInstancedBlock(const Int3& pos, unsigned int blockId, int objectId, unsigned int originalBlockId, unsigned int deleteBlockId, Scene& scene)
+{
+    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+    std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+    geometryInstanceIdMap[objectId].insert(instanceId);
+
+    std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)pos.x,
+                                       0.0f, 1.0f, 0.0f, (float)pos.y,
+                                       0.0f, 0.0f, 1.0f, (float)pos.z};
+    instanceTransformMatrices[instanceId] = transform;
+
+    // Trigger scene update
+    scene.needSceneUpdate = true;
+    scene.sceneUpdateObjectId.push_back(objectId);
+    scene.sceneUpdateInstanceId.push_back(instanceId);
+
+    // Handle special light blocks
+    if (IsBaseLightBlockType(deleteBlockId))
+    {
+        int childBlockId = BlockTypeTestLight;
+        int childObjectIdx = childBlockId - 1;
+
+        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+        geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
+        instanceTransformMatrices[childInstanceId] = transform;
+
+        scene.sceneUpdateObjectId.push_back(childObjectIdx);
+        scene.sceneUpdateInstanceId.push_back(childInstanceId);
+    }
+}
+
+void VoxelEngine::removeUninstancedBlock(const Int3& pos, unsigned int blockId, int objectId, Scene& scene)
+{
+    // Determine which chunk this voxel belongs to
+    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+    globalToChunkCoords(pos.x, pos.y, pos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
+    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+
+    // PROPER FIX: Use CPU-accessible temporary buffers for updateSingleVoxelGlobal, then copy to GPU
+    ChunkGeometryBuffer& buffer = geometryManager.getBuffer(chunkIndex, objectId);
+    unsigned int localCurrentFaceCount = buffer.getCurrentFaceCount();
+    unsigned int localMaxFaceCount = buffer.getCapacity();
+    
+    // Create CPU-accessible temporary buffers for the legacy updateSingleVoxelGlobal function
+    std::vector<VertexAttributes> tempVertices(localMaxFaceCount * 4);
+    std::vector<unsigned int> tempIndices(localMaxFaceCount * 6);
+    
+    // Copy existing GPU data to CPU temporary buffers if there's existing data
+    if (localCurrentFaceCount > 0) {
+        CUDA_CHECK(cudaMemcpy(tempVertices.data(), buffer.getVertexBuffer(), 
+                             localCurrentFaceCount * 4 * sizeof(VertexAttributes), cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(tempIndices.data(), buffer.getIndexBuffer(),
+                             localCurrentFaceCount * 6 * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    }
+    
+    // Create temporary CPU pointers for the legacy function
+    VertexAttributes* tempVertexPtr = tempVertices.data();
+    unsigned int* tempIndexPtr = tempIndices.data();
+    unsigned int tempAttrSize = localCurrentFaceCount * 4;
+    unsigned int tempIndicesSize = localCurrentFaceCount * 6;
+    
+    updateSingleVoxelGlobal(
+        pos.x, pos.y, pos.z,
+        0, // newVal = 0 for removal
+        voxelChunks,
+        chunkConfig,
+        tempVertexPtr,
+        tempIndexPtr,
+        faceLocation[chunkIndex][objectId],
+        tempAttrSize,
+        tempIndicesSize,
+        localCurrentFaceCount,
+        localMaxFaceCount,
+        freeFaces[chunkIndex][objectId]);
+    
+    // Copy the updated data back to GPU buffers
+    if (tempAttrSize > 0 && tempIndicesSize > 0) {
+        CUDA_CHECK(cudaMemcpy(buffer.getVertexBuffer(), tempVertices.data(),
+                             tempAttrSize * sizeof(VertexAttributes), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(buffer.getIndexBuffer(), tempIndices.data(),
+                             tempIndicesSize * sizeof(unsigned int), cudaMemcpyHostToDevice));
+        
+        // Update the scene geometry pointers to point to the buffer
+        *scene.getChunkGeometryAttributes(chunkIndex, objectId) = buffer.getVertexBuffer();
+        *scene.getChunkGeometryIndices(chunkIndex, objectId) = buffer.getIndexBuffer();
+        scene.getChunkGeometryAttributeSize(chunkIndex, objectId) = tempAttrSize;
+        scene.getChunkGeometryIndicesSize(chunkIndex, objectId) = tempIndicesSize;
+    }
+
+    // Trigger scene update
+    scene.needSceneUpdate = true;
+    scene.sceneUpdateObjectId.push_back(objectId);
+    scene.sceneUpdateInstanceId.push_back(0);
+    scene.sceneUpdateChunkId.push_back(chunkIndex);
+}
+
+void VoxelEngine::removeInstancedBlock(const Int3& pos, unsigned int blockId, int objectId, Scene& scene)
+{
+    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+    std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+    
+    // Remove instance
+    geometryInstanceIdMap[objectId].erase(instanceId);
+    instanceTransformMatrices.erase(instanceId);
+
+    // Trigger scene update
+    scene.needSceneUpdate = true;
+    scene.sceneUpdateObjectId.push_back(objectId);
+    scene.sceneUpdateInstanceId.push_back(instanceId);
 }

@@ -1,4 +1,5 @@
 #include "VoxelSceneGen.h"
+#include "ChunkGeometryBuffer.h"
 
 #include "Noise.h"
 
@@ -300,7 +301,11 @@ namespace
         if (nx >= width || ny >= width || nz >= width)
             return true; // Out of bounds => treat as empty
         Voxel n = voxels[GetLinearId(nx, ny, nz, width)];
-        return id == 0 ? (n.id != oldId) : (n.id != id);
+        
+        // FACE VISIBILITY FIX: A neighbor is empty if it has no block (id == 0)
+        // When placing a block (id != 0), face shows if neighbor is empty
+        // When removing a block (id == 0), face shows if neighbor has a block
+        return n.id == 0;
     }
 }
 
@@ -416,21 +421,27 @@ void generateMesh(VertexAttributes **attr,
     // Handle zero instances case - early exit with empty geometry
     if (currentFaceCount == 0)
     {
-        maxFaceCount = 0;
+        // DYNAMIC PLACEMENT FIX: Set minimum capacity for future block placement
+        maxFaceCount = 1000; // Reserve space for ~166 blocks (6 faces each)
         attrSize = 0;
         indicesSize = 0;
+        printf("INIT DEBUG: Chunk empty, setting maxFaceCount=%u for future block placement\n", maxFaceCount);
 
-        // Clean up existing geometry
+        // ALLOCATE BUFFERS: Even for empty chunks, allocate buffers for future use
         if (*attr != nullptr)
         {
             cudaFree(*attr);
-            *attr = nullptr;
         }
         if (*indices != nullptr)
         {
             cudaFree(*indices);
-            *indices = nullptr;
         }
+        
+        // Allocate buffers with capacity for maxFaceCount faces
+        cudaMalloc(attr, maxFaceCount * 4 * sizeof(VertexAttributes));
+        cudaMalloc(indices, maxFaceCount * 6 * sizeof(unsigned int));
+        printf("INIT DEBUG: Allocated buffers for %u faces (%zu bytes)\n", 
+               maxFaceCount, maxFaceCount * (4 * sizeof(VertexAttributes) + 6 * sizeof(unsigned int)));
 
         // Initialize empty face location vector
         faceLocation.assign(totalFaces, UINT_MAX);
@@ -530,13 +541,23 @@ void updateSingleFace(
             // Append at the end if we have capacity
             if (currentFaceCount >= maxFaceCount)
             {
+                // EMERGENCY FIX: If maxFaceCount is 0, the chunk wasn't properly initialized
+                if (maxFaceCount == 0) {
+                    printf("FACE DEBUG: EMERGENCY - maxFaceCount=0, cannot create faces! Chunk needs initialization.\n");
+                    return;
+                }
+                
                 // Out of space - you may choose to reallocate or do a full rebuild
-                // For now, just return or handle error
+                printf("FACE DEBUG: ERROR - No space for new face! currentFaceCount=%u >= maxFaceCount=%u\n", 
+                       currentFaceCount, maxFaceCount);
                 return;
             }
             newFaceIndex = currentFaceCount;
             currentFaceCount++;
         }
+
+        printf("FACE DEBUG: SUCCESS - Creating face %d at index %u (currentFaceCount now %u)\n", 
+               f, newFaceIndex, currentFaceCount);
 
         Float3 verts[4];
         ComputeFaceVertices(centerPos, f, verts);
@@ -648,9 +669,34 @@ void updateSingleVoxel(
     Voxel oldVoxel = voxelChunk.data[vid];
     voxelChunk.data[vid].id = newVal;
 
+    // DEBUG: Print voxel state change
+    printf("VOXEL DEBUG: Position (%u,%u,%u) oldVal=%u newVal=%u (changed=%s)\n",
+           x, y, z, oldVoxel.id, newVal, (oldVoxel.id != newVal) ? "YES" : "NO");
+    
+    // DEBUG: Check surrounding voxels to understand the context
+    printf("CONTEXT DEBUG: Checking neighbors of (%u,%u,%u):\n", x, y, z);
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dy == 0 && dz == 0) continue; // Skip center voxel
+                int nx = (int)x + dx;
+                int ny = (int)y + dy; 
+                int nz = (int)z + dz;
+                if (nx >= 0 && nx < (int)voxelChunk.width && 
+                    ny >= 0 && ny < (int)voxelChunk.width && 
+                    nz >= 0 && nz < (int)voxelChunk.width) {
+                    unsigned int nid = GetLinearId(nx, ny, nz, voxelChunk.width);
+                    printf("  neighbor (%d,%d,%d): ID=%u\n", nx, ny, nz, voxelChunk.data[nid].id);
+                }
+            }
+        }
+    }
+
     // If voxel state didn't change, no update needed
-    if (oldVoxel.id == newVal)
+    if (oldVoxel.id == newVal) {
+        printf("VOXEL DEBUG: Skipping update - voxel already has value %u\n", newVal);
         return;
+    }
 
     // For each of the 6 faces of this voxel, determine if the face should exist
     // Face is valid if voxel is filled and neighbor in that direction is empty.
@@ -674,12 +720,33 @@ void updateSingleVoxel(
     }
 
     Float3 centerPos((float)x, (float)y, (float)z);
+    
+    // DEBUG: Print the coordinates being used for face generation
+    if (newVal != 0) {
+        printf("FACE DEBUG: updateSingleVoxel called with local coords (%u, %u, %u) → centerPos(%.1f, %.1f, %.1f)\n",
+               x, y, z, centerPos.x, centerPos.y, centerPos.z);
+        
+        // Count how many faces will be created for this voxel
+        int facesToCreate = 0;
+        for (int f = 0; f < 6; f++) {
+            Int3 dir = faceDirections[f];
+            unsigned int nx = x + dir.x;
+            unsigned int ny = y + dir.y;
+            unsigned int nz = z + dir.z;
+            bool neighEmpty = isNeighborEmpty(nx, ny, nz, voxelChunk.width, voxelChunk.data, newVal, oldVoxel.id);
+            if ((newVal != 0) && neighEmpty) {
+                facesToCreate++;
+            }
+        }
+        printf("FACE DEBUG: Will create %d faces for this block\n", facesToCreate);
+    }
 
     for (int f = 0; f < 6; f++)
     {
         int faceId = (int)(vid * 6 + f);
         bool shouldExist = (newVal != 0) ? facesShouldExist[f] : false;
 
+        printf("FACE DEBUG: Face %d shouldExist=%s\n", f, shouldExist ? "YES" : "NO");
         updateSingleFace(
             faceId,
             faceLocation,
@@ -691,6 +758,7 @@ void updateSingleVoxel(
             currentFaceCount,
             maxFaceCount,
             centerPos);
+        printf("FACE DEBUG: After updateSingleFace, currentFaceCount=%u\n", currentFaceCount);
 
         int colocatedFaceF;
         int colocatedVid;
@@ -718,6 +786,9 @@ void updateSingleVoxel(
 
     attrSize = currentFaceCount * 4;
     indicesSize = currentFaceCount * 6;
+    
+    printf("FACE DEBUG: Final geometry - currentFaceCount=%u, attrSize=%u, indicesSize=%u\n",
+           currentFaceCount, attrSize, indicesSize);
 
     if (0)
     {
@@ -759,6 +830,12 @@ void updateSingleVoxelGlobal(
 
     // Update the voxel in the appropriate chunk
     VoxelChunk &targetChunk = voxelChunks[chunkIndex];
+    
+    // DEBUG: Print coordinate conversion
+    printf("COORD DEBUG: Global(%u,%u,%u) → Chunk(%u,%u,%u) Local(%u,%u,%u) ChunkIndex=%u\n",
+           globalX, globalY, globalZ, chunkX, chunkY, chunkZ, localX, localY, localZ, chunkIndex);
+    
+    printf("CALL DEBUG: About to call updateSingleVoxel with newVal=%u\n", newVal);
     updateSingleVoxel(
         localX, localY, localZ,
         newVal,
@@ -771,6 +848,7 @@ void updateSingleVoxelGlobal(
         currentFaceCount,
         maxFaceCount,
         freeFaces);
+    printf("CALL DEBUG: updateSingleVoxel completed\n");
 }
 
 void generateSea(VertexAttributes **attr,
@@ -855,4 +933,109 @@ void generateSea(VertexAttributes **attr,
     {
         dumpMeshToOBJ(h_attrOut, h_idxOut, attrSize, indicesSize, "debug_sea.obj");
     }
+}
+
+// New generateMesh overload using ChunkGeometryBuffer
+void generateMesh(VertexAttributes **attr,
+                  unsigned int **indices,
+                  unsigned int &attrSize,
+                  unsigned int &indicesSize,
+                  ChunkGeometryBuffer &geometryBuffer,
+                  VoxelChunk &voxelChunk,
+                  Voxel *d_data,
+                  int id)
+{
+    dim3 blockDim = GetBlockDim(BLOCK_DIM_4x4x4);
+    dim3 gridDim = GetGridDim(voxelChunk.width, voxelChunk.width, voxelChunk.width, BLOCK_DIM_4x4x4);
+
+    unsigned int *d_faceValid;
+    unsigned int *d_faceLocation;
+    size_t totalVoxels = voxelChunk.width * voxelChunk.width * voxelChunk.width;
+    size_t totalFaces = totalVoxels * 6;
+    cudaMalloc(&d_faceValid, totalFaces * sizeof(unsigned int));
+    cudaMalloc(&d_faceLocation, totalFaces * sizeof(unsigned int));
+
+    // Mark valid faces
+    MarkValidFaces KERNEL_ARGS2(gridDim, blockDim)(d_data, d_faceValid, voxelChunk.width, id);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    // Prefix sum on face validity
+    unsigned int *d_faceValidPrefixSum;
+    cudaMalloc(&d_faceValidPrefixSum, totalFaces * sizeof(unsigned int));
+
+    void *d_temp_storage = NULL;
+    size_t temp_storage_bytes = 0;
+    // Determine temp storage size
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
+    cudaMalloc(&d_temp_storage, temp_storage_bytes);
+    cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes, d_faceValid, d_faceValidPrefixSum, totalFaces);
+    cudaFree(d_temp_storage);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    // Find how many faces are valid total
+    unsigned int currentFaceCount = 0;
+    cudaMemcpy(&currentFaceCount, &d_faceValidPrefixSum[totalFaces - 1], sizeof(unsigned int), cudaMemcpyDeviceToHost);
+
+    // Handle zero instances case - use geometry buffer to allocate capacity
+    if (currentFaceCount == 0)
+    {
+        attrSize = 0;
+        indicesSize = 0;
+        
+        // GeometryBuffer is already initialized with capacity, just reset
+        geometryBuffer.reset();
+        
+        // Set output pointers to geometry buffer (which has capacity allocated)
+        *attr = geometryBuffer.getVertexBuffer();
+        *indices = geometryBuffer.getIndexBuffer();
+        
+        printf("GEOMETRY BUFFER DEBUG: Empty chunk, using buffer capacity %u\n", geometryBuffer.getCapacity());
+
+        // Cleanup and return early
+        cudaFree(d_faceValid);
+        cudaFree(d_faceLocation);
+        cudaFree(d_faceValidPrefixSum);
+        return;
+    }
+
+    // Ensure geometry buffer has enough capacity
+    if (!geometryBuffer.ensureCapacity(currentFaceCount)) {
+        printf("GEOMETRY BUFFER ERROR: Failed to ensure capacity for %u faces\n", currentFaceCount);
+        cudaFree(d_faceValid);
+        cudaFree(d_faceLocation);
+        cudaFree(d_faceValidPrefixSum);
+        return;
+    }
+
+    attrSize = currentFaceCount * 4;
+    indicesSize = currentFaceCount * 6;
+
+    // Get buffers from geometry manager
+    *attr = geometryBuffer.getVertexBuffer();
+    *indices = geometryBuffer.getIndexBuffer();
+
+    // Reset the geometry buffer and set face count
+    geometryBuffer.reset();
+    // Manually set the face count (simulating allocation)
+    for (unsigned int i = 0; i < currentFaceCount; i++) {
+        geometryBuffer.allocateFace();
+    }
+
+    // 5. Compact the mesh directly
+    CompactMesh KERNEL_ARGS2(gridDim, blockDim)(*attr, *indices, d_faceLocation, d_data, d_faceValidPrefixSum, voxelChunk.width, id);
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
+
+    // Cleanup
+    cudaFree(d_faceValid);
+    cudaFree(d_faceLocation);
+    cudaFree(d_faceValidPrefixSum);
+
+    printf("GEOMETRY BUFFER: Generated mesh with %u faces, using buffer capacity %u\n", 
+           currentFaceCount, geometryBuffer.getCapacity());
 }

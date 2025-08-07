@@ -17,6 +17,9 @@
 
 #include "util/RandGenHost.h"
 #include "shaders/RandGen.h"
+#include "core/MaterialManager.h"
+
+#include <map>
 
 class OptixRenderer
 {
@@ -65,6 +68,21 @@ private:
     std::unordered_map<unsigned int, OptixTraversableHandle> objectIdxToBlasHandleMap;
 
     std::vector<GeometryData> m_geometries;
+    
+    // SPARSE GEOMETRY MAPPING SYSTEM: Maps logical coordinates to actual geometry indices
+    struct ChunkObjectKey {
+        unsigned int chunkIndex;
+        unsigned int objectId;
+        
+        bool operator<(const ChunkObjectKey& other) const {
+            if (chunkIndex != other.chunkIndex) return chunkIndex < other.chunkIndex;
+            return objectId < other.objectId;
+        }
+    };
+    
+    std::map<ChunkObjectKey, size_t> m_chunkGeometryMap;        // Maps (chunk,object) -> geometry index
+    std::map<unsigned int, size_t> m_instancedGeometryMap;      // Maps objectId -> geometry index  
+    std::map<size_t, size_t> m_entityGeometryMap;              // Maps entityIndex -> geometry index
 
     OptixShaderBindingTable m_sbt;
 
@@ -79,8 +97,6 @@ private:
 
     SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
 
-    std::vector<MaterialParameter> m_materialParameters;
-    unsigned int m_entityMaterialStartIndex = 0;
 
     BlueNoiseRandGeneratorHost h_randGen{};
     BlueNoiseRandGenerator d_randGen{static_cast<BlueNoiseRandGenerator>(h_randGen)};

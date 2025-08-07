@@ -277,9 +277,14 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
             // Check if this entity has animations that require geometry updates
             if (entity->hasAnimation())
             {
-                // Calculate the correct geometry index for entities
-                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
-
+                // SPARSE MAPPING: Look up entity geometry in sparse mapping
+                auto entityGeometryIt = m_entityGeometryMap.find(entityIndex);
+                if (entityGeometryIt == m_entityGeometryMap.end()) {
+                    printf("ENTITY UPDATE ERROR: Entity geometry not found in sparse mapping (entityIndex=%zu)\n", entityIndex);
+                    continue;
+                }
+                
+                size_t geometryIndex = entityGeometryIt->second;
                 if (geometryIndex < m_geometries.size())
                 {
                     GeometryData &geometry = m_geometries[geometryIndex];
@@ -328,9 +333,6 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                             m_sbtRecordGeometryInstanceData[sbtIndex].data.indices = (Int3 *)geometry.indices;
                             m_sbtRecordGeometryInstanceData[sbtIndex].data.attributes = (VertexAttributes *)geometry.attributes;
                             
-                            // CRITICAL FIX: Add bounds information to prevent illegal memory access
-                            m_sbtRecordGeometryInstanceData[sbtIndex].data.numIndices = geometry.numIndices / 3; // Convert to triangle count
-                            m_sbtRecordGeometryInstanceData[sbtIndex].data.numAttributes = geometry.numAttributes;
                         }
                     }
                 }
@@ -389,6 +391,7 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                                               d_tmp, iasBufferSizes.tempSizeInBytes,
                                               m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
                                               &m_systemParameter.topObject, nullptr, 0));
+            
 
             // Clean up temporary allocations
             CUDA_CHECK(cudaFree((void *)d_tmp));
@@ -607,9 +610,6 @@ void OptixRenderer::update()
                         m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
                         m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
                         
-                        // CRITICAL FIX: Add bounds information to prevent illegal memory access
-                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numIndices = geometry.numIndices / 3; // Convert to triangle count
-                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numAttributes = geometry.numAttributes;
                     }
                 }
             }
@@ -680,53 +680,183 @@ void OptixRenderer::update()
             // Uninstanced
             if (IsUninstancedBlockType(blockId))
             {
-                // Optimized: only update specific chunks that have changed
+                // SPARSE GEOMETRY UPDATE: Use sparse mapping system for dynamic updates
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
-                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
-
-                assert(geometryIndex < m_geometries.size());
+                ChunkObjectKey chunkKey = {chunkIndex, objectId};
+                
+                
+                // Check if this geometry has non-zero size (valid for update/creation)
                 if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
                     scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
                 {
-                    GeometryData &geometry = m_geometries[geometryIndex];
-                    CUDA_CHECK(cudaFree((void *)geometry.gas));
-
-                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                        m_api, m_context, Backend::Get().getCudaStream(),
-                        geometry,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
-
-                    // Find and update the corresponding instance, and get its sbtOffset
-                    unsigned int sbtIndex = 0;
-                    bool instanceFound = false;
-                    for (auto &instance : m_instances)
+                    // Check if geometry already exists in sparse mapping
+                    auto chunkGeometryIt = m_chunkGeometryMap.find(chunkKey);
+                    
+                    if (chunkGeometryIt != m_chunkGeometryMap.end())
                     {
-                        if (instance.instanceId == geometryIndex)
-                        {
-                            instance.traversableHandle = blasHandle;
-                            sbtIndex = instance.sbtOffset;
-                            instanceFound = true;
-                            break;
+                        // CASE 1: Update existing geometry
+                        size_t geometryIndex = chunkGeometryIt->second;
+                        if (geometryIndex < m_geometries.size()) {
+                            printf("SPARSE UPDATE: Updating existing chunk geometry (chunk=%u, object=%u, mapped_index=%zu)\n", 
+                                   chunkIndex, objectId, geometryIndex);
+                            
+                            GeometryData &geometry = m_geometries[geometryIndex];
+                            CUDA_CHECK(cudaFree((void *)geometry.gas));
+
+                            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                                m_api, m_context, Backend::Get().getCudaStream(),
+                                geometry,
+                                *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                                *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                                scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                                scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+
+                            // Find and update the corresponding instance using the OLD instanceId system
+                            unsigned int expectedInstanceId = chunkIndex * scene.uninstancedGeometryCount + objectId;
+                            for (auto &instance : m_instances)
+                            {
+                                if (instance.instanceId == expectedInstanceId)
+                                {
+                                    instance.traversableHandle = blasHandle;
+                                    printf("SPARSE UPDATE: Updated instance traversable handle (instanceId=%u)\n", expectedInstanceId);
+                                    printf("SPARSE UPDATE: Instance transform: [%.1f %.1f %.1f %.1f] [%.1f %.1f %.1f %.1f] [%.1f %.1f %.1f %.1f]\n",
+                                           instance.transform[0], instance.transform[1], instance.transform[2], instance.transform[3],
+                                           instance.transform[4], instance.transform[5], instance.transform[6], instance.transform[7], 
+                                           instance.transform[8], instance.transform[9], instance.transform[10], instance.transform[11]);
+                                    printf("SPARSE UPDATE: Instance visibility mask: %u, flags: %u\n", instance.visibilityMask, instance.flags);
+                                    
+                                    // Update SBT records using the instance's sbtOffset
+                                    unsigned int sbtIndex = instance.sbtOffset;
+                                    if (sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size()) {
+                                        // MATERIAL FIX: Get correct material for this block type
+                                        unsigned int blockType = ObjectIdToBlockId(objectId);
+                                        unsigned int materialIndex = MaterialManager::Get().getMaterialIndexForBlock(blockType);
+                                        
+                                        for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                                        {
+                                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+                                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+                                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.materialIndex = materialIndex;
+                                        }
+                                        printf("SPARSE UPDATE: Updated SBT records (sbtIndex=%u, materialIndex=%u)\n", sbtIndex, materialIndex);
+                                        printf("SPARSE UPDATE: SBT geometry pointers: d_indices=%p, d_attributes=%p\n", 
+                                               m_sbtRecordGeometryInstanceData[sbtIndex].data.indices,
+                                               m_sbtRecordGeometryInstanceData[sbtIndex].data.attributes);
+                                    }
+                                    break;
+                                }
+                            }
                         }
                     }
-
-                    // Update shader binding table record using the correct SBT index
-                    if (instanceFound)
+                    else
                     {
-                        assert(sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size());
-
+                        // CASE 2: Create new geometry (this is a newly placed block)
+                        printf("SPARSE UPDATE: Creating new chunk geometry (chunk=%u, object=%u)\n", chunkIndex, objectId);
+                        
+                        GeometryData geometry = {};
+                        OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                            m_api, m_context, Backend::Get().getCudaStream(),
+                            geometry,
+                            *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+                            *scene.getChunkGeometryIndices(chunkIndex, objectId),
+                            scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+                            scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+                        
+                        // Register in sparse mapping
+                        size_t geometryIndex = m_geometries.size();
+                        m_geometries.push_back(geometry);
+                        m_chunkGeometryMap[chunkKey] = geometryIndex;
+                        printf("SPARSE UPDATE: Registered new chunk geometry (chunk=%u, object=%u) -> index=%zu\n", 
+                               chunkIndex, objectId, geometryIndex);
+                        
+                        // Create new instance for the new geometry
+                        auto &voxelEngine = VoxelEngine::Get();
+                        auto &chunkConfig = voxelEngine.chunkConfig;
+                        unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+                        unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+                        unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+                        
+                        OptixInstance instance = {};
+                        const float transformMatrix[12] =
+                            {
+                                1.0f, 0.0f, 0.0f, (float)(chunkX * VoxelChunk::width),
+                                0.0f, 1.0f, 0.0f, (float)(chunkY * VoxelChunk::width),
+                                0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
+                        memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+                        instance.instanceId = chunkIndex * scene.uninstancedGeometryCount + objectId;
+                        instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
+                        instance.sbtOffset = m_sbtRecordGeometryInstanceData.size(); // Use next available SBT slot
+                        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+                        instance.traversableHandle = blasHandle;
+                        m_instances.push_back(instance);
+                        
+                        printf("SPARSE UPDATE: Created new instance (instanceId=%u, sbtOffset=%u)\n", 
+                               instance.instanceId, instance.sbtOffset);
+                        
+                        // Create new SBT records for the new geometry
+                        // MATERIAL FIX: Get correct material for this block type (outside the loop)
+                        unsigned int blockType = ObjectIdToBlockId(objectId);
+                        unsigned int materialIndex = MaterialManager::Get().getMaterialIndexForBlock(blockType);
+                        
                         for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
                         {
-                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
-                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+                            SbtRecordGeometryInstanceData sbtRecord;
+                            if (rayType == 0)
+                            {
+                                memcpy(sbtRecord.header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                            }
+                            else
+                            {
+                                memcpy(sbtRecord.header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                            }
                             
-                            // CRITICAL FIX: Add bounds information to prevent illegal memory access
-                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numIndices = geometry.numIndices / 3; // Convert to triangle count
-                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.numAttributes = geometry.numAttributes;
+                            sbtRecord.data.indices = (Int3 *)geometry.indices;
+                            sbtRecord.data.attributes = (VertexAttributes *)geometry.attributes;
+                            sbtRecord.data.materialIndex = materialIndex;
+                            
+                            m_sbtRecordGeometryInstanceData.push_back(sbtRecord);
                         }
+                        printf("SPARSE UPDATE: Added SBT records for new geometry (materialIndex=%u)\n", materialIndex);
+                    }
+                }
+                else
+                {
+                    // CASE 3: Remove geometry (block was deleted - size is now 0)
+                    auto chunkGeometryIt = m_chunkGeometryMap.find(chunkKey);
+                    if (chunkGeometryIt != m_chunkGeometryMap.end())
+                    {
+                        printf("SPARSE UPDATE: Removing chunk geometry (chunk=%u, object=%u)\n", chunkIndex, objectId);
+                        
+                        // Find and remove the corresponding instance
+                        unsigned int expectedInstanceId = chunkIndex * scene.uninstancedGeometryCount + objectId;
+                        auto instanceIt = std::find_if(m_instances.begin(), m_instances.end(), 
+                            [expectedInstanceId](const OptixInstance& inst) { 
+                                return inst.instanceId == expectedInstanceId; 
+                            });
+                        
+                        if (instanceIt != m_instances.end()) {
+                            printf("SPARSE UPDATE: Removed instance (instanceId=%u)\n", expectedInstanceId);
+                            m_instances.erase(instanceIt);
+                        }
+                        
+                        // Note: We don't remove from m_geometries or m_chunkGeometryMap to avoid invalidating indices
+                        // Instead, we just mark the geometry as invalid by setting gas = 0
+                        size_t geometryIndex = chunkGeometryIt->second;
+                        if (geometryIndex < m_geometries.size()) {
+                            GeometryData &geometry = m_geometries[geometryIndex];
+                            if (geometry.gas != 0) {
+                                CUDA_CHECK(cudaFree((void *)geometry.gas));
+                                geometry.gas = 0;
+                                geometry.indices = nullptr;
+                                geometry.attributes = nullptr;
+                                geometry.numIndices = 0;
+                                geometry.numAttributes = 0;
+                                printf("SPARSE UPDATE: Invalidated geometry at index %zu\n", geometryIndex);
+                            }
+                        }
+                        
+                        // Remove from mapping
+                        m_chunkGeometryMap.erase(chunkGeometryIt);
                     }
                 }
             }
@@ -958,90 +1088,13 @@ void OptixRenderer::init()
         }
     }
 
-    // Create materials
+    // DYNAMIC MATERIAL SYSTEM: Initialize MaterialManager instead of hardcoded materials
     {
-        // Setup GUI material parameter, one for each of the implemented BSDFs.
-
-        TextureManager &textureManager = TextureManager::Get();
-
-        // The order in this array matches the instance ID in the root IAS!
-        for (const auto &textureFile : GetTextureFiles())
-        {
-            MaterialParameter parameter{};
-            parameter.uvScale = 2.5f;
-            parameter.textureAlbedo = textureManager.GetTexture("data/textures/" + textureFile + "_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/textures/" + textureFile + "_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/textures/" + textureFile + "_rough.png");
-            parameter.useWorldGridUV = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Test material
-        {
-            MaterialParameter parameter{};
-            parameter.albedo = Float3(1.0f);
-            // parameter.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
-            // parameter.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
-            // parameter.textureRoughness = textureManager.GetTexture("data/GreenLeaf10_4K_back_rough.png");
-            parameter.roughness = 0.0f;
-            parameter.translucency = 0.0f;
-            // parameter.isThinfilm = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Leaf material
-        {
-            MaterialParameter parameter{};
-            parameter.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/GreenLeaf10_4K_back_rough.png");
-            parameter.translucency = 0.5f;
-            parameter.isThinfilm = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Lantern base
-        {
-            MaterialParameter parameter{};
-            std::string textureFile = "beaten-up-metal1";
-            parameter.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
-            parameter.textureMetallic = textureManager.GetTexture("data/" + textureFile + "_metal.png");
-            parameter.useWorldGridUV = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Lantern light
-        {
-            MaterialParameter parameter{};
-            parameter.albedo = GetEmissiveRadiance(BlockTypeTestLight);
-            parameter.isEmissive = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Store the index where entity materials start
-        unsigned int entityMaterialStartIndex = m_materialParameters.size();
-
-        // Entity materials
-        // Minecraft 1.8+ Character material with pink-smoothie texture
-        {
-            MaterialParameter parameter{};
-            parameter.textureAlbedo = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_roughness.png");
-            parameter.albedo = Float3(1.0f, 1.0f, 1.0f); // White base color to let texture show through
-            parameter.roughness = 1.0f;                  // Let the roughness map control this
-            parameter.metallic = 0.0f;                   // Non-metallic material
-            parameter.materialId = entityMaterialStartIndex + EntityTypeMinecraftCharacter;
-            parameter.useWorldGridUV = false; // Use model UV coordinates, not world grid
-            parameter.uvScale = 1.0f;         // Don't scale the UV coordinates
-
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Store entity material mapping for easy access
-        m_entityMaterialStartIndex = entityMaterialStartIndex;
+        MaterialManager& materialManager = MaterialManager::Get();
+        materialManager.init();
+        
+        // Print material information for debugging
+        materialManager.printMaterialInfo();
     }
 
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
@@ -1070,7 +1123,13 @@ void OptixRenderer::init()
                     *scene.getChunkGeometryIndices(chunkIndex, objectId),
                     scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
                     scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+                
+                // SPARSE MAPPING: Register this chunk geometry in the mapping system
+                size_t geometryIndex = m_geometries.size();
                 m_geometries.push_back(geometry);
+                m_chunkGeometryMap[{chunkIndex, objectId}] = geometryIndex;
+                printf("SPARSE MAPPING: Registered chunk geometry (chunk=%u, object=%u) -> index=%zu\n", 
+                       chunkIndex, objectId, geometryIndex);
 
                 // Calculate chunk offset for world coordinates
                 auto &voxelEngine = VoxelEngine::Get();
@@ -1118,7 +1177,12 @@ void OptixRenderer::init()
                 scene.m_instancedGeometryAttributeSize[arrayIndex],
                 scene.m_instancedGeometryIndicesSize[arrayIndex]);
 
+            // SPARSE MAPPING: Register this instanced geometry in the mapping system
+            size_t geometryIndex = m_geometries.size();
             m_geometries.push_back(geometry);
+            m_instancedGeometryMap[objectId] = geometryIndex;
+            printf("SPARSE MAPPING: Registered instanced geometry (objectId=%u) -> index=%zu, triangles=%zu\n", 
+                   objectId, geometryIndex, geometry.numIndices / 3);
             objectIdxToBlasHandleMap[objectId] = blasHandle;
         }
         else
@@ -1127,9 +1191,11 @@ void OptixRenderer::init()
             GeometryData geometry = {};
             geometry.indices = nullptr;
             geometry.attributes = nullptr;
-            geometry.numAttributes = 0;
             geometry.numIndices = 0;
+            geometry.numAttributes = 0;
             geometry.gas = 0;
+            printf("GEOMETRY CREATION DEBUG: Adding empty instanced geometry (objectId=%u, numIndices=%zu, numTriangles=%zu)\n", 
+                   objectId, geometry.numIndices, geometry.numIndices / 3);
             m_geometries.push_back(geometry);
             objectIdxToBlasHandleMap[objectId] = 0;
         }
@@ -1171,7 +1237,12 @@ void OptixRenderer::init()
                 entity->getIndicesSize(),
                 true); // Allow updates for animated entities
 
+            // SPARSE MAPPING: Register this entity geometry in the mapping system
+            size_t geometryIndex = m_geometries.size();
             m_geometries.push_back(geometry);
+            m_entityGeometryMap[entityIndex] = geometryIndex;
+            printf("SPARSE MAPPING: Registered entity geometry (entityIndex=%zu) -> index=%zu, triangles=%zu\n", 
+                   entityIndex, geometryIndex, geometry.numIndices / 3);
 
             // Create an instance for the entity
             OptixInstance instance = {};
@@ -1479,61 +1550,44 @@ void OptixRenderer::init()
         // Initialize SBT records for all geometry instances
         unsigned int sbtRecordIndex = 0;
 
-        // Setup SBT records for chunk-based uninstanced geometry
-        for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
+        // SPARSE GEOMETRY MAPPING: Setup SBT records using sparse mapping system
+        // Process chunk geometries that actually exist in the mapping
+        for (const auto& entry : m_chunkGeometryMap)
         {
-            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
-            {
-                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
-                {
-                    unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
-
-                    // Skip SBT creation if geometry has null pointers (empty geometry)
-                    assert(geometryIndex < m_geometries.size());
-                    if (m_geometries[geometryIndex].indices == nullptr || m_geometries[geometryIndex].attributes == nullptr) {
-                        continue; // Skip this geometry, no SBT records created
-                    }
-
-                    for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
-                    {
-                        if (rayType == 0)
-                        {
-                            memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                        }
-                        else
-                        {
-                            memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                        }
-
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                        
-                        // CRITICAL FIX: Add bounds information to prevent illegal memory access
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numIndices = m_geometries[geometryIndex].numIndices / 3; // Convert to triangle count
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numAttributes = m_geometries[geometryIndex].numAttributes;
-                        
-                        // Map objectId to material index (objectId 1->16 maps to material index 0->15)
-                        unsigned int materialIndex = (objectId >= 1) ? (objectId - 1) : 0;
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = materialIndex;
-                        sbtRecordIndex++;
-                    }
-                }
+            unsigned int chunkIndex = entry.first.chunkIndex;
+            unsigned int objectId = entry.first.objectId;
+            size_t geometryIndex = entry.second;
+            
+            // SPARSE SBT VALIDATION: Validate mapped geometry exists and is valid
+            if (geometryIndex >= m_geometries.size()) {
+                printf("SPARSE SBT ERROR: Mapped geometry index out of bounds (chunk=%u, object=%u, index=%zu, size=%zu)\n", 
+                       chunkIndex, objectId, geometryIndex, m_geometries.size());
+                continue;
             }
-        }
-
-        // Setup SBT records for instanced geometry
-        for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
-        {
-            // Calculate the correct geometry index for instanced objects
-            // Instanced geometries are stored after all chunk-based geometries
-            unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
-
-            // Skip SBT creation if geometry has null pointers (empty geometry)
-            assert(geometryIndex < m_geometries.size());
-            if (m_geometries[geometryIndex].indices == nullptr || m_geometries[geometryIndex].attributes == nullptr) {
-                continue; // Skip this geometry, no SBT records created
+            
+            const GeometryData &geometry = m_geometries[geometryIndex];
+            
+            // Skip invalid geometry to prevent crashes
+            if (geometry.indices == nullptr || geometry.attributes == nullptr) {
+                printf("SPARSE SBT SKIP: Null geometry pointers (chunk=%u, object=%u)\n", chunkIndex, objectId);
+                continue;
             }
+            
+            // Skip empty geometry
+            if (geometry.numIndices == 0 || geometry.numAttributes == 0) {
+                printf("SPARSE SBT SKIP: Empty geometry (chunk=%u, object=%u, indices=%zu, attributes=%zu)\n", 
+                       chunkIndex, objectId, geometry.numIndices, geometry.numAttributes);
+                continue;
+            }
+            
+            // Skip geometry without valid GAS
+            if (geometry.gas == 0) {
+                printf("SPARSE SBT SKIP: Invalid GAS (chunk=%u, object=%u)\n", chunkIndex, objectId);
+                continue;
+            }
+            
+            printf("SPARSE SBT SUCCESS: Adding chunk geometry (chunk=%u, object=%u, mapped_index=%zu, triangles=%zu)\n", 
+                   chunkIndex, objectId, geometryIndex, geometry.numIndices / 3);
 
             for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
             {
@@ -1546,55 +1600,144 @@ void OptixRenderer::init()
                     memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                 }
 
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)geometry.indices;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)geometry.attributes;
                 
-                // CRITICAL FIX: Add bounds information to prevent illegal memory access
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numIndices = m_geometries[geometryIndex].numIndices / 3; // Convert to triangle count
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numAttributes = m_geometries[geometryIndex].numAttributes;
-                
-                // Map objectId to material index (objectId 1->16 maps to material index 0->15)
-                unsigned int materialIndex = (objectId >= 1) ? (objectId - 1) : 0;
+                // DYNAMIC MATERIALS: Use MaterialManager to get correct material for block type
+                unsigned int blockType = ObjectIdToBlockId(objectId);
+                unsigned int materialIndex = MaterialManager::Get().getMaterialIndexForBlock(blockType);
                 m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = materialIndex;
                 sbtRecordIndex++;
             }
         }
 
-        // Setup SBT records for entities
-        for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+        // SPARSE GEOMETRY MAPPING: Setup SBT records for instanced geometry using sparse mapping
+        // Process instanced geometries that actually exist in the mapping
+        for (const auto& entry : m_instancedGeometryMap)
         {
-            Entity *entity = scene.getEntity(entityIndex);
-            if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+            unsigned int objectId = entry.first;
+            size_t geometryIndex = entry.second;
+            
+            // SPARSE SBT VALIDATION: Validate mapped instanced geometry exists and is valid
+            if (geometryIndex >= m_geometries.size()) {
+                printf("SPARSE SBT ERROR: Mapped instanced geometry index out of bounds (objectId=%u, index=%zu, size=%zu)\n", 
+                       objectId, geometryIndex, m_geometries.size());
+                continue;
+            }
+            
+            const GeometryData &geometry = m_geometries[geometryIndex];
+            
+            printf("SPARSE SBT DEBUG: Reading instanced geometry (objectId=%u, mapped_index=%zu): numIndices=%zu, numAttributes=%zu, indices=%p, attributes=%p\n",
+                   objectId, geometryIndex, geometry.numIndices, geometry.numAttributes, geometry.indices, geometry.attributes);
+            
+            // Skip invalid instanced geometry
+            if (geometry.indices == nullptr || geometry.attributes == nullptr) {
+                printf("SPARSE SBT SKIP: Null instanced geometry pointers (objectId=%u)\n", objectId);
+                continue;
+            }
+            
+            // Skip empty instanced geometry
+            if (geometry.numIndices == 0 || geometry.numAttributes == 0) {
+                printf("SPARSE SBT SKIP: Empty instanced geometry (objectId=%u, indices=%zu, attributes=%zu)\n", 
+                       objectId, geometry.numIndices, geometry.numAttributes);
+                continue;
+            }
+            
+            // Skip geometry without valid GAS
+            if (geometry.gas == 0) {
+                printf("SPARSE SBT SKIP: Invalid instanced GAS (objectId=%u)\n", objectId);
+                continue;
+            }
+            
+            printf("SPARSE SBT SUCCESS: Adding instanced geometry (objectId=%u, mapped_index=%zu, triangles=%zu)\n", 
+                   objectId, geometryIndex, geometry.numIndices / 3);
+
+            for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
             {
-                // Calculate the correct geometry index for entities
-                // Entities are stored after all chunk-based and instanced geometries
-                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
-
-                for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                if (rayType == 0)
                 {
-                    if (rayType == 0)
-                    {
-                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                    }
-                    else
-                    {
-                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                    }
-
-                    assert(geometryIndex < m_geometries.size());
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                    
-                    // CRITICAL FIX: Add bounds information to prevent illegal memory access
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numIndices = m_geometries[geometryIndex].numIndices / 3; // Convert to triangle count
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.numAttributes = m_geometries[geometryIndex].numAttributes;
-                    
-                    // Use the correct material index for entities from the material array
-                    unsigned int entityMaterialIndex = m_entityMaterialStartIndex + static_cast<unsigned int>(entity->getType());
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = entityMaterialIndex;
-
-                    sbtRecordIndex++;
+                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                 }
+                else
+                {
+                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                }
+
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)geometry.indices;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)geometry.attributes;
+                
+                // DYNAMIC MATERIALS: Use MaterialManager to get correct material for block type
+                unsigned int blockType = ObjectIdToBlockId(objectId);
+                unsigned int materialIndex = MaterialManager::Get().getMaterialIndexForBlock(blockType);
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = materialIndex;
+                sbtRecordIndex++;
+            }
+        }
+
+        // SPARSE GEOMETRY MAPPING: Setup SBT records for entities using sparse mapping
+        // Process entity geometries that actually exist in the mapping
+        for (const auto& entry : m_entityGeometryMap)
+        {
+            size_t entityIndex = entry.first;
+            size_t geometryIndex = entry.second;
+            
+            // Get entity for material information
+            Entity *entity = scene.getEntity(entityIndex);
+            if (!entity) {
+                printf("SPARSE SBT ERROR: Entity not found (entityIndex=%zu)\n", entityIndex);
+                continue;
+            }
+            
+            // SPARSE SBT VALIDATION: Validate mapped entity geometry exists and is valid
+            if (geometryIndex >= m_geometries.size()) {
+                printf("SPARSE SBT ERROR: Mapped entity geometry index out of bounds (entityIndex=%zu, index=%zu, size=%zu)\n", 
+                       entityIndex, geometryIndex, m_geometries.size());
+                continue;
+            }
+            
+            const GeometryData &geometry = m_geometries[geometryIndex];
+            
+            // Skip invalid entity geometry
+            if (geometry.indices == nullptr || geometry.attributes == nullptr) {
+                printf("SPARSE SBT SKIP: Null entity geometry pointers (entityIndex=%zu)\n", entityIndex);
+                continue;
+            }
+            
+            // Skip empty entity geometry
+            if (geometry.numIndices == 0 || geometry.numAttributes == 0) {
+                printf("SPARSE SBT SKIP: Empty entity geometry (entityIndex=%zu, indices=%zu, attributes=%zu)\n", 
+                       entityIndex, geometry.numIndices, geometry.numAttributes);
+                continue;
+            }
+            
+            // Skip geometry without valid GAS
+            if (geometry.gas == 0) {
+                printf("SPARSE SBT SKIP: Invalid entity GAS (entityIndex=%zu)\n", entityIndex);
+                continue;
+            }
+            
+            printf("SPARSE SBT SUCCESS: Adding entity geometry (entityIndex=%zu, mapped_index=%zu, triangles=%zu)\n", 
+                   entityIndex, geometryIndex, geometry.numIndices / 3);
+
+            for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+            {
+                if (rayType == 0)
+                {
+                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                }
+                else
+                {
+                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                }
+
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)geometry.indices;
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)geometry.attributes;
+                
+                // DYNAMIC MATERIALS: Use MaterialManager to get correct material for entity type
+                unsigned int entityMaterialIndex = MaterialManager::Get().getMaterialIndexForEntity(static_cast<unsigned int>(entity->getType()));
+                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = entityMaterialIndex;
+
+                sbtRecordIndex++;
             }
         }
 
@@ -1641,11 +1784,10 @@ void OptixRenderer::init()
 
     // Setup "sysParam" data.
     {
-        CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-        
-        // Set the number of material parameters for bounds checking
-        m_systemParameter.numMaterialParameters = (unsigned int)m_materialParameters.size();
+        // DYNAMIC MATERIALS: Use MaterialManager's GPU materials instead of hardcoded array
+        MaterialManager& materialManager = MaterialManager::Get();
+        m_systemParameter.materialParameters = materialManager.getDeviceMaterialParameters();
+        m_systemParameter.numMaterialParameters = materialManager.getMaterialCount();
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));

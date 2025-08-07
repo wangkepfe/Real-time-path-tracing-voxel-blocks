@@ -104,6 +104,7 @@ set( SOURCES
     main.cpp
     renderer/core/Backend.cpp
     renderer/core/OptixRenderer.cpp
+    renderer/core/MaterialManager.cpp
     renderer/core/Scene.cpp
     renderer/core/Entity.cpp
     renderer/core/Character.cpp
@@ -129,6 +130,7 @@ set( SOURCES
     renderer/animation/VertexSkinning.cu
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
+    voxelengine/ChunkGeometryBuffer.cpp
     voxelengine/Noise.cpp
     renderer/shaders/AliasTable.cu
 )
@@ -249,6 +251,7 @@ set( OFFLINE_SOURCES
     renderer/core/OfflineBackend.cpp
     renderer/core/SceneConfig.cpp
     renderer/core/OptixRenderer.cpp
+    renderer/core/MaterialManager.cpp
     renderer/core/Scene.cpp
     renderer/core/Entity.cpp
     renderer/core/Character.cpp
@@ -271,6 +274,7 @@ set( OFFLINE_SOURCES
     renderer/animation/VertexSkinning.cu
     voxelengine/VoxelEngine.cu
     voxelengine/VoxelSceneGen.cu
+    voxelengine/ChunkGeometryBuffer.cpp
     voxelengine/Noise.cpp
     renderer/shaders/AliasTable.cu
 )

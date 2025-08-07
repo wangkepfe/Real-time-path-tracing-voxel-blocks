@@ -6,6 +6,9 @@
 
 #include <vector>
 
+// Forward declaration to avoid circular dependency
+class ChunkGeometryBuffer;
+
 // Chunk configuration structure to avoid circular dependencies
 struct ChunkConfiguration
 {
@@ -33,6 +36,16 @@ void generateMesh(VertexAttributes **attr,
                   unsigned int &indicesSize,
                   unsigned int &currentFaceCount,
                   unsigned int &maxFaceCount,
+                  VoxelChunk &voxelChunk,
+                  Voxel *d_data,
+                  int id);
+
+// New overload using ChunkGeometryBuffer
+void generateMesh(VertexAttributes **attr,
+                  unsigned int **indices,
+                  unsigned int &attrSize,
+                  unsigned int &indicesSize,
+                  ChunkGeometryBuffer &geometryBuffer,
                   VoxelChunk &voxelChunk,
                   Voxel *d_data,
                   int id);
