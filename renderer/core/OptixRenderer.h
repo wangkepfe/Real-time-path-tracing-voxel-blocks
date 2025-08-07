@@ -45,8 +45,12 @@ public:
 private:
     OptixRenderer() {}
 
+    // OptiX pipeline configuration constants
+    static constexpr int NUM_RAY_TYPES = 2;
+
     void updateAnimatedEntities(CUstream cudaStream, float currentTime);
     void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex = false);
+    void rebuildTlasIfNeeded(CUstream cudaStream);
 
     int m_width;
     int m_height;
@@ -58,6 +62,9 @@ private:
     CUdeviceptr m_d_ias[2] = {0, 0};
     int m_currentIasIdx = 0;
     OptixPipeline m_pipeline;
+
+    // TLAS rebuild optimization
+    bool m_needTlasRebuild = false;
 
     SystemParameter *m_d_systemParameter;
 
