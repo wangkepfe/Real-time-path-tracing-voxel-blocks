@@ -150,32 +150,18 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    // CAMERA HISTORY UPDATE: Store PREVIOUS frame camera state before current frame processing
-    // This should happen BEFORE InputHandler updates the camera for the current frame
-    // The history camera should contain the camera state from the PREVIOUS frame
-    // TODO: Move this to happen before InputHandler::update() is called
-    
-    // UNIFIED CAMERA MANAGEMENT: Camera is updated ONLY by InputHandler
-    // OptixRenderer no longer calls camera.update() - this prevents position corruption
-    // The camera matrices are already updated by the active CameraController
 #ifndef OFFLINE_MODE
-    // Online mode: Camera is managed by InputHandler's CameraControllers
-    // No need to call camera.update() here - it's handled in InputHandler::update()
 #else
-    // Offline mode: For now, still use traditional camera update
-    // TODO: Integrate unified camera management with offline mode
     RenderCamera::Get().camera.update();
 #endif
 
-    // SYSTEM PARAMETERS: Read-only access to cameras for shader/denoiser
-    // Camera values are READ here, never modified
-    const Camera& currentCameraForShader = RenderCamera::Get().camera;
-    const Camera& historyCameraForShader = RenderCamera::Get().historyCamera;
-    
+    const Camera &currentCameraForShader = RenderCamera::Get().camera;
+    const Camera &historyCameraForShader = RenderCamera::Get().historyCamera;
+
     m_systemParameter.camera = currentCameraForShader;
     m_systemParameter.prevCamera = historyCameraForShader;
-    
-    m_systemParameter.timeInSecond = backend.getTimer().getTimeInSecond();
+
+    m_systemParameter.timeInSecond = GlobalSettings::GetGameTime();
 
     const auto &skyModel = SkyModel::Get();
     m_systemParameter.sunDir = skyModel.getSunDir();
@@ -188,8 +174,7 @@ void OptixRenderer::render()
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
 
-    // Update animated entities and rebuild their BLAS if needed
-    updateAnimatedEntities(backend.getCudaStream(), m_systemParameter.timeInSecond);
+    updateAnimatedEntities(backend.getCudaStream(), GlobalSettings::GetGameTime());
 
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
@@ -216,34 +201,8 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
     constexpr int numTypesOfRays = 2;
     bool needBVHRebuild = false;
 
-    // Calculate delta time for animation updates
-    static float lastTime = -1.0f;
-    float deltaTime;
-
-    if (GlobalSettings::IsOfflineMode())
-    {
-        // In offline mode, use fixed timestep for consistent animation
-        static int frameCounter = 0;
-        frameCounter++;
-
-        const float targetFPS = 30.0f; // 30 FPS for smooth animation
-        deltaTime = 1.0f / targetFPS;
-
-        // Fixed timestep for consistent offline animation
-    }
-    else
-    {
-        // Real-time mode - use actual time differences
-        if (lastTime < 0.0f)
-        {
-            deltaTime = 1.0f / 60.0f; // Default for first frame
-        }
-        else
-        {
-            deltaTime = currentTime - lastTime;
-        }
-        lastTime = currentTime;
-    }
+    // Use unified delta time from GlobalSettings
+    float deltaTime = GlobalSettings::GetDeltaTime();
 
     // Animation update system for OptiX renderer
 
