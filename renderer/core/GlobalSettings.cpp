@@ -4,6 +4,10 @@
 #include <iostream>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#ifndef OFFLINE_MODE
+#include <GLFW/glfw3.h>
+#endif
 
 // Helper functions for YAML parsing (similar to SceneConfig.cpp)
 namespace 
@@ -348,4 +352,70 @@ void GlobalSettings::parseRenderingSettings(const std::string& key, const std::s
     else if (key == "maxRenderHeight") parseInt(value, renderingParams.maxRenderHeight);
     else if (key == "minRenderWidth") parseInt(value, renderingParams.minRenderWidth);
     else if (key == "minRenderHeight") parseInt(value, renderingParams.minRenderHeight);
+}
+
+// Static member definitions for time management
+float GlobalSettings::currentTime = 0.0f;
+float GlobalSettings::lastTime = -1.0f;
+float GlobalSettings::deltaTime = 0.0f;
+int GlobalSettings::frameCounter = 0;
+
+// Unified time management implementation
+float GlobalSettings::GetGameTime()
+{
+    if (IsOfflineMode())
+    {
+        const float targetFPS = 30.0f;
+        return frameCounter * (1.0f / targetFPS);
+    }
+    else
+    {
+#ifdef OFFLINE_MODE
+        // For offline builds, use std::chrono instead of GLFW
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration<float>(currentTime - startTime);
+        return elapsed.count();
+#else
+        return static_cast<float>(glfwGetTime());
+#endif
+    }
+}
+
+float GlobalSettings::GetDeltaTime()
+{
+    return deltaTime;
+}
+
+void GlobalSettings::UpdateTime()
+{
+    if (IsOfflineMode())
+    {
+        frameCounter++;
+        const float targetFPS = 30.0f;
+        deltaTime = 1.0f / targetFPS;
+        currentTime = frameCounter * deltaTime;
+    }
+    else
+    {
+#ifdef OFFLINE_MODE
+        // For offline builds, use std::chrono instead of GLFW
+        static auto startTime = std::chrono::high_resolution_clock::now();
+        auto currentTimePoint = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration<float>(currentTimePoint - startTime);
+        currentTime = elapsed.count();
+#else
+        currentTime = static_cast<float>(glfwGetTime());
+#endif
+        
+        if (lastTime < 0.0f)
+        {
+            deltaTime = 1.0f / 60.0f; // Default for first frame
+        }
+        else
+        {
+            deltaTime = currentTime - lastTime;
+        }
+        lastTime = currentTime;
+    }
 }

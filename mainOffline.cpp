@@ -219,6 +219,9 @@ int main(int argc, char *argv[])
             // Begin performance tracking for this frame
             perfTracker.beginFrame(frameNumber, width, height, frameComment);
 
+            // Update unified time management for this frame
+            GlobalSettings::UpdateTime();
+
             if (shouldSave)
             {
                 // Generate output filename for saved frames

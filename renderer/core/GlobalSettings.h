@@ -316,6 +316,11 @@ public:
     static bool IsOfflineMode() { return Get().offlineMode; }
     static void SetOfflineMode(bool offline) { Get().offlineMode = offline; }
 
+    // Unified time management
+    static float GetGameTime();
+    static float GetDeltaTime();
+    static void UpdateTime();
+
     // YAML serialization methods
     bool LoadFromYAML(const std::string &filepath);
     void SaveToYAML(const std::string &filepath) const;
@@ -335,6 +340,12 @@ private:
     GlobalSettings() {}
 
     bool offlineMode = false;
+
+    // Time management state
+    static float currentTime;
+    static float lastTime;
+    static float deltaTime;
+    static int frameCounter;
 
     // Private helper methods for parsing YAML sections
     void parseDenosingSettings(const std::string &key, const std::string &value);

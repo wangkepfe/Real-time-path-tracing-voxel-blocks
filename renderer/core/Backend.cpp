@@ -7,6 +7,7 @@
 #include "core/InputHandler.h"
 #include "sky/Sky.h"
 #include "core/RenderCamera.h"
+#include "core/GlobalSettings.h"
 #include "voxelengine/VoxelEngine.h"
 
 #include <algorithm>
@@ -103,6 +104,9 @@ void Backend::mainloop()
 
         float minFrameTimeAllowed = 1000.0f / m_maxFpsAllowed;
         m_timer.updateWithLimiter(minFrameTimeAllowed);
+
+        // Update unified time management
+        GlobalSettings::UpdateTime();
 
         dynamicResolution();
 
