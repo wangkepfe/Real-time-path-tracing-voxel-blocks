@@ -50,7 +50,10 @@ private:
 
     void updateAnimatedEntities(CUstream cudaStream, float currentTime);
     void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex = false);
-    void rebuildTlasIfNeeded(CUstream cudaStream);
+    void createGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
+    void updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
+    void createOptixInstanceForInstancedObject();
+    void createOptixInstanceForEntity();
 
     int m_width;
     int m_height;
@@ -63,14 +66,11 @@ private:
     int m_currentIasIdx = 0;
     OptixPipeline m_pipeline;
 
-    // TLAS rebuild optimization
-    bool m_needTlasRebuild = false;
-
     SystemParameter *m_d_systemParameter;
 
     std::vector<OptixInstance> m_instances;
-    std::unordered_set<unsigned int> instanceIds;
-    std::unordered_map<unsigned int, OptixTraversableHandle> objectIdxToBlasHandleMap;
+    std::unordered_set<unsigned int> m_instanceIds;
+    std::unordered_map<unsigned int, OptixTraversableHandle> m_objectIdxToBlasHandleMap;
 
     std::vector<GeometryData> m_geometries;
 
