@@ -479,27 +479,19 @@ void OptixRenderer::createBlasForInstancedObjects()
         unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
 
         // Create BLAS for instanced geometry using the loaded geometry data
-        if (scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0)
-        {
-            GeometryData geometry = {};
-            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                m_api, m_context, Backend::Get().getCudaStream(),
-                geometry,
-                scene.m_instancedGeometryAttributes[arrayIndex],
-                scene.m_instancedGeometryIndices[arrayIndex],
-                scene.m_instancedGeometryAttributeSize[arrayIndex],
-                scene.m_instancedGeometryIndicesSize[arrayIndex]);
+        assert(scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0);
 
-            m_geometries.push_back(geometry);
-            m_objectIdxToBlasHandleMap[objectId] = blasHandle;
-        }
-        else
-        {
-            // Create empty geometry if no data available
-            GeometryData geometry = {};
-            m_geometries.push_back(geometry);
-            m_objectIdxToBlasHandleMap[objectId] = 0;
-        }
+        GeometryData geometry = {};
+        OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+            m_api, m_context, Backend::Get().getCudaStream(),
+            geometry,
+            scene.m_instancedGeometryAttributes[arrayIndex],
+            scene.m_instancedGeometryIndices[arrayIndex],
+            scene.m_instancedGeometryAttributeSize[arrayIndex],
+            scene.m_instancedGeometryIndicesSize[arrayIndex]);
+
+        m_geometries.push_back(geometry);
+        m_objectIdxToBlasHandleMap[objectId] = blasHandle;
     }
 }
 
