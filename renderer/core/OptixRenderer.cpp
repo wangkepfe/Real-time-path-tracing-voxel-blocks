@@ -320,10 +320,7 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                     GeometryData &geometry = m_geometries[geometryIndex];
 
                     // Validate entity data before BLAS update
-                    if (!entity->getAttributes() || !entity->getIndices() || entity->getAttributeSize() == 0 || geometry.gas == 0)
-                    {
-                        continue;
-                    }
+                    assert(!(!entity->getAttributes() || !entity->getIndices() || entity->getAttributeSize() == 0 || geometry.gas == 0));
 
                     // Update the BLAS with new animated vertices (much faster than recreation)
                     OptixTraversableHandle blasHandle = Scene::UpdateGeometry(
@@ -472,6 +469,40 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
     }
 }
 
+void OptixRenderer::createBlasForInstancedObjects()
+{
+    auto &scene = Scene::Get();
+
+    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+    {
+        // Convert objectId to array index (0-based)
+        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+
+        // Create BLAS for instanced geometry using the loaded geometry data
+        if (scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0)
+        {
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                m_api, m_context, Backend::Get().getCudaStream(),
+                geometry,
+                scene.m_instancedGeometryAttributes[arrayIndex],
+                scene.m_instancedGeometryIndices[arrayIndex],
+                scene.m_instancedGeometryAttributeSize[arrayIndex],
+                scene.m_instancedGeometryIndicesSize[arrayIndex]);
+
+            m_geometries.push_back(geometry);
+            m_objectIdxToBlasHandleMap[objectId] = blasHandle;
+        }
+        else
+        {
+            // Create empty geometry if no data available
+            GeometryData geometry = {};
+            m_geometries.push_back(geometry);
+            m_objectIdxToBlasHandleMap[objectId] = 0;
+        }
+    }
+}
+
 void OptixRenderer::createOptixInstanceForInstancedObject()
 {
     auto &scene = Scene::Get();
@@ -489,6 +520,30 @@ void OptixRenderer::createOptixInstanceForInstancedObject()
             instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId];
             m_instances.push_back(instance);
             m_instanceIds.insert(instanceId);
+        }
+    }
+}
+
+void OptixRenderer::createBlasForEntities()
+{
+    auto &scene = Scene::Get();
+
+    for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+    {
+        Entity *entity = scene.getEntity(entityIndex);
+        if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+        {
+            GeometryData geometry = {};
+            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+                m_api, m_context, Backend::Get().getCudaStream(),
+                geometry,
+                entity->getAttributes(),
+                entity->getIndices(),
+                entity->getAttributeSize(),
+                entity->getIndicesSize(),
+                true); // Allow updates for animated entities
+
+            m_geometries.push_back(geometry);
         }
     }
 }
@@ -530,10 +585,6 @@ void OptixRenderer::createOptixInstanceForEntity()
     }
 }
 
-// Updates the OptiX instance for an instanced object during scene changes.
-// This function toggles instance existence - if the instance exists, it removes it;
-// if it doesn't exist, it creates a new one. This is used during dynamic scene
-// updates when instanced objects (like entities, lanterns, etc.) are placed or removed.
 void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId)
 {
     Scene &scene = Scene::Get();
@@ -845,142 +896,25 @@ void OptixRenderer::init()
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
     // Create uninstanced geometry BLAS for all chunks and track instances
-    // Also build sbtOffset mapping for proper SBT indexing across chunks
-    unsigned int currentSbtOffset = 0;
-
     for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
     {
         for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
         {
-            unsigned int blockId = ObjectIdToBlockId(objectId);
-
-            // Only create geometry if this chunk has data for this object
-            if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
-            {
-                // Create BLAS for the geometry
-                GeometryData geometry = {};
-                OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                    m_api, m_context, Backend::Get().getCudaStream(),
-                    geometry,
-                    *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                    *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                    scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
-                m_geometries.push_back(geometry);
-
-                // Calculate chunk offset for world coordinates
-                auto &voxelEngine = VoxelEngine::Get();
-                auto &chunkConfig = voxelEngine.chunkConfig;
-                unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
-                unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
-                unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
-
-                // Create an instance for the geometry with chunk offset
-                OptixInstance instance = {};
-                const float transformMatrix[12] =
-                    {
-                        1.0f, 0.0f, 0.0f, (float)(chunkX * VoxelChunk::width),
-                        0.0f, 1.0f, 0.0f, (float)(chunkY * VoxelChunk::width),
-                        0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
-                memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-                instance.instanceId = chunkIndex * scene.uninstancedGeometryCount + objectId;
-                instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
-                instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset to match SBT creation
-                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                instance.traversableHandle = blasHandle;
-                m_instances.push_back(instance);
-
-                // Advance sbtOffset for next geometry instance
-                currentSbtOffset += NUM_RAY_TYPES;
-            }
+            createGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
         }
     }
 
     // Create instanced geometry BLAS
-    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
-    {
-        // Convert objectId to array index (0-based)
-        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+    createBlasForInstancedObjects();
+    
+    // Create instances for instanced objects 
+    createOptixInstanceForInstancedObject();
 
-        // Create BLAS for instanced geometry using the loaded geometry data
-        if (scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0)
-        {
-            GeometryData geometry = {};
-            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                m_api, m_context, Backend::Get().getCudaStream(),
-                geometry,
-                scene.m_instancedGeometryAttributes[arrayIndex],
-                scene.m_instancedGeometryIndices[arrayIndex],
-                scene.m_instancedGeometryAttributeSize[arrayIndex],
-                scene.m_instancedGeometryIndicesSize[arrayIndex]);
+    // Create entity geometry BLAS  
+    createBlasForEntities();
 
-            m_geometries.push_back(geometry);
-            m_objectIdxToBlasHandleMap[objectId] = blasHandle;
-        }
-        else
-        {
-            // Create empty geometry if no data available
-            GeometryData geometry = {};
-            m_geometries.push_back(geometry);
-            m_objectIdxToBlasHandleMap[objectId] = 0;
-        }
-
-        // Create instances for this object type
-        for (int instanceId : scene.geometryInstanceIdMap[objectId])
-        {
-            OptixInstance instance = {};
-            memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-            instance.instanceId = instanceId;
-            instance.visibilityMask = 255;
-            instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset continuing from uninstanced geometry
-            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId];
-            m_instances.push_back(instance);
-            m_instanceIds.insert(instanceId);
-        }
-
-        // Advance sbtOffset for next instanced geometry type
-        currentSbtOffset += NUM_RAY_TYPES;
-    }
-
-    // Create entity geometry BLAS
-    for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
-    {
-        Entity *entity = scene.getEntity(entityIndex);
-        if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
-        {
-
-            GeometryData geometry = {};
-            OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                m_api, m_context, Backend::Get().getCudaStream(),
-                geometry,
-                entity->getAttributes(),
-                entity->getIndices(),
-                entity->getAttributeSize(),
-                entity->getIndicesSize(),
-                true); // Allow updates for animated entities
-
-            m_geometries.push_back(geometry);
-
-            // Create an instance for the entity
-            OptixInstance instance = {};
-            float transformMatrix[12];
-            entity->getTransform().getTransformMatrix(transformMatrix);
-            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-
-            // Use a unique instance ID for entities to avoid conflicts with block instances
-            instance.instanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
-            instance.visibilityMask = 255;
-            instance.sbtOffset = currentSbtOffset;
-            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = blasHandle;
-            m_instances.push_back(instance);
-
-            // Advance sbtOffset for next entity
-            currentSbtOffset += NUM_RAY_TYPES;
-        }
-    }
+    // Create instances for entities
+    createOptixInstanceForEntity();
 
     // Build BVH using helper function
     buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0);

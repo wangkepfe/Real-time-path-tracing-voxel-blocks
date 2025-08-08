@@ -53,7 +53,9 @@ private:
     void rebuildTlasIfNeeded(CUstream cudaStream);
     void createGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
     void updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
+    void createBlasForInstancedObjects();
     void createOptixInstanceForInstancedObject();
+    void createBlasForEntities();
     void createOptixInstanceForEntity();
     void updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId);
 
