@@ -51,7 +51,7 @@ private:
     void updateAnimatedEntities(CUstream cudaStream, float currentTime);
     void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex);
     void rebuildTlasIfNeeded(CUstream cudaStream);
-    void createGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
+    void createGasAndOptixInstanceForUninstancedObject();
     void updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
     void createBlasForInstancedObjects();
     void createOptixInstanceForInstancedObject();
