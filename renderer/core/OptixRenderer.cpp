@@ -270,9 +270,14 @@ void OptixRenderer::render()
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
 
+    updateAnimatedEntities(backend.getCudaStream(), GlobalSettings::GetGameTime());
+
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
+
+    int nextIndex = (m_currentIasIdx + 1) % 2;
+    buildInstanceAccelerationStructure(backend.getCudaStream(), nextIndex, true);
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
@@ -361,7 +366,6 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         }
     }
 
-    // Always upload updated SBT records
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
                                sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
                                cudaMemcpyHostToDevice, cudaStream));
@@ -537,7 +541,7 @@ void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsig
     {
         // Remove existing instance - object was deleted from scene
         m_instanceIds.erase(instanceId);
-        
+
         // Find and remove the corresponding OptixInstance from the vector
         int idxToRemove = -1;
         for (int j = 0; j < m_instances.size(); ++j)
@@ -560,7 +564,7 @@ void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsig
         OptixInstance instance = {};
         memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
         instance.instanceId = instanceId;
-        instance.visibilityMask = 255; // Visible to all ray types
+        instance.visibilityMask = 255;                 // Visible to all ray types
         instance.sbtOffset = objectId * NUM_RAY_TYPES; // SBT offset for material/shader binding
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId]; // Link to geometry BLAS
@@ -636,13 +640,6 @@ void OptixRenderer::update()
 
     scene.needSceneUpdate = false;
     scene.needSceneReloadUpdate = false;
-
-    updateAnimatedEntities(getCurrentCudaStream(), GlobalSettings::GetGameTime());
-
-    CUDA_CHECK(cudaStreamSynchronize(getCurrentCudaStream()));
-    m_systemParameter.prevTopObject = m_systemParameter.topObject;
-    int nextIndex = (m_currentIasIdx + 1) % 2;
-    buildInstanceAccelerationStructure(getCurrentCudaStream(), nextIndex, true);
 }
 
 void OptixRenderer::init()
