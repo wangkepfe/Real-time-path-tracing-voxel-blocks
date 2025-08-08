@@ -524,6 +524,51 @@ void OptixRenderer::createOptixInstanceForEntity()
     }
 }
 
+// Updates the OptiX instance for an instanced object during scene changes.
+// This function toggles instance existence - if the instance exists, it removes it;
+// if it doesn't exist, it creates a new one. This is used during dynamic scene
+// updates when instanced objects (like entities, lanterns, etc.) are placed or removed.
+void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId)
+{
+    Scene &scene = Scene::Get();
+    bool hasInstance = m_instanceIds.count(instanceId);
+
+    if (hasInstance)
+    {
+        // Remove existing instance - object was deleted from scene
+        m_instanceIds.erase(instanceId);
+        
+        // Find and remove the corresponding OptixInstance from the vector
+        int idxToRemove = -1;
+        for (int j = 0; j < m_instances.size(); ++j)
+        {
+            if (m_instances[j].instanceId == instanceId)
+            {
+                idxToRemove = j;
+                break;
+            }
+        }
+        assert(idxToRemove != -1);
+        m_instances.erase(m_instances.begin() + idxToRemove);
+    }
+    else
+    {
+        // Create new instance - object was added to scene
+        m_instanceIds.insert(instanceId);
+
+        // Create OptixInstance with transformation matrix from scene
+        OptixInstance instance = {};
+        memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+        instance.instanceId = instanceId;
+        instance.visibilityMask = 255; // Visible to all ray types
+        instance.sbtOffset = objectId * NUM_RAY_TYPES; // SBT offset for material/shader binding
+        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+        instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId]; // Link to geometry BLAS
+
+        m_instances.push_back(instance);
+    }
+}
+
 void OptixRenderer::update()
 {
     auto &scene = Scene::Get();
@@ -578,36 +623,7 @@ void OptixRenderer::update()
             else if (IsInstancedBlockType(blockId))
             {
                 auto instanceId = scene.sceneUpdateInstanceId[i];
-                bool hasInstance = m_instanceIds.count(instanceId);
-
-                if (hasInstance)
-                {
-                    m_instanceIds.erase(instanceId);
-                    int idxToRemove = -1;
-                    for (int j = 0; j < m_instances.size(); ++j)
-                    {
-                        if (m_instances[j].instanceId == instanceId)
-                        {
-                            idxToRemove = j;
-                        }
-                    }
-                    assert(idxToRemove != -1);
-                    m_instances.erase(m_instances.begin() + idxToRemove);
-                }
-                else
-                {
-                    m_instanceIds.insert(instanceId);
-
-                    OptixInstance instance = {};
-                    memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-                    instance.instanceId = instanceId;
-                    instance.visibilityMask = 255;
-                    instance.sbtOffset = objectId * NUM_RAY_TYPES;
-                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                    instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId];
-
-                    m_instances.push_back(instance);
-                }
+                updateInstancedObjectInstance(instanceId, objectId);
             }
         }
         // Upload SBT

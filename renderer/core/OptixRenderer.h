@@ -54,6 +54,7 @@ private:
     void updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
     void createOptixInstanceForInstancedObject();
     void createOptixInstanceForEntity();
+    void updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId);
 
     int m_width;
     int m_height;
