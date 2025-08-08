@@ -49,7 +49,7 @@ private:
     static constexpr int NUM_RAY_TYPES = 2;
 
     void updateAnimatedEntities(CUstream cudaStream, float currentTime);
-    void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex = false);
+    void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex);
     void rebuildTlasIfNeeded(CUstream cudaStream);
     void createGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
     void updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);

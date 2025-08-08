@@ -276,8 +276,10 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
 
+    m_systemParameter.prevTopObject = m_systemParameter.topObject;
     int nextIndex = (m_currentIasIdx + 1) % 2;
-    buildInstanceAccelerationStructure(backend.getCudaStream(), nextIndex, true);
+    buildInstanceAccelerationStructure(backend.getCudaStream(), nextIndex);
+    m_currentIasIdx = nextIndex;
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
@@ -981,7 +983,7 @@ void OptixRenderer::init()
     }
 
     // Build BVH using helper function
-    buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0, false);
+    buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0);
 
     // Options
     OptixModuleCompileOptions moduleCompileOptions = {};
@@ -1361,7 +1363,7 @@ void OptixRenderer::init()
 }
 
 // Helper function to build Instance Acceleration Structure (IAS)
-void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex)
+void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex)
 {
     // Upload instances to GPU
     CUdeviceptr d_instances;
@@ -1413,10 +1415,4 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     CUDA_CHECK(cudaStreamSynchronize(cudaStream));
     CUDA_CHECK(cudaFree((void *)d_tmp));
     CUDA_CHECK(cudaFree((void *)d_instances));
-
-    // Update current index if requested
-    if (swapCurrentIndex)
-    {
-        m_currentIasIdx = targetIasIndex;
-    }
 }
