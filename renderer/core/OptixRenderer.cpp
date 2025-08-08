@@ -507,6 +507,8 @@ void OptixRenderer::createOptixInstanceForInstancedObject()
 {
     auto &scene = Scene::Get();
 
+    unsigned int uninstancedCount = scene.numChunks * scene.uninstancedGeometryCount;
+
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
         for (int instanceId : scene.geometryInstanceIdMap[objectId])
@@ -515,7 +517,7 @@ void OptixRenderer::createOptixInstanceForInstancedObject()
             memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
             instance.instanceId = instanceId;
             instance.visibilityMask = 255;
-            instance.sbtOffset = objectId * NUM_RAY_TYPES;
+            instance.sbtOffset = (objectId - GetInstancedObjectIdBegin() + uninstancedCount) * NUM_RAY_TYPES;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId];
             m_instances.push_back(instance);
@@ -552,10 +554,7 @@ void OptixRenderer::createOptixInstanceForEntity()
 {
     auto &scene = Scene::Get();
 
-    // Count  uninstanced geometries that were created
     unsigned int uninstancedCount = scene.numChunks * scene.uninstancedGeometryCount;
-
-    // Base SBT records = actual uninstanced geometries + instanced geometry types
     unsigned int baseSbtRecords = uninstancedCount + scene.instancedGeometryCount;
 
     // Entities - add them to instances during reload
@@ -1121,24 +1120,7 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[4], &m_sbtRecordHitRadiance));
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[5], &m_sbtRecordHitShadow));
 
-        // Calculate total instances needed for all chunks
-        unsigned int totalInstances = 0;
-        for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
-        {
-            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
-            {
-                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
-                {
-                    totalInstances++;
-                }
-            }
-        }
-        // Add space for instanced objects
-        totalInstances += scene.instancedGeometryCount;
-        // Add space for entities
-        totalInstances += static_cast<unsigned int>(scene.getEntityCount());
-
+        unsigned int totalInstances = scene.uninstancedGeometryCount * scene.numChunks + scene.instancedGeometryCount + static_cast<unsigned int>(scene.getEntityCount());
         m_sbtRecordGeometryInstanceData.resize(totalInstances * NUM_RAY_TYPES);
 
         // Initialize SBT records for all geometry instances
@@ -1149,28 +1131,24 @@ void OptixRenderer::init()
         {
             for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
             {
-                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
+                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
+
+                for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
                 {
-                    unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
-
-                    for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+                    if (rayType == 0)
                     {
-                        if (rayType == 0)
-                        {
-                            memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                        }
-                        else
-                        {
-                            memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                        }
-
-                        assert(geometryIndex < m_geometries.size());
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                        m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
-                        sbtRecordIndex++;
+                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
                     }
+                    else
+                    {
+                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+                    }
+
+                    assert(geometryIndex < m_geometries.size());
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
+                    sbtRecordIndex++;
                 }
             }
         }
@@ -1205,7 +1183,7 @@ void OptixRenderer::init()
         for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
         {
             Entity *entity = scene.getEntity(entityIndex);
-            if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+            if (entity)
             {
                 // Calculate the correct geometry index for entities
                 // Entities are stored after all chunk-based and instanced geometries
@@ -1237,18 +1215,6 @@ void OptixRenderer::init()
         CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
-
-    // Direct callables
-    // std::vector<SbtRecordHeader> sbtRecordCallables(programGroupCallables.size());
-    // {
-    //     for (size_t i = 0; i < programGroupCallables.size(); ++i)
-    //     {
-    //         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]));
-    //     }
-
-    //     CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()));
-    //     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordCallables, sbtRecordCallables.data(), sizeof(SbtRecordHeader) * sbtRecordCallables.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-    // }
 
     // Setup the OptixShaderBindingTable
     {
