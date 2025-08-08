@@ -65,6 +65,7 @@ private:
     OptixFunctionTable m_api;
     OptixDeviceContext m_context;
     CUdeviceptr m_d_ias[2] = {0, 0};
+    size_t m_iasBufferSizes[2] = {0, 0}; // Track allocated buffer sizes
     int m_currentIasIdx = 0;
     OptixPipeline m_pipeline;
 

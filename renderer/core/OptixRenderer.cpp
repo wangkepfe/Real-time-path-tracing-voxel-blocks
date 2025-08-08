@@ -1385,14 +1385,19 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     OptixAccelBufferSizes iasBufferSizes = {};
     OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
 
-    // Free existing buffer if needed
-    if (m_d_ias[targetIasIndex] != 0)
+    // Only reallocate if buffer doesn't exist or required size is larger than current
+    if (m_d_ias[targetIasIndex] == 0 || iasBufferSizes.outputSizeInBytes > m_iasBufferSizes[targetIasIndex])
     {
-        CUDA_CHECK(cudaFree((void *)m_d_ias[targetIasIndex]));
-    }
+        // Free existing buffer if needed
+        if (m_d_ias[targetIasIndex] != 0)
+        {
+            CUDA_CHECK(cudaFree((void *)m_d_ias[targetIasIndex]));
+        }
 
-    // Allocate output and temp buffers
-    CUDA_CHECK(cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes));
+        // Allocate new buffer
+        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes));
+        m_iasBufferSizes[targetIasIndex] = iasBufferSizes.outputSizeInBytes;
+    }
 
     CUdeviceptr d_tmp;
     CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
