@@ -895,7 +895,6 @@ void OptixRenderer::init()
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
     assert((sizeof(SbtRecordGeometryInstanceData) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
 
-    // Create uninstanced geometry BLAS for all chunks and track instances
     for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
     {
         for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
@@ -903,20 +902,10 @@ void OptixRenderer::init()
             createGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
         }
     }
-
-    // Create instanced geometry BLAS
     createBlasForInstancedObjects();
-    
-    // Create instances for instanced objects 
     createOptixInstanceForInstancedObject();
-
-    // Create entity geometry BLAS  
     createBlasForEntities();
-
-    // Create instances for entities
     createOptixInstanceForEntity();
-
-    // Build BVH using helper function
     buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0);
 
     // Options
