@@ -78,6 +78,7 @@ set( HEADERS
     renderer/util/ModelUtils.h
     renderer/util/GLTFUtils.h
     renderer/util/ImageDiff.h
+    renderer/util/FileUtils.h
     renderer/util/PerformanceTracker.h
     renderer/shaders/LinearMath.h
     renderer/shaders/Common.h
@@ -124,6 +125,7 @@ set( SOURCES
     renderer/util/ModelUtils.cpp
     renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
+    renderer/util/FileUtils.cpp
     renderer/animation/Skeleton.cpp
     renderer/animation/AnimationManager.cpp
     renderer/animation/VertexSkinning.cu
@@ -266,6 +268,7 @@ set( OFFLINE_SOURCES
     renderer/util/ModelUtils.cpp
     renderer/util/GLTFUtils.cpp
     renderer/util/ImageDiff.cpp
+    renderer/util/FileUtils.cpp
     renderer/animation/Skeleton.cpp
     renderer/animation/AnimationManager.cpp
     renderer/animation/VertexSkinning.cu

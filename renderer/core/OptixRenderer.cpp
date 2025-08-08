@@ -1,6 +1,7 @@
 #include "core/Backend.h"
 #include "core/OfflineBackend.h"
 #include "util/DebugUtils.h"
+#include "util/FileUtils.h"
 #include "OptixRenderer.h"
 #include "core/Scene.h"
 #include "core/BufferManager.h"
@@ -13,19 +14,6 @@
 #endif
 
 #include "util/BufferUtils.h"
-
-// Helper function to get CUDA stream from either backend
-CUstream getCurrentCudaStream()
-{
-    if (GlobalSettings::IsOfflineMode())
-    {
-        return OfflineBackend::Get().getCudaStream();
-    }
-    else
-    {
-        return Backend::Get().getCudaStream();
-    }
-}
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -53,64 +41,172 @@ CUstream getCurrentCudaStream()
 namespace
 {
 
-    std::string ReadPtx(std::string const &filename)
+    class OptixLogger
     {
-        // std::filesystem::path cwd = std::filesystem::current_path();
-        //  std::cout << "The current directory is " << cwd.string() << std::endl;
-
-        std::ifstream inputPtx(filename);
-
-        if (!inputPtx)
+    public:
+        OptixLogger() : m_stream(std::cout) {}
+        OptixLogger(std::ostream &s)
+            : m_stream(s)
         {
-            std::cerr << "ERROR: ReadPtx() Failed to open file " << filename << '\n';
-            return std::string();
         }
 
-        std::stringstream ptx;
-
-        ptx << inputPtx.rdbuf();
-
-        if (inputPtx.fail())
+        static void callback(unsigned int level, const char *tag, const char *message, void *cbdata)
         {
-            std::cerr << "ERROR: ReadPtx() Failed to read file " << filename << '\n';
-            return std::string();
+            OptixLogger *self = static_cast<OptixLogger *>(cbdata);
+            self->callback(level, tag, message);
         }
 
-        return ptx.str();
+        // Need this detour because m_mutex is not static.
+        void callback(unsigned int /*level*/, const char *tag, const char *message)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stream << tag << ":" << ((message) ? message : "(no message)") << "\n";
+        }
+
+    private:
+        std::mutex m_mutex;     // Mutex that protects m_stream.
+        std::ostream &m_stream; // Needs m_mutex.
+    };
+
+    static OptixLogger g_logger = {};
+
+#ifdef _WIN32
+    // Code based on helper function in optix_stubs.h
+    static void *optixLoadWindowsDll(void)
+    {
+        const char *optixDllName = "nvoptix.dll";
+        void *handle = NULL;
+
+        // Get the size of the path first, then allocate
+        unsigned int size = GetSystemDirectoryA(NULL, 0);
+        if (size == 0)
+        {
+            // Couldn't get the system path size, so bail
+            return NULL;
+        }
+
+        size_t pathSize = size + 1 + strlen(optixDllName);
+        char *systemPath = (char *)malloc(pathSize);
+
+        if (GetSystemDirectoryA(systemPath, size) != size - 1)
+        {
+            // Something went wrong
+            free(systemPath);
+            return NULL;
+        }
+
+        strcat(systemPath, "\\");
+        strcat(systemPath, optixDllName);
+
+        handle = LoadLibraryA(systemPath);
+
+        free(systemPath);
+
+        if (handle)
+        {
+            return handle;
+        }
+
+        // If we didn't find it, go looking in the register store.  Since nvoptix.dll doesn't
+        // have its own registry entry, we are going to look for the OpenGL driver which lives
+        // next to nvoptix.dll. 0 (null) will be returned if any errors occured.
+
+        static const char *deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
+        const ULONG flags = CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT;
+        ULONG deviceListSize = 0;
+
+        if (CM_Get_Device_ID_List_SizeA(&deviceListSize, deviceInstanceIdentifiersGUID, flags) != CR_SUCCESS)
+        {
+            return NULL;
+        }
+
+        char *deviceNames = (char *)malloc(deviceListSize);
+
+        if (CM_Get_Device_ID_ListA(deviceInstanceIdentifiersGUID, deviceNames, deviceListSize, flags))
+        {
+            free(deviceNames);
+            return NULL;
+        }
+
+        DEVINST devID = 0;
+
+        // Continue to the next device if errors are encountered.
+        for (char *deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
+        {
+            if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+            {
+                continue;
+            }
+
+            HKEY regKey = 0;
+            if (CM_Open_DevNode_Key(devID, KEY_QUERY_VALUE, 0, RegDisposition_OpenExisting, &regKey, CM_REGISTRY_SOFTWARE) != CR_SUCCESS)
+            {
+                continue;
+            }
+
+            const char *valueName = "OpenGLDriverName";
+            DWORD valueSize = 0;
+
+            LSTATUS ret = RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
+            if (ret != ERROR_SUCCESS)
+            {
+                RegCloseKey(regKey);
+                continue;
+            }
+
+            char *regValue = (char *)malloc(valueSize);
+            ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE)regValue, &valueSize);
+            if (ret != ERROR_SUCCESS)
+            {
+                free(regValue);
+                RegCloseKey(regKey);
+                continue;
+            }
+
+            // Strip the OpenGL driver dll name from the string then create a new string with
+            // the path and the nvoptix.dll name
+            for (int i = valueSize - 1; i >= 0 && regValue[i] != '\\'; --i)
+            {
+                regValue[i] = '\0';
+            }
+
+            size_t newPathSize = strlen(regValue) + strlen(optixDllName) + 1;
+            char *dllPath = (char *)malloc(newPathSize);
+            strcpy(dllPath, regValue);
+            strcat(dllPath, optixDllName);
+
+            free(regValue);
+            RegCloseKey(regKey);
+
+            handle = LoadLibraryA((LPCSTR)dllPath);
+            free(dllPath);
+
+            if (handle)
+            {
+                break;
+            }
+        }
+
+        free(deviceNames);
+
+        return handle;
+    }
+#endif
+
+    // Helper function to get CUDA stream from either backend
+    CUstream getCurrentCudaStream()
+    {
+        if (GlobalSettings::IsOfflineMode())
+        {
+            return OfflineBackend::Get().getCudaStream();
+        }
+        else
+        {
+            return Backend::Get().getCudaStream();
+        }
     }
 
 } // namespace
-
-static constexpr bool g_useGeometrySquareLight = false;
-
-class OptixLogger
-{
-public:
-    OptixLogger() : m_stream(std::cout) {}
-    OptixLogger(std::ostream &s)
-        : m_stream(s)
-    {
-    }
-
-    static void callback(unsigned int level, const char *tag, const char *message, void *cbdata)
-    {
-        OptixLogger *self = static_cast<OptixLogger *>(cbdata);
-        self->callback(level, tag, message);
-    }
-
-    // Need this detour because m_mutex is not static.
-    void callback(unsigned int /*level*/, const char *tag, const char *message)
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_stream << tag << ":" << ((message) ? message : "(no message)") << "\n";
-    }
-
-private:
-    std::mutex m_mutex;     // Mutex that protects m_stream.
-    std::ostream &m_stream; // Needs m_mutex.
-};
-
-static OptixLogger g_logger = {};
 
 void OptixRenderer::clear()
 {
@@ -180,6 +276,9 @@ void OptixRenderer::render()
 
     CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
 
+    int nextIndex = (m_currentIasIdx + 1) % 2;
+    buildInstanceAccelerationStructure(backend.getCudaStream(), nextIndex, true);
+
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
@@ -194,17 +293,10 @@ void OptixRenderer::render()
 
 void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime)
 {
-    static int optixUpdateCount = 0;
-    optixUpdateCount++;
-
     auto &scene = Scene::Get();
-    constexpr int numTypesOfRays = 2;
-    bool needBVHRebuild = false;
 
     // Use unified delta time from GlobalSettings
     float deltaTime = GlobalSettings::GetDeltaTime();
-
-    // Animation update system for OptiX renderer
 
     // Update each animated entity
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
@@ -212,8 +304,6 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         Entity *entity = scene.getEntity(entityIndex);
         if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
         {
-            // Processing animated entity
-
             // Update entity animation
             entity->update(deltaTime);
 
@@ -255,17 +345,16 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                             entity->getTransform().getTransformMatrix(transformMatrix);
                             memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
 
-                            needBVHRebuild = true;
                             break;
                         }
                     }
 
                     // Update SBT records for the animated entity
                     // Calculate SBT offset for this entity
-                    unsigned int entitySbtOffset = (scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex)) * numTypesOfRays;
-                    if (entitySbtOffset + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size())
+                    unsigned int entitySbtOffset = (scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex)) * NUM_RAY_TYPES;
+                    if (entitySbtOffset + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size())
                     {
-                        for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                        for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
                         {
                             unsigned int sbtIndex = entitySbtOffset + rayType;
                             m_sbtRecordGeometryInstanceData[sbtIndex].data.indices = (Int3 *)geometry.indices;
@@ -277,192 +366,217 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         }
     }
 
-    // Rebuild top-level BVH if any animated entities were updated
-    if (needBVHRebuild)
-    {
-        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
+                               sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
+                               cudaMemcpyHostToDevice, cudaStream));
+}
 
-        m_systemParameter.prevTopObject = m_systemParameter.topObject;
+void OptixRenderer::createGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId)
+{
+    auto &scene = Scene::Get();
+    unsigned int blockId = ObjectIdToBlockId(objectId);
+    unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-        int nextIndex = (m_currentIasIdx + 1) % 2;
-        if (m_d_ias[nextIndex] != 0)
+    assert(scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0);
+    assert(scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0);
+
+    GeometryData &geometry = m_geometries[geometryIndex];
+    CUDA_CHECK(cudaFree((void *)geometry.gas));
+
+    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+        m_api, m_context, Backend::Get().getCudaStream(),
+        geometry,
+        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+
+    // Calculate chunk offset
+    auto &voxelEngine = VoxelEngine::Get();
+    auto &chunkConfig = voxelEngine.chunkConfig;
+    unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
+    unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
+    unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
+
+    OptixInstance instance = {};
+    const float transformMatrix[12] =
         {
-            CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
-        }
+            1.0f, 0.0f, 0.0f, (float)(chunkX * VoxelChunk::width),
+            0.0f, 1.0f, 0.0f, (float)(chunkY * VoxelChunk::width),
+            0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
+    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+    instance.instanceId = geometryIndex;
+    instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
+    instance.sbtOffset = objectId * NUM_RAY_TYPES;
+    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+    instance.traversableHandle = blasHandle;
+    m_instances.push_back(instance);
 
-        // Build the new BVH in the inactive slot
-        CUdeviceptr d_instances;
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, cudaStream));
+    // Shader binding table record hit group geometry
+    unsigned int sbtIndex = objectId * NUM_RAY_TYPES;
+    assert(sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size());
 
-        OptixBuildInput instanceInput = {};
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-        OptixAccelBuildOptions accelBuildOptions = {};
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-        OptixAccelBufferSizes iasBufferSizes = {};
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
-
-        CUdeviceptr d_tmp;
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-        // Build the acceleration structure into the new buffer
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
-
-        // Clean up temporary allocations
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances));
-
-        // Swap the buffer index
-        m_currentIasIdx = nextIndex;
-
-        // Upload updated SBT records
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
-                                   sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
-                                   cudaMemcpyHostToDevice, cudaStream));
+    for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+    {
+        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
     }
 }
 
-#ifdef _WIN32
-// Code based on helper function in optix_stubs.h
-static void *optixLoadWindowsDll(void)
+void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId)
 {
-    const char *optixDllName = "nvoptix.dll";
-    void *handle = NULL;
+    auto &scene = Scene::Get();
+    unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-    // Get the size of the path first, then allocate
-    unsigned int size = GetSystemDirectoryA(NULL, 0);
-    if (size == 0)
+    assert(geometryIndex < m_geometries.size());
+    assert(scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0);
+    assert(scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0);
+
+    GeometryData &geometry = m_geometries[geometryIndex];
+    CUDA_CHECK(cudaFree((void *)geometry.gas));
+
+    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
+        m_api, m_context, Backend::Get().getCudaStream(),
+        geometry,
+        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+
+    // Find and update the corresponding instance, and get its sbtOffset
+    unsigned int sbtIndex = 0;
+    bool instanceFound = false;
+    for (auto &instance : m_instances)
     {
-        // Couldn't get the system path size, so bail
-        return NULL;
-    }
-
-    size_t pathSize = size + 1 + strlen(optixDllName);
-    char *systemPath = (char *)malloc(pathSize);
-
-    if (GetSystemDirectoryA(systemPath, size) != size - 1)
-    {
-        // Something went wrong
-        free(systemPath);
-        return NULL;
-    }
-
-    strcat(systemPath, "\\");
-    strcat(systemPath, optixDllName);
-
-    handle = LoadLibraryA(systemPath);
-
-    free(systemPath);
-
-    if (handle)
-    {
-        return handle;
-    }
-
-    // If we didn't find it, go looking in the register store.  Since nvoptix.dll doesn't
-    // have its own registry entry, we are going to look for the OpenGL driver which lives
-    // next to nvoptix.dll. 0 (null) will be returned if any errors occured.
-
-    static const char *deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
-    const ULONG flags = CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT;
-    ULONG deviceListSize = 0;
-
-    if (CM_Get_Device_ID_List_SizeA(&deviceListSize, deviceInstanceIdentifiersGUID, flags) != CR_SUCCESS)
-    {
-        return NULL;
-    }
-
-    char *deviceNames = (char *)malloc(deviceListSize);
-
-    if (CM_Get_Device_ID_ListA(deviceInstanceIdentifiersGUID, deviceNames, deviceListSize, flags))
-    {
-        free(deviceNames);
-        return NULL;
-    }
-
-    DEVINST devID = 0;
-
-    // Continue to the next device if errors are encountered.
-    for (char *deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
-    {
-        if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+        if (instance.instanceId == geometryIndex)
         {
-            continue;
-        }
-
-        HKEY regKey = 0;
-        if (CM_Open_DevNode_Key(devID, KEY_QUERY_VALUE, 0, RegDisposition_OpenExisting, &regKey, CM_REGISTRY_SOFTWARE) != CR_SUCCESS)
-        {
-            continue;
-        }
-
-        const char *valueName = "OpenGLDriverName";
-        DWORD valueSize = 0;
-
-        LSTATUS ret = RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
-        if (ret != ERROR_SUCCESS)
-        {
-            RegCloseKey(regKey);
-            continue;
-        }
-
-        char *regValue = (char *)malloc(valueSize);
-        ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE)regValue, &valueSize);
-        if (ret != ERROR_SUCCESS)
-        {
-            free(regValue);
-            RegCloseKey(regKey);
-            continue;
-        }
-
-        // Strip the OpenGL driver dll name from the string then create a new string with
-        // the path and the nvoptix.dll name
-        for (int i = valueSize - 1; i >= 0 && regValue[i] != '\\'; --i)
-        {
-            regValue[i] = '\0';
-        }
-
-        size_t newPathSize = strlen(regValue) + strlen(optixDllName) + 1;
-        char *dllPath = (char *)malloc(newPathSize);
-        strcpy(dllPath, regValue);
-        strcat(dllPath, optixDllName);
-
-        free(regValue);
-        RegCloseKey(regKey);
-
-        handle = LoadLibraryA((LPCSTR)dllPath);
-        free(dllPath);
-
-        if (handle)
-        {
+            instance.traversableHandle = blasHandle;
+            sbtIndex = instance.sbtOffset;
+            instanceFound = true;
             break;
         }
     }
 
-    free(deviceNames);
+    // Update shader binding table record using the correct SBT index
+    if (instanceFound)
+    {
+        assert(sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size());
 
-    return handle;
+        for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+        {
+            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+        }
+    }
 }
-#endif
+
+void OptixRenderer::createOptixInstanceForInstancedObject()
+{
+    auto &scene = Scene::Get();
+
+    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+    {
+        for (int instanceId : scene.geometryInstanceIdMap[objectId])
+        {
+            OptixInstance instance = {};
+            memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+            instance.instanceId = instanceId;
+            instance.visibilityMask = 255;
+            instance.sbtOffset = objectId * NUM_RAY_TYPES;
+            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+            instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId];
+            m_instances.push_back(instance);
+            m_instanceIds.insert(instanceId);
+        }
+    }
+}
+
+void OptixRenderer::createOptixInstanceForEntity()
+{
+    auto &scene = Scene::Get();
+
+    // Count  uninstanced geometries that were created
+    unsigned int uninstancedCount = scene.numChunks * scene.uninstancedGeometryCount;
+
+    // Base SBT records = actual uninstanced geometries + instanced geometry types
+    unsigned int baseSbtRecords = uninstancedCount + scene.instancedGeometryCount;
+
+    // Entities - add them to instances during reload
+    for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
+    {
+        Entity *entity = scene.getEntity(entityIndex);
+        if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
+        {
+            // Calculate the correct geometry index for entities
+            unsigned int geometryIndex = baseSbtRecords + static_cast<unsigned int>(entityIndex);
+
+            OptixInstance instance = {};
+            float transformMatrix[12];
+            entity->getTransform().getTransformMatrix(transformMatrix);
+            memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
+
+            // Use consistent entity instance ID
+            instance.instanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
+            instance.visibilityMask = 255;
+
+            // Calculate SBT offset using cached base + entity-specific offset
+            instance.sbtOffset = geometryIndex * NUM_RAY_TYPES;
+            instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+            instance.traversableHandle = m_geometries[geometryIndex].gas;
+            m_instances.push_back(instance);
+        }
+    }
+}
+
+// Updates the OptiX instance for an instanced object during scene changes.
+// This function toggles instance existence - if the instance exists, it removes it;
+// if it doesn't exist, it creates a new one. This is used during dynamic scene
+// updates when instanced objects (like entities, lanterns, etc.) are placed or removed.
+void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId)
+{
+    Scene &scene = Scene::Get();
+    bool hasInstance = m_instanceIds.count(instanceId);
+
+    if (hasInstance)
+    {
+        // Remove existing instance - object was deleted from scene
+        m_instanceIds.erase(instanceId);
+
+        // Find and remove the corresponding OptixInstance from the vector
+        int idxToRemove = -1;
+        for (int j = 0; j < m_instances.size(); ++j)
+        {
+            if (m_instances[j].instanceId == instanceId)
+            {
+                idxToRemove = j;
+                break;
+            }
+        }
+        assert(idxToRemove != -1);
+        m_instances.erase(m_instances.begin() + idxToRemove);
+    }
+    else
+    {
+        // Create new instance - object was added to scene
+        m_instanceIds.insert(instanceId);
+
+        // Create OptixInstance with transformation matrix from scene
+        OptixInstance instance = {};
+        memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
+        instance.instanceId = instanceId;
+        instance.visibilityMask = 255;                 // Visible to all ray types
+        instance.sbtOffset = objectId * NUM_RAY_TYPES; // SBT offset for material/shader binding
+        instance.flags = OPTIX_INSTANCE_FLAG_NONE;
+        instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId]; // Link to geometry BLAS
+
+        m_instances.push_back(instance);
+    }
+}
 
 void OptixRenderer::update()
 {
     auto &scene = Scene::Get();
 
-    constexpr int numTypesOfRays = 2;
     const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
 
     if (!scene.needSceneUpdate)
@@ -472,122 +586,28 @@ void OptixRenderer::update()
 
     if (scene.needSceneReloadUpdate)
     {
+        // We will recreate all optix instances
         m_instances.resize(scene.uninstancedGeometryCount);
-        instanceIds.clear();
+        m_instanceIds.clear();
 
-        // Uninstanced - recreate geometry for all chunks
+        // Uninstanced
         m_instances.clear(); // Clear all instances and rebuild them
         unsigned int instanceIndex = 0;
-        unsigned int baseSbtRecords = 0; // Track SBT records for entity offset calculation
-
         for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
             for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
             {
-                unsigned int blockId = ObjectIdToBlockId(objectId);
-                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
-
-                assert(geometryIndex < m_geometries.size());
-                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
-                {
-                    GeometryData &geometry = m_geometries[geometryIndex];
-                    CUDA_CHECK(cudaFree((void *)geometry.gas));
-
-                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                        m_api, m_context, Backend::Get().getCudaStream(),
-                        geometry,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
-
-                    // Calculate chunk offset
-                    auto &voxelEngine = VoxelEngine::Get();
-                    auto &chunkConfig = voxelEngine.chunkConfig;
-                    unsigned int chunkX = chunkIndex % chunkConfig.chunksX;
-                    unsigned int chunkZ = (chunkIndex / chunkConfig.chunksX) % chunkConfig.chunksZ;
-                    unsigned int chunkY = chunkIndex / (chunkConfig.chunksX * chunkConfig.chunksZ);
-
-                    OptixInstance instance = {};
-                    const float transformMatrix[12] =
-                        {
-                            1.0f, 0.0f, 0.0f, (float)(chunkX * VoxelChunk::width),
-                            0.0f, 1.0f, 0.0f, (float)(chunkY * VoxelChunk::width),
-                            0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
-                    memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-                    instance.instanceId = geometryIndex;
-                    instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
-                    instance.sbtOffset = objectId * numTypesOfRays;
-                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                    instance.traversableHandle = blasHandle;
-                    m_instances.push_back(instance);
-
-                    // Count this geometry for entity SBT offset calculation
-                    baseSbtRecords++;
-
-                    // Shader binding table record hit group geometry
-                    unsigned int sbtIndex = objectId * numTypesOfRays;
-                    assert(sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size());
-
-                    for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
-                    {
-                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
-                        m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
-                    }
-                }
+                createGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
             }
         }
         // Upload SBT
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
         // Instanced
-        for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
-        {
-            for (int instanceId : scene.geometryInstanceIdMap[objectId])
-            {
-                OptixInstance instance = {};
-                memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-                instance.instanceId = instanceId;
-                instance.visibilityMask = 255;
-                instance.sbtOffset = objectId * numTypesOfRays;
-                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
-                m_instances.push_back(instance);
-                instanceIds.insert(instanceId);
-            }
-        }
+        createOptixInstanceForInstancedObject();
 
-        // Add instanced geometry records to the base count
-        baseSbtRecords += scene.instancedGeometryCount;
-
-        // Entities - add them to instances during reload
-        // NOTE: Entities should keep their original SBT offsets from init() since SBT records are static
-        for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
-        {
-            Entity *entity = scene.getEntity(entityIndex);
-            if (entity && entity->getAttributeSize() > 0 && entity->getIndicesSize() > 0)
-            {
-                // Calculate the correct geometry index for entities
-                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
-
-                OptixInstance instance = {};
-                float transformMatrix[12];
-                entity->getTransform().getTransformMatrix(transformMatrix);
-                memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
-
-                // Use consistent entity instance ID
-                instance.instanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
-                instance.visibilityMask = 255;
-
-                // Calculate SBT offset using cached base + entity-specific offset
-                unsigned int entitySbtOffset = baseSbtRecords + static_cast<unsigned int>(entityIndex);
-                instance.sbtOffset = entitySbtOffset * numTypesOfRays;
-                instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                instance.traversableHandle = m_geometries[geometryIndex].gas; // Use the gas handle directly since we don't have a map for entities
-                m_instances.push_back(instance);
-            }
-        }
+        // Entities
+        createOptixInstanceForEntity();
     }
     else
     {
@@ -601,141 +621,17 @@ void OptixRenderer::update()
             {
                 // Optimized: only update specific chunks that have changed
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
-                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
-
-                assert(geometryIndex < m_geometries.size());
-                if (scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0 &&
-                    scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0)
-                {
-                    GeometryData &geometry = m_geometries[geometryIndex];
-                    CUDA_CHECK(cudaFree((void *)geometry.gas));
-
-                    OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                        m_api, m_context, Backend::Get().getCudaStream(),
-                        geometry,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
-
-                    // Find and update the corresponding instance, and get its sbtOffset
-                    unsigned int sbtIndex = 0;
-                    bool instanceFound = false;
-                    for (auto &instance : m_instances)
-                    {
-                        if (instance.instanceId == geometryIndex)
-                        {
-                            instance.traversableHandle = blasHandle;
-                            sbtIndex = instance.sbtOffset;
-                            instanceFound = true;
-                            break;
-                        }
-                    }
-
-                    // Update shader binding table record using the correct SBT index
-                    if (instanceFound)
-                    {
-                        assert(sbtIndex + numTypesOfRays - 1 < m_sbtRecordGeometryInstanceData.size());
-
-                        for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
-                        {
-                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
-                            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
-                        }
-                    }
-                }
+                updateGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
             }
             // Instanced
             else if (IsInstancedBlockType(blockId))
             {
                 auto instanceId = scene.sceneUpdateInstanceId[i];
-                bool hasInstance = instanceIds.count(instanceId);
-
-                if (hasInstance)
-                {
-                    instanceIds.erase(instanceId);
-                    int idxToRemove = -1;
-                    for (int j = 0; j < m_instances.size(); ++j)
-                    {
-                        if (m_instances[j].instanceId == instanceId)
-                        {
-                            idxToRemove = j;
-                        }
-                    }
-                    assert(idxToRemove != -1);
-                    m_instances.erase(m_instances.begin() + idxToRemove);
-                }
-                else
-                {
-                    instanceIds.insert(instanceId);
-
-                    OptixInstance instance = {};
-                    memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
-                    instance.instanceId = instanceId;
-                    instance.visibilityMask = 255;
-                    instance.sbtOffset = objectId * numTypesOfRays;
-                    instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-                    instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
-
-                    m_instances.push_back(instance);
-                }
+                updateInstancedObjectInstance(instanceId, objectId);
             }
         }
         // Upload SBT
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-    }
-
-    // Rebuild BVH
-    {
-        CUstream cudaStream = getCurrentCudaStream();
-        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-
-        m_systemParameter.prevTopObject = m_systemParameter.topObject;
-
-        int nextIndex = (m_currentIasIdx + 1) % 2;
-        if (m_d_ias[nextIndex] != 0)
-        {
-            CUDA_CHECK(cudaFree((void *)m_d_ias[nextIndex]));
-        }
-
-        // Build the new BVH in the inactive slot.
-        CUdeviceptr d_instances;
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                                   cudaMemcpyHostToDevice, cudaStream));
-
-        OptixBuildInput instanceInput = {};
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-        OptixAccelBuildOptions accelBuildOptions = {};
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-        OptixAccelBufferSizes iasBufferSizes = {};
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes));
-
-        CUdeviceptr d_tmp;
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-        // Build the acceleration structure into the new buffer.
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[nextIndex], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
-
-        // Synchronize and clean up temporary allocations.
-        CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances));
-
-        // Swap the buffer index.
-        m_currentIasIdx = nextIndex;
     }
 
     scene.sceneUpdateObjectId.clear();
@@ -749,7 +645,6 @@ void OptixRenderer::update()
 void OptixRenderer::init()
 {
     Scene &scene = Scene::Get();
-    constexpr int numTypesOfRays = 2;
     const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
 
     {
@@ -995,7 +890,7 @@ void OptixRenderer::init()
                 m_instances.push_back(instance);
 
                 // Advance sbtOffset for next geometry instance
-                currentSbtOffset += numTypesOfRays;
+                currentSbtOffset += NUM_RAY_TYPES;
             }
         }
     }
@@ -1019,14 +914,14 @@ void OptixRenderer::init()
                 scene.m_instancedGeometryIndicesSize[arrayIndex]);
 
             m_geometries.push_back(geometry);
-            objectIdxToBlasHandleMap[objectId] = blasHandle;
+            m_objectIdxToBlasHandleMap[objectId] = blasHandle;
         }
         else
         {
             // Create empty geometry if no data available
             GeometryData geometry = {};
             m_geometries.push_back(geometry);
-            objectIdxToBlasHandleMap[objectId] = 0;
+            m_objectIdxToBlasHandleMap[objectId] = 0;
         }
 
         // Create instances for this object type
@@ -1038,13 +933,13 @@ void OptixRenderer::init()
             instance.visibilityMask = 255;
             instance.sbtOffset = currentSbtOffset; // Use sequential sbtOffset continuing from uninstanced geometry
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
-            instance.traversableHandle = objectIdxToBlasHandleMap[objectId];
+            instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId];
             m_instances.push_back(instance);
-            instanceIds.insert(instanceId);
+            m_instanceIds.insert(instanceId);
         }
 
         // Advance sbtOffset for next instanced geometry type
-        currentSbtOffset += numTypesOfRays;
+        currentSbtOffset += NUM_RAY_TYPES;
     }
 
     // Create entity geometry BLAS
@@ -1081,52 +976,12 @@ void OptixRenderer::init()
             m_instances.push_back(instance);
 
             // Advance sbtOffset for next entity
-            currentSbtOffset += numTypesOfRays;
+            currentSbtOffset += NUM_RAY_TYPES;
         }
     }
 
-    // Build BVH
-    {
-        CUdeviceptr d_instances;
-
-        const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-
-        CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-        CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-
-        OptixBuildInput instanceInput = {};
-
-        instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-        instanceInput.instanceArray.instances = d_instances;
-        instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
-
-        OptixAccelBuildOptions accelBuildOptions = {};
-
-        accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
-        accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
-
-        OptixAccelBufferSizes iasBufferSizes = {};
-
-        OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
-
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[0], iasBufferSizes.outputSizeInBytes));
-
-        CUdeviceptr d_tmp;
-
-        CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
-
-        auto &backend = Backend::Get();
-        OPTIX_CHECK(m_api.optixAccelBuild(m_context, backend.getCudaStream(),
-                                          &accelBuildOptions, &instanceInput, 1,
-                                          d_tmp, iasBufferSizes.tempSizeInBytes,
-                                          m_d_ias[0], iasBufferSizes.outputSizeInBytes,
-                                          &m_systemParameter.topObject, nullptr, 0));
-
-        CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
-
-        CUDA_CHECK(cudaFree((void *)d_tmp));
-        CUDA_CHECK(cudaFree((void *)d_instances)); // Don't need the instances anymore.
-    }
+    // Build BVH using helper function
+    buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0, false);
 
     // Options
     OptixModuleCompileOptions moduleCompileOptions = {};
@@ -1150,7 +1005,7 @@ void OptixRenderer::init()
 
     // Raygen
     {
-        std::string ptxRaygeneration = ReadPtx("ptx/RayGen.ptx");
+        std::string ptxRaygeneration = ReadFileToString("ptx/RayGen.ptx");
         OptixModule moduleRaygeneration;
         OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration));
 
@@ -1169,7 +1024,7 @@ void OptixRenderer::init()
 
     // Miss
     {
-        std::string ptxMiss = ReadPtx("ptx/Miss.ptx");
+        std::string ptxMiss = ReadFileToString("ptx/Miss.ptx");
         OptixModule moduleMiss;
         OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss));
 
@@ -1208,7 +1063,7 @@ void OptixRenderer::init()
 
     // Closest hit
     {
-        std::string ptxClosesthit = ReadPtx("ptx/ClosestHit.ptx");
+        std::string ptxClosesthit = ReadFileToString("ptx/ClosestHit.ptx");
         OptixModule moduleClosesthit;
         OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit));
 
@@ -1237,7 +1092,7 @@ void OptixRenderer::init()
 
     // Direct callables
     {
-        // std::string ptxBsdf = ReadPtx("ptx/Bsdf.ptx");
+        // std::string ptxBsdf = ReadFileToString("ptx/Bsdf.ptx");
         // OptixModule moduleBsdf;
         // OPTIX_CHECK(m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxBsdf.c_str(), ptxBsdf.size(), nullptr, nullptr, &moduleBsdf));
 
@@ -1359,7 +1214,7 @@ void OptixRenderer::init()
         // Add space for entities
         totalInstances += static_cast<unsigned int>(scene.getEntityCount());
 
-        m_sbtRecordGeometryInstanceData.resize(totalInstances * numTypesOfRays);
+        m_sbtRecordGeometryInstanceData.resize(totalInstances * NUM_RAY_TYPES);
 
         // Initialize SBT records for all geometry instances
         unsigned int sbtRecordIndex = 0;
@@ -1374,7 +1229,7 @@ void OptixRenderer::init()
                 {
                     unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
 
-                    for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                    for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
                     {
                         if (rayType == 0)
                         {
@@ -1402,7 +1257,7 @@ void OptixRenderer::init()
             // Instanced geometries are stored after all chunk-based geometries
             unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
 
-            for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+            for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
             {
                 if (rayType == 0)
                 {
@@ -1431,7 +1286,7 @@ void OptixRenderer::init()
                 // Entities are stored after all chunk-based and instanced geometries
                 unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
 
-                for (unsigned int rayType = 0; rayType < numTypesOfRays; ++rayType)
+                for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
                 {
                     if (rayType == 0)
                     {
@@ -1454,8 +1309,8 @@ void OptixRenderer::init()
             }
         }
 
-        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * numTypesOfRays, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     // Direct callables
@@ -1478,7 +1333,7 @@ void OptixRenderer::init()
 
         m_sbt.missRecordBase = m_d_sbtRecordMiss;
         m_sbt.missRecordStrideInBytes = (unsigned int)sizeof(SbtRecordHeader);
-        m_sbt.missRecordCount = numTypesOfRays;
+        m_sbt.missRecordCount = NUM_RAY_TYPES;
 
         m_sbt.hitgroupRecordBase = reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData);
         m_sbt.hitgroupRecordStrideInBytes = (unsigned int)sizeof(SbtRecordGeometryInstanceData);
@@ -1502,5 +1357,66 @@ void OptixRenderer::init()
     for (auto &module : moduleList)
     {
         OPTIX_CHECK(m_api.optixModuleDestroy(module));
+    }
+}
+
+// Helper function to build Instance Acceleration Structure (IAS)
+void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex, bool swapCurrentIndex)
+{
+    // Upload instances to GPU
+    CUdeviceptr d_instances;
+    const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+    CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
+    CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                               cudaMemcpyHostToDevice, cudaStream));
+
+    // Setup build input
+    OptixBuildInput instanceInput = {};
+    instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+    instanceInput.instanceArray.instances = d_instances;
+    instanceInput.instanceArray.numInstances = (unsigned int)m_instances.size();
+
+    // Setup build options
+    OptixAccelBuildOptions accelBuildOptions = {};
+    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+    accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    // Compute memory requirements
+    OptixAccelBufferSizes iasBufferSizes = {};
+    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+
+    // Only reallocate if buffer doesn't exist or required size is larger than current
+    if (m_d_ias[targetIasIndex] == 0 || iasBufferSizes.outputSizeInBytes > m_iasBufferSizes[targetIasIndex])
+    {
+        // Free existing buffer if needed
+        if (m_d_ias[targetIasIndex] != 0)
+        {
+            CUDA_CHECK(cudaFree((void *)m_d_ias[targetIasIndex]));
+        }
+
+        // Allocate new buffer
+        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes));
+        m_iasBufferSizes[targetIasIndex] = iasBufferSizes.outputSizeInBytes;
+    }
+
+    CUdeviceptr d_tmp;
+    CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+
+    // Build the acceleration structure
+    OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
+                                      &accelBuildOptions, &instanceInput, 1,
+                                      d_tmp, iasBufferSizes.tempSizeInBytes,
+                                      m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes,
+                                      &m_systemParameter.topObject, nullptr, 0));
+
+    // Synchronize and cleanup
+    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    CUDA_CHECK(cudaFree((void *)d_tmp));
+    CUDA_CHECK(cudaFree((void *)d_instances));
+
+    // Update current index if requested
+    if (swapCurrentIndex)
+    {
+        m_currentIasIdx = targetIasIndex;
     }
 }
