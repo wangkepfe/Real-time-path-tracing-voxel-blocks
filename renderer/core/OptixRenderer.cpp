@@ -15,6 +15,11 @@
 
 #include "util/BufferUtils.h"
 
+// New asset management system
+#include "assets/AssetRegistry.h"
+#include "assets/MaterialManager.h"
+#include "assets/ModelManager.h"
+
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
 #include <cfgmgr32.h>
@@ -208,12 +213,77 @@ namespace
 
 } // namespace
 
+// Helper functions for geometry index calculations
+unsigned int OptixRenderer::getUninstancedGeometryIndex(unsigned int chunkIndex, unsigned int objectId) const
+{
+    const auto &scene = Scene::Get();
+    return chunkIndex * scene.uninstancedGeometryCount + objectId;
+}
+
+unsigned int OptixRenderer::getInstancedGeometryIndex(unsigned int objectId) const
+{
+    const auto &scene = Scene::Get();
+    return scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
+}
+
+unsigned int OptixRenderer::getEntityGeometryIndex(unsigned int entityIndex) const
+{
+    const auto &scene = Scene::Get();
+    return scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + entityIndex;
+}
+
+// Helper function to update SBT record geometry data for all ray types
+void OptixRenderer::updateSbtRecordGeometryData(unsigned int geometryIndex, const GeometryData &geometry)
+{
+    unsigned int sbtBaseIndex = geometryIndex * NUM_RAY_TYPES;
+
+    // Bounds check
+    assert(sbtBaseIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size());
+
+    for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+    {
+        unsigned int sbtIndex = sbtBaseIndex + rayType;
+        m_sbtRecordGeometryInstanceData[sbtIndex].data.indices = (Int3 *)geometry.indices;
+        m_sbtRecordGeometryInstanceData[sbtIndex].data.attributes = (VertexAttributes *)geometry.attributes;
+    }
+}
+
+// Helper function to initialize an SBT record with headers, geometry data, and material index
+void OptixRenderer::initializeSbtRecord(unsigned int sbtRecordIndex, unsigned int geometryIndex, unsigned int materialIndex)
+{
+    if (sbtRecordIndex + NUM_RAY_TYPES - 1 >= m_sbtRecordGeometryInstanceData.size() ||
+        geometryIndex >= m_geometries.size())
+    {
+        return;
+    }
+
+    for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+    {
+        unsigned int currentSbtIndex = sbtRecordIndex + rayType;
+
+        // Set header based on ray type
+        if (rayType == 0)
+        {
+            memcpy(m_sbtRecordGeometryInstanceData[currentSbtIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+        }
+        else
+        {
+            memcpy(m_sbtRecordGeometryInstanceData[currentSbtIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
+        }
+
+        // Set geometry data
+        m_sbtRecordGeometryInstanceData[currentSbtIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
+        m_sbtRecordGeometryInstanceData[currentSbtIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
+        m_sbtRecordGeometryInstanceData[currentSbtIndex].data.materialIndex = materialIndex;
+    }
+}
+
 void OptixRenderer::clear()
 {
     auto &backend = Backend::Get();
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
-    CUDA_CHECK(cudaFree((void *)m_systemParameter.materialParameters));
+    // Material memory is now managed by MaterialManager, don't free here
     CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
 
     for (size_t i = 0; i < m_geometries.size(); ++i)
@@ -313,7 +383,7 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
             if (entity->hasAnimation())
             {
                 // Calculate the correct geometry index for entities
-                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
+                unsigned int geometryIndex = getEntityGeometryIndex(entityIndex);
 
                 if (geometryIndex < m_geometries.size())
                 {
@@ -349,17 +419,7 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                     }
 
                     // Update SBT records for the animated entity
-                    // Calculate SBT offset for this entity
-                    unsigned int entitySbtOffset = (scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex)) * NUM_RAY_TYPES;
-                    if (entitySbtOffset + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size())
-                    {
-                        for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
-                        {
-                            unsigned int sbtIndex = entitySbtOffset + rayType;
-                            m_sbtRecordGeometryInstanceData[sbtIndex].data.indices = (Int3 *)geometry.indices;
-                            m_sbtRecordGeometryInstanceData[sbtIndex].data.attributes = (VertexAttributes *)geometry.attributes;
-                        }
-                    }
+                    updateSbtRecordGeometryData(getEntityGeometryIndex(entityIndex), geometry);
                 }
             }
         }
@@ -389,7 +449,7 @@ void OptixRenderer::createGasAndOptixInstanceForUninstancedObject()
         {
             auto &scene = Scene::Get();
             unsigned int blockId = ObjectIdToBlockId(objectId);
-            unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
+            unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
 
             assert(scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0);
             assert(scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0);
@@ -436,7 +496,7 @@ void OptixRenderer::createGasAndOptixInstanceForUninstancedObject()
 void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId)
 {
     auto &scene = Scene::Get();
-    unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
+    unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
 
     assert(geometryIndex < m_geometries.size());
     assert(scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0);
@@ -474,12 +534,14 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
     // Update shader binding table record using the correct SBT index
     if (instanceFound)
     {
-        assert(sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size());
-
-        for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+        // Update geometry data using the sbtIndex directly since it's already calculated
+        if (sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size())
         {
-            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
-            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+            for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+            {
+                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
+            }
         }
     }
 }
@@ -516,7 +578,7 @@ void OptixRenderer::createOptixInstanceForInstancedObject()
 
     for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
     {
-        unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
+        unsigned int geometryIndex = getInstancedGeometryIndex(objectId);
         for (int instanceId : scene.geometryInstanceIdMap[objectId])
         {
             OptixInstance instance = {};
@@ -563,7 +625,7 @@ void OptixRenderer::createOptixInstanceForEntity()
     // Entities - add them to instances during reload
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
     {
-        unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
+        unsigned int geometryIndex = getEntityGeometryIndex(entityIndex);
         Entity *entity = scene.getEntity(entityIndex);
         if (entity)
         {
@@ -648,6 +710,19 @@ void OptixRenderer::update()
         unsigned int instanceIndex = 0;
 
         createGasAndOptixInstanceForUninstancedObject();
+
+        // Update SBT records with new geometry pointers for uninstanced objects
+        for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
+        {
+            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+            {
+                unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
+                if (geometryIndex < m_geometries.size())
+                {
+                    updateSbtRecordGeometryData(geometryIndex, m_geometries[geometryIndex]);
+                }
+            }
+        }
 
         // Upload SBT
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
@@ -802,90 +877,19 @@ void OptixRenderer::init()
         }
     }
 
-    // Create materials
+    // Initialize asset management system
     {
-        // Setup GUI material parameter, one for each of the implemented BSDFs.
-
-        TextureManager &textureManager = TextureManager::Get();
-
-        // The order in this array matches the instance ID in the root IAS!
-        for (const auto &textureFile : GetTextureFiles())
-        {
-            MaterialParameter parameter{};
-            parameter.uvScale = 2.5f;
-            parameter.textureAlbedo = textureManager.GetTexture("data/textures/" + textureFile + "_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/textures/" + textureFile + "_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/textures/" + textureFile + "_rough.png");
-            parameter.useWorldGridUV = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Test material
-        {
-            MaterialParameter parameter{};
-            parameter.albedo = Float3(1.0f);
-            // parameter.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
-            // parameter.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
-            // parameter.textureRoughness = textureManager.GetTexture("data/GreenLeaf10_4K_back_rough.png");
-            parameter.roughness = 0.0f;
-            parameter.translucency = 0.0f;
-            // parameter.isThinfilm = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Leaf material
-        {
-            MaterialParameter parameter{};
-            parameter.textureAlbedo = textureManager.GetTexture("data/GreenLeaf10_4K_back_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/GreenLeaf10_4K_back_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/GreenLeaf10_4K_back_rough.png");
-            parameter.translucency = 0.5f;
-            parameter.isThinfilm = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Lantern base
-        {
-            MaterialParameter parameter{};
-            std::string textureFile = "beaten-up-metal1";
-            parameter.textureAlbedo = textureManager.GetTexture("data/" + textureFile + "_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/" + textureFile + "_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/" + textureFile + "_rough.png");
-            parameter.textureMetallic = textureManager.GetTexture("data/" + textureFile + "_metal.png");
-            parameter.useWorldGridUV = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Lantern light
-        {
-            MaterialParameter parameter{};
-            parameter.albedo = GetEmissiveRadiance(BlockTypeTestLight);
-            parameter.isEmissive = true;
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Store the index where entity materials start
-        unsigned int entityMaterialStartIndex = m_materialParameters.size();
-
-        // Entity materials
-        // Minecraft 1.8+ Character material with pink-smoothie texture
-        {
-            MaterialParameter parameter{};
-            parameter.textureAlbedo = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_albedo.png");
-            parameter.textureNormal = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_normal.png");
-            parameter.textureRoughness = textureManager.GetTexture("data/textures/high_fidelity_pink_smoothie_roughness.png");
-            parameter.albedo = Float3(1.0f, 1.0f, 1.0f); // White base color to let texture show through
-            parameter.roughness = 1.0f;                  // Let the roughness map control this
-            parameter.metallic = 0.0f;                   // Non-metallic material
-            parameter.materialId = entityMaterialStartIndex + EntityTypeMinecraftCharacter;
-            parameter.useWorldGridUV = false; // Use model UV coordinates, not world grid
-            parameter.uvScale = 1.0f;         // Don't scale the UV coordinates
-
-            m_materialParameters.push_back(parameter);
-        }
-
-        // Store entity material mapping for easy access
-        m_entityMaterialStartIndex = entityMaterialStartIndex;
+        // Initialize the new asset management system
+        Assets::AssetRegistry::Get().loadFromYAML();
+        
+        // Initialize material manager (TextureManager is already initialized in main.cpp)
+        Assets::MaterialManager::Get().initialize();
+        
+        // Initialize model manager
+        Assets::ModelManager::Get().initialize();
+        
+        // Materials are now managed by MaterialManager
+        // No need to create them here - they're already in GPU memory
     }
 
     assert((sizeof(SbtRecordHeader) % OPTIX_SBT_RECORD_ALIGNMENT) == 0);
@@ -1119,26 +1123,12 @@ void OptixRenderer::init()
         {
             for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
             {
-                unsigned int geometryIndex = chunkIndex * scene.uninstancedGeometryCount + objectId;
+                unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
                 unsigned int sbtBaseIndex = geometryIndex * NUM_RAY_TYPES;
 
-                for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
-                {
-                    unsigned int sbtRecordIndex = sbtBaseIndex + rayType;
-                    if (rayType == 0)
-                    {
-                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                    }
-                    else
-                    {
-                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                    }
-
-                    assert(geometryIndex < m_geometries.size());
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
-                }
+                // Use objectId directly as material index (matches original system)
+                unsigned int materialIndex = objectId;
+                initializeSbtRecord(sbtBaseIndex, geometryIndex, materialIndex);
             }
         }
 
@@ -1147,26 +1137,12 @@ void OptixRenderer::init()
         {
             // Calculate the correct geometry index for instanced objects
             // Instanced geometries are stored after all chunk-based geometries
-            unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
+            unsigned int geometryIndex = getInstancedGeometryIndex(objectId);
             unsigned int sbtBaseIndex = geometryIndex * NUM_RAY_TYPES;
 
-            for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
-            {
-                unsigned int sbtRecordIndex = sbtBaseIndex + rayType;
-                if (rayType == 0)
-                {
-                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                }
-                else
-                {
-                    memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                }
-
-                assert(geometryIndex < m_geometries.size());
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = objectId;
-            }
+            // Use objectId directly as material index (matches original system)
+            unsigned int materialIndex = objectId;
+            initializeSbtRecord(sbtBaseIndex, geometryIndex, materialIndex);
         }
 
         // Setup SBT records for entities
@@ -1177,28 +1153,12 @@ void OptixRenderer::init()
             {
                 // Calculate the correct geometry index for entities
                 // Entities are stored after all chunk-based and instanced geometries
-                unsigned int geometryIndex = scene.numChunks * scene.uninstancedGeometryCount + scene.instancedGeometryCount + static_cast<unsigned int>(entityIndex);
+                unsigned int geometryIndex = getEntityGeometryIndex(entityIndex);
                 unsigned int sbtBaseIndex = geometryIndex * NUM_RAY_TYPES;
 
-                for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
-                {
-                    unsigned int sbtRecordIndex = sbtBaseIndex + rayType;
-                    if (rayType == 0)
-                    {
-                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitRadiance.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                    }
-                    else
-                    {
-                        memcpy(m_sbtRecordGeometryInstanceData[sbtRecordIndex].header, m_sbtRecordHitShadow.header, OPTIX_SBT_RECORD_HEADER_SIZE);
-                    }
-
-                    assert(geometryIndex < m_geometries.size());
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
-                    // Use the correct material index for entities from the material array
-                    unsigned int entityMaterialIndex = m_entityMaterialStartIndex + static_cast<unsigned int>(entity->getType());
-                    m_sbtRecordGeometryInstanceData[sbtRecordIndex].data.materialIndex = entityMaterialIndex;
-                }
+                // Get material index from MaterialManager for this entity type
+                unsigned int entityMaterialIndex = Assets::MaterialManager::Get().getMaterialIndexForEntity(static_cast<unsigned int>(entity->getType()));
+                initializeSbtRecord(sbtBaseIndex, geometryIndex, entityMaterialIndex);
             }
         }
 
@@ -1227,8 +1187,8 @@ void OptixRenderer::init()
 
     // Setup "sysParam" data.
     {
-        CUDA_CHECK(cudaMalloc((void **)&m_systemParameter.materialParameters, sizeof(MaterialParameter) * m_materialParameters.size()));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_systemParameter.materialParameters, m_materialParameters.data(), sizeof(MaterialParameter) * m_materialParameters.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        // Materials are now managed by MaterialManager
+        m_systemParameter.materialParameters = Assets::MaterialManager::Get().getGPUMaterialsPointer();
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));

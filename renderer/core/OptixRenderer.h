@@ -59,6 +59,15 @@ private:
     void createOptixInstanceForEntity();
     void updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId);
 
+    // Helper functions for geometry index calculations
+    unsigned int getUninstancedGeometryIndex(unsigned int chunkIndex, unsigned int objectId) const;
+    unsigned int getInstancedGeometryIndex(unsigned int objectId) const;
+    unsigned int getEntityGeometryIndex(unsigned int entityIndex) const;
+
+    // Helper functions for SBT record management
+    void updateSbtRecordGeometryData(unsigned int geometryIndex, const GeometryData& geometry);
+    void initializeSbtRecord(unsigned int sbtRecordIndex, unsigned int geometryIndex, unsigned int materialIndex);
+
     int m_width;
     int m_height;
 
@@ -95,8 +104,6 @@ private:
 
     SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
 
-    std::vector<MaterialParameter> m_materialParameters;
-    unsigned int m_entityMaterialStartIndex = 0;
 
     BlueNoiseRandGeneratorHost h_randGen{};
     BlueNoiseRandGenerator d_randGen{static_cast<BlueNoiseRandGenerator>(h_randGen)};

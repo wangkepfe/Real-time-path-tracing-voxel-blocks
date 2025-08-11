@@ -177,14 +177,9 @@ void Backend::dynamicResolution()
     renderer.setHeight(renderHeight);
     RenderCamera::Get().camera.resolution = Float2(renderWidth, renderHeight);
 
-    static float timerCounter = 0.0f;
-    timerCounter += deltaTime;
-    if (timerCounter > 1000.0f)
-    {
-        timerCounter -= 1000.0f;
-        m_currentFPS = 1000.0f / deltaTime;
-        m_currentRenderWidth = renderWidth;
-    }
+    // Use the Timer's built-in FPS calculation
+    m_currentFPS = static_cast<float>(m_timer.fps);
+    m_currentRenderWidth = renderWidth;
 }
 
 void Backend::clear()

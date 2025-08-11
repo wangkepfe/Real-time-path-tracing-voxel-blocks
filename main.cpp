@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
         auto &ui = UI::Get();
         auto &bufferManager = BufferManager::Get();
         auto &textureManager = TextureManager::Get();
+        textureManager.init();
         auto &voxelengine = VoxelEngine::Get();
 
         // Load global settings from YAML file at startup
@@ -30,7 +31,7 @@ int main(int argc, char *argv[])
         voxelengine.init();
         backend.init();
         bufferManager.init();
-        textureManager.init();
+        // Textures are now initialized through OptixRenderer's asset management system
         renderer.init();
         ui.init();
 

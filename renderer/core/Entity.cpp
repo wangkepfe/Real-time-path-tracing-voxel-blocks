@@ -186,7 +186,8 @@ bool Entity::loadMinecraftCharacterGeometry()
 
     std::cout << "Loading animated Minecraft character from: " << gltfFile << std::endl;
 
-    // Use the new animated GLTF loader
+    // TODO: Integrate with ModelManager once animated entity support is added
+    // For now, continue using GLTFUtils directly for animated entities
     if (GLTFUtils::loadAnimatedGLTFModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize,
                                          m_skeleton, m_animationClips, gltfFile))
     {

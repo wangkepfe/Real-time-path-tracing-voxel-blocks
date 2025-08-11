@@ -73,11 +73,6 @@ struct Timer
         return std::chrono::duration<float, std::milli>(currentTime - startTime).count();
     }
 
-    float getTimeInSecond() const
-    {
-        return getTime() / 1000.0f;
-    }
-
     static std::string getTimeString()
     {
         auto end = std::chrono::system_clock::now();

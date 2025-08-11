@@ -120,6 +120,7 @@ int main(int argc, char *argv[])
     {
         auto &bufferManager = BufferManager::Get();
         auto &textureManager = TextureManager::Get();
+        textureManager.init();
         auto &voxelengine = VoxelEngine::Get();
 
         // Initialize components in order
@@ -132,8 +133,7 @@ int main(int argc, char *argv[])
         std::cout << "Initializing buffer manager..." << std::endl;
         bufferManager.init();
 
-        std::cout << "Initializing texture manager..." << std::endl;
-        textureManager.init();
+        // Textures are now initialized through OptixRenderer's asset management system
 
         std::cout << "Initializing OptixRenderer..." << std::endl;
         renderer.init();
