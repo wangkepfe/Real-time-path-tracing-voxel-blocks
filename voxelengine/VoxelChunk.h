@@ -4,7 +4,7 @@
 
 #include "VoxelMath.h"
 
-#include "Block.h"
+#include "voxelengine/BlockType.h"
 
 #include <optional>
 #include <iostream>

@@ -3,7 +3,9 @@
 #include "core/OfflineBackend.h"
 #include "core/OptixRenderer.h"
 #include "core/BufferManager.h"
-#include "util/TextureUtils.h"
+#include "assets/TextureManager.h"
+#include "assets/ModelManager.h"
+#include "assets/BlockManager.h"
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
@@ -78,7 +80,8 @@ int main(int argc, char *argv[])
         else if (arg == "--frames" && i + 1 < argc)
         {
             totalFrames = std::atoi(argv[++i]);
-            if (totalFrames == 1) {
+            if (totalFrames == 1)
+            {
                 savedFrames = {1}; // Only save frame 1 for single frame render
             }
         }
@@ -109,7 +112,7 @@ int main(int argc, char *argv[])
     // Load global settings from YAML file at startup
     auto &globalSettings = GlobalSettings::Get();
     globalSettings.LoadFromYAML("data/settings/global_settings.yaml");
-    
+
     // Set offline mode
     GlobalSettings::SetOfflineMode(true);
 
@@ -119,10 +122,17 @@ int main(int argc, char *argv[])
     try
     {
         auto &bufferManager = BufferManager::Get();
-        auto &textureManager = TextureManager::Get();
+
         auto &voxelengine = VoxelEngine::Get();
 
         // Initialize components in order
+        // Initialize ModelManager first so VoxelEngine can use it
+        std::cout << "Initializing ModelManager..." << std::endl;
+        Assets::ModelManager::Get().initialize();
+
+        std::cout << "Initializing BlockManager..." << std::endl;
+        Assets::BlockManager::Get().initialize();
+
         std::cout << "Initializing voxel engine..." << std::endl;
         voxelengine.init();
 
@@ -132,8 +142,7 @@ int main(int argc, char *argv[])
         std::cout << "Initializing buffer manager..." << std::endl;
         bufferManager.init();
 
-        std::cout << "Initializing texture manager..." << std::endl;
-        textureManager.init();
+        // Textures are now initialized through OptixRenderer's asset management system
 
         std::cout << "Initializing OptixRenderer..." << std::endl;
         renderer.init();
@@ -244,7 +253,8 @@ int main(int argc, char *argv[])
             if (shouldSave || (frameNumber % 16 == 0))
             {
                 std::cout << "Frame " << frameNumber << "/" << totalFrames << " completed";
-                if (shouldSave) std::cout << " (SAVED)";
+                if (shouldSave)
+                    std::cout << " (SAVED)";
                 std::cout << std::endl;
             }
 
@@ -286,7 +296,7 @@ int main(int argc, char *argv[])
                         std::cerr << "Failed to update canonical image" << std::endl;
                     }
                 }
-                catch (const std::exception& e)
+                catch (const std::exception &e)
                 {
                     std::cerr << "Error updating canonical image: " << e.what() << std::endl;
                 }

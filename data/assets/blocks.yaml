@@ -1,0 +1,114 @@
+# Block Type Definition File
+# This file maps block types to their corresponding materials and models
+
+blocks:
+  # Empty block (ID: 0)
+  - id: 0
+    name: "Empty"
+    type: BlockTypeEmpty
+    material: null
+    model: null
+    
+  # Terrain blocks (IDs: 1-12)
+  - id: 1
+    name: "Sand"
+    type: BlockTypeSand
+    material: sand
+    model: null
+    
+  - id: 2
+    name: "Soil"
+    type: BlockTypeSoil
+    material: soil
+    model: null
+    
+  - id: 3
+    name: "Cliff"
+    type: BlockTypeCliff
+    material: cliff
+    model: null
+    
+  - id: 4
+    name: "Trunk"
+    type: BlockTypeTrunk
+    material: trunk
+    model: null
+    
+  - id: 5
+    name: "Unused1"
+    type: BlockTypeUnused1
+    material: unused1
+    model: null
+    
+  - id: 6
+    name: "Unused2"
+    type: BlockTypeUnused2
+    material: unused2
+    model: null
+    
+  - id: 7
+    name: "Rocks"
+    type: BlockTypeRocks
+    material: rocks
+    model: null
+    
+  - id: 8
+    name: "Floor"
+    type: BlockTypeFloor
+    material: floor
+    model: null
+    
+  - id: 9
+    name: "Brick"
+    type: BlockTypeBrick
+    material: brick
+    model: null
+    
+  - id: 10
+    name: "Wall"
+    type: BlockTypeWall
+    material: wall
+    model: null
+    
+  - id: 11
+    name: "Plank"
+    type: BlockTypePlank
+    material: plank
+    model: null
+    
+  - id: 12
+    name: "Plank2"
+    type: BlockTypePlank2
+    material: plank2
+    model: null
+    
+  # Instanced blocks (IDs: 13-16)
+  - id: 13
+    name: "Test1"
+    type: BlockTypeTest1
+    material: test1
+    model: test_plane
+    is_instanced: true
+    
+  - id: 14
+    name: "Leaves"
+    type: BlockTypeLeaves
+    material: leaves
+    model: leaves_cube
+    is_instanced: true
+    
+  - id: 15
+    name: "TestLightBase"
+    type: BlockTypeTestLightBase
+    material: lantern_base
+    model: lantern_base
+    is_instanced: true
+    is_base_light: true
+    
+  - id: 16
+    name: "TestLight"
+    type: BlockTypeTestLight
+    material: lantern_light
+    model: lantern_light
+    is_instanced: true
+    is_emissive: true

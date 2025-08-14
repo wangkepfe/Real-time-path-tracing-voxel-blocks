@@ -35,6 +35,30 @@ add_definitions(-DTINYGLTF_IMPLEMENTATION)
 add_definitions(-DTINYGLTF_NO_STB_IMAGE_WRITE)
 add_definitions(-DTINYGLTF_NO_STB_IMAGE)
 
+# yaml-cpp library
+set(YAMLCPP_INCLUDE_DIR "${LOCAL_3RDPARTY}/yaml-cpp/include")
+
+# Generated header directory
+set(GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+# Auto-generate BlockType.h from blocks.yaml
+set(BLOCKS_YAML_FILE "${CMAKE_CURRENT_SOURCE_DIR}/data/assets/blocks.yaml")
+set(GENERATED_BLOCKTYPE_HEADER "${GENERATED_INCLUDE_DIR}/voxelengine/BlockType.h")
+set(BLOCK_TYPE_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_block_types.py")
+
+# Add custom command to generate BlockType.h
+add_custom_command(
+    OUTPUT ${GENERATED_BLOCKTYPE_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${GENERATED_INCLUDE_DIR}/voxelengine"
+    COMMAND python ${BLOCK_TYPE_GENERATOR} ${BLOCKS_YAML_FILE} ${GENERATED_BLOCKTYPE_HEADER}
+    DEPENDS ${BLOCKS_YAML_FILE} ${BLOCK_TYPE_GENERATOR}
+    COMMENT "Generating BlockType.h from blocks.yaml"
+    VERBATIM
+)
+
+# Create a custom target for the generated header
+add_custom_target(generate_block_types DEPENDS ${GENERATED_BLOCKTYPE_HEADER})
+
 set( IMGUI
     renderer/ext/imgui/imconfig.h
     renderer/ext/imgui/imgui.h
@@ -65,6 +89,11 @@ set( HEADERS
     renderer/core/BufferManager.h
     renderer/core/RenderCamera.h
     renderer/core/SceneConfig.h
+    renderer/assets/AssetRegistry.h
+    renderer/assets/MaterialDefinition.h
+    renderer/assets/MaterialManager.h
+    renderer/assets/ModelManager.h
+    renderer/assets/BlockManager.h
     renderer/postprocessing/BicubicFilter.h
     renderer/postprocessing/ScalingFilter.h
     renderer/postprocessing/PostProcessor.h
@@ -72,12 +101,14 @@ set( HEADERS
     renderer/util/KernelHelper.h
     renderer/util/DebugUtils.h
     renderer/util/Timer.h
-    renderer/util/TextureUtils.h
+    renderer/assets/TextureManager.h
     renderer/util/RandGenData.h
     renderer/util/RandGenHost.h
-    renderer/util/ModelUtils.h
-    renderer/util/GLTFUtils.h
+    renderer/assets/ModelUtils.h
+    renderer/assets/GLTFUtils.h
+    renderer/assets/ObjUtils.h
     renderer/util/ImageDiff.h
+    renderer/util/FileUtils.h
     renderer/util/PerformanceTracker.h
     renderer/shaders/LinearMath.h
     renderer/shaders/Common.h
@@ -115,15 +146,21 @@ set( SOURCES
     renderer/core/BufferManager.cpp
     renderer/core/SceneConfig.cpp
     renderer/core/GlobalSettings.cpp
+    renderer/assets/AssetRegistry.cpp
+    renderer/assets/MaterialManager.cpp
+    renderer/assets/ModelManager.cpp
+    renderer/assets/BlockManager.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
-    renderer/util/TextureUtils.cu
+    renderer/assets/TextureManager.cu
     renderer/util/RandGenHost.cpp
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
-    renderer/util/ModelUtils.cpp
-    renderer/util/GLTFUtils.cpp
+    renderer/assets/ModelUtils.cpp
+    renderer/assets/GLTFUtils.cpp
+    renderer/assets/ObjUtils.cpp
     renderer/util/ImageDiff.cpp
+    renderer/util/FileUtils.cpp
     renderer/animation/Skeleton.cpp
     renderer/animation/AnimationManager.cpp
     renderer/animation/VertexSkinning.cu
@@ -189,12 +226,14 @@ target_include_directories( voxelgame PUBLIC
     "renderer/ext/imgui"
     "renderer/ext/imgui/backends"
     "voxelengine"
+    ${GENERATED_INCLUDE_DIR}
     ${GLEW_INCLUDE_DIRS}
     ${GLFW_INCLUDE_DIR}
     ${OPTIX_INCLUDE_DIR}
     ${CUDAToolkit_INCLUDE_DIRS}
     ${NVTT_INCLUDE_DIR}
     ${TINYGLTF_INCLUDE_DIR}
+    ${YAMLCPP_INCLUDE_DIR}
 )
 
 target_link_libraries( voxelgame
@@ -209,6 +248,9 @@ target_link_libraries( voxelgame
 
 set_property(TARGET voxelgame PROPERTY CUDA_ARCHITECTURES 89)
 
+# Make voxelgame depend on generated header
+add_dependencies(voxelgame generate_block_types)
+
 # target_compile_options(voxelgame PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G -rdc=true>)
 # set_property(TARGET voxelgame PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
@@ -220,12 +262,14 @@ function(copy_game_data TARGET_NAME COPY_GLFW_GLEW)
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/textures
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/settings
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/assets
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
         # Copy directories only if files are different
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:${TARGET_NAME}>/data/models
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/textures $<TARGET_FILE_DIR:${TARGET_NAME}>/data/textures
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/settings $<TARGET_FILE_DIR:${TARGET_NAME}>/data/settings
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/assets $<TARGET_FILE_DIR:${TARGET_NAME}>/data/assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${PTX_DIR} $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
         # Copy NVTT DLL (needed by both targets)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:${TARGET_NAME}>/nvtt30200.dll
@@ -257,15 +301,21 @@ set( OFFLINE_SOURCES
     renderer/core/CharacterFollowCameraController.cpp
     renderer/core/BufferManager.cpp
     renderer/core/GlobalSettings.cpp
+    renderer/assets/AssetRegistry.cpp
+    renderer/assets/MaterialManager.cpp
+    renderer/assets/ModelManager.cpp
+    renderer/assets/BlockManager.cpp
     renderer/postprocessing/PostProcessor.cu
     renderer/denoising/Denoiser.cu
-    renderer/util/TextureUtils.cu
+    renderer/assets/TextureManager.cu
     renderer/util/RandGenHost.cpp
     renderer/sky/Sky.cu
     renderer/util/BufferUtils.cu
-    renderer/util/ModelUtils.cpp
-    renderer/util/GLTFUtils.cpp
+    renderer/assets/ModelUtils.cpp
+    renderer/assets/GLTFUtils.cpp
+    renderer/assets/ObjUtils.cpp
     renderer/util/ImageDiff.cpp
+    renderer/util/FileUtils.cpp
     renderer/animation/Skeleton.cpp
     renderer/animation/AnimationManager.cpp
     renderer/animation/VertexSkinning.cu
@@ -287,10 +337,12 @@ target_include_directories( voxelgame_offline PUBLIC
     "."
     "renderer"
     "voxelengine"
+    ${GENERATED_INCLUDE_DIR}
     ${OPTIX_INCLUDE_DIR}
     ${CUDAToolkit_INCLUDE_DIRS}
     ${NVTT_INCLUDE_DIR}
     ${TINYGLTF_INCLUDE_DIR}
+    ${YAMLCPP_INCLUDE_DIR}
 )
 
 target_compile_definitions( voxelgame_offline PRIVATE
@@ -305,6 +357,9 @@ target_link_libraries( voxelgame_offline
 )
 
 set_property(TARGET voxelgame_offline PROPERTY CUDA_ARCHITECTURES 89)
+
+# Make voxelgame_offline depend on generated header
+add_dependencies(voxelgame_offline generate_block_types)
 
 # Call the shared function for offline target (without GLFW/GLEW)
 copy_game_data(voxelgame_offline FALSE)

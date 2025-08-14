@@ -45,7 +45,28 @@ public:
 private:
     OptixRenderer() {}
 
+    // OptiX pipeline configuration constants
+    static constexpr int NUM_RAY_TYPES = 2;
+
     void updateAnimatedEntities(CUstream cudaStream, float currentTime);
+    void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex);
+    void rebuildTlasIfNeeded(CUstream cudaStream);
+    void createGasAndOptixInstanceForUninstancedObject();
+    void updateGasAndOptixInstanceForUninstancedObject(unsigned int chunkIndex, unsigned int objectId);
+    void createBlasForInstancedObjects();
+    void createOptixInstanceForInstancedObject();
+    void createBlasForEntities();
+    void createOptixInstanceForEntity();
+    void updateInstancedObjectInstance(unsigned int instanceId, unsigned int objectId);
+
+    // Helper functions for geometry index calculations
+    unsigned int getUninstancedGeometryIndex(unsigned int chunkIndex, unsigned int objectId) const;
+    unsigned int getInstancedGeometryIndex(unsigned int objectId) const;
+    unsigned int getEntityGeometryIndex(unsigned int entityIndex) const;
+
+    // Helper functions for SBT record management
+    void updateSbtRecordGeometryData(unsigned int geometryIndex, const GeometryData& geometry);
+    void initializeSbtRecord(unsigned int sbtRecordIndex, unsigned int geometryIndex, unsigned int materialIndex);
 
     int m_width;
     int m_height;
@@ -55,14 +76,18 @@ private:
     OptixFunctionTable m_api;
     OptixDeviceContext m_context;
     CUdeviceptr m_d_ias[2] = {0, 0};
+    size_t m_iasBufferSizes[2] = {0, 0}; // Track allocated buffer sizes
     int m_currentIasIdx = 0;
     OptixPipeline m_pipeline;
+
+    // TLAS rebuild optimization
+    bool m_needTlasRebuild = false;
 
     SystemParameter *m_d_systemParameter;
 
     std::vector<OptixInstance> m_instances;
-    std::unordered_set<unsigned int> instanceIds;
-    std::unordered_map<unsigned int, OptixTraversableHandle> objectIdxToBlasHandleMap;
+    std::unordered_set<unsigned int> m_instanceIds;
+    std::unordered_map<unsigned int, OptixTraversableHandle> m_objectIdxToBlasHandleMap;
 
     std::vector<GeometryData> m_geometries;
 
@@ -79,8 +104,6 @@ private:
 
     SbtRecordGeometryInstanceData *m_d_sbtRecordGeometryInstanceData;
 
-    std::vector<MaterialParameter> m_materialParameters;
-    unsigned int m_entityMaterialStartIndex = 0;
 
     BlueNoiseRandGeneratorHost h_randGen{};
     BlueNoiseRandGenerator d_randGen{static_cast<BlueNoiseRandGenerator>(h_randGen)};

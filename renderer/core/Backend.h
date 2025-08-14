@@ -94,7 +94,7 @@ private:
     int m_historyRenderHeight;
 
     // For UI display
-    float m_currentFPS;
+    float m_currentFPS = 0.0f;
     float m_currentRenderWidth;
 
 #ifndef OFFLINE_MODE

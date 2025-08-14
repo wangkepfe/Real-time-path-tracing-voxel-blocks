@@ -1,0 +1,203 @@
+# Material Definition File
+# This file defines all materials used in the voxel engine
+# Materials can reference textures and define material properties
+
+materials:
+  # Terrain materials (BlockType materials)
+  - id: sand
+    name: "Sand Material"
+    textures:
+      albedo: "textures/rocky_trail_albedo.png"
+      normal: "textures/rocky_trail_normal.png"
+      roughness: "textures/rocky_trail_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.8
+      metallic: 0.0
+      
+  - id: soil
+    name: "Soil Material"
+    textures:
+      albedo: "textures/brown_mud_leaves_01_albedo.png"
+      normal: "textures/brown_mud_leaves_01_normal.png"
+      roughness: "textures/brown_mud_leaves_01_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.9
+      metallic: 0.0
+      
+  - id: cliff
+    name: "Cliff Material"
+    textures:
+      albedo: "textures/aerial_rocks_02_albedo.png"
+      normal: "textures/aerial_rocks_02_normal.png"
+      roughness: "textures/aerial_rocks_02_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.85
+      metallic: 0.0
+      
+  - id: trunk
+    name: "Tree Trunk Material"
+    textures:
+      albedo: "textures/bark_willow_02_albedo.png"
+      normal: "textures/bark_willow_02_normal.png"
+      roughness: "textures/bark_willow_02_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.9
+      metallic: 0.0
+      
+  - id: unused1
+    name: "Unused Material 1"
+    textures:
+      albedo: "textures/rocky_trail_albedo.png"
+      normal: "textures/rocky_trail_normal.png"
+      roughness: "textures/rocky_trail_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.8
+      metallic: 0.0
+      
+  - id: unused2
+    name: "Unused Material 2"
+    textures:
+      albedo: "textures/aerial_beach_01_albedo.png"
+      normal: "textures/aerial_beach_01_normal.png"
+      roughness: "textures/aerial_beach_01_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.7
+      metallic: 0.0
+      
+  - id: rocks
+    name: "Rocks Material"
+    textures:
+      albedo: "textures/gray_rocks_albedo.png"
+      normal: "textures/gray_rocks_normal.png"
+      roughness: "textures/gray_rocks_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.85
+      metallic: 0.0
+      
+  - id: floor
+    name: "Floor Material"
+    textures:
+      albedo: "textures/stone_tiles_02_albedo.png"
+      normal: "textures/stone_tiles_02_normal.png"
+      roughness: "textures/stone_tiles_02_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.6
+      metallic: 0.0
+      
+  - id: brick
+    name: "Brick Material"
+    textures:
+      albedo: "textures/seaworn_stone_tiles_albedo.png"
+      normal: "textures/seaworn_stone_tiles_normal.png"
+      roughness: "textures/seaworn_stone_tiles_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.7
+      metallic: 0.0
+      
+  - id: wall
+    name: "Wall Material"
+    textures:
+      albedo: "textures/beige_wall_001_albedo.png"
+      normal: "textures/beige_wall_001_normal.png"
+      roughness: "textures/beige_wall_001_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.65
+      metallic: 0.0
+      
+  - id: plank
+    name: "Wood Plank Material"
+    textures:
+      albedo: "textures/wood_planks_albedo.png"
+      normal: "textures/wood_planks_normal.png"
+      roughness: "textures/wood_planks_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.75
+      metallic: 0.0
+      
+  - id: plank2
+    name: "Wood Plank Material 2"
+    textures:
+      albedo: "textures/wood_planks_albedo.png"
+      normal: "textures/wood_planks_normal.png"
+      roughness: "textures/wood_planks_rough.png"
+    properties:
+      uv_scale: 2.5
+      use_world_grid_uv: true
+      roughness: 0.75
+      metallic: 0.0
+      
+  # Special materials
+  - id: test1
+    name: "Test Material"
+    properties:
+      albedo: [1.0, 1.0, 1.0]
+      roughness: 0.0
+      metallic: 0.0
+      translucency: 0.0
+      
+  - id: leaves
+    name: "Leaves Material"
+    textures:
+      albedo: "textures/GreenLeaf10_4K_back_albedo.png"
+      normal: "textures/GreenLeaf10_4K_back_normal.png"
+      roughness: "textures/GreenLeaf10_4K_back_rough.png"
+    properties:
+      translucency: 0.5
+      is_thinfilm: true
+      roughness: 0.5
+      metallic: 0.0
+      
+  - id: lantern_base
+    name: "Lantern Base Material"
+    textures:
+      albedo: "textures/beaten-up-metal1_albedo.png"
+      normal: "textures/beaten-up-metal1_normal.png"
+      roughness: "textures/beaten-up-metal1_rough.png"
+      metallic: "textures/beaten-up-metal1_metal.png"
+    properties:
+      use_world_grid_uv: true
+      roughness: 0.4
+      metallic: 0.8
+      
+  - id: lantern_light
+    name: "Lantern Light Material"
+    properties:
+      is_emissive: true
+      # 1500 Kelvin color temperature, 10000 Lux
+      emissive_radiance: [3.737, 2.718, 1.189]  # Pre-calculated: (255, 182, 78) / 255 * 10000 / (683 * 108)
+      
+  # Entity materials
+  - id: minecraft_character
+    name: "Minecraft Character Material"
+    textures:
+      albedo: "textures/high_fidelity_pink_smoothie_albedo.png"
+      normal: "textures/high_fidelity_pink_smoothie_normal.png"
+      roughness: "textures/high_fidelity_pink_smoothie_roughness.png"
+    properties:
+      albedo: [1.0, 1.0, 1.0]
+      roughness: 1.0
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0

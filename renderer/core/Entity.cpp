@@ -1,7 +1,6 @@
 #include "Entity.h"
 #include "../util/DebugUtils.h"
-#include "../util/ModelUtils.h"
-#include "../util/GLTFUtils.h"
+#include "../assets/ModelManager.h"
 #include "../animation/VertexSkinning.h"
 #include "../animation/Animation.h"
 #include "../animation/AnimationManager.h"
@@ -110,8 +109,15 @@ Entity::Entity(EntityType type, const EntityTransform &transform)
 
 Entity::~Entity()
 {
-    // Note: m_d_attributes and m_d_indices are owned and freed by OptixRenderer
-    // through the m_geometries array. Do not free them here to avoid double-free.
+    // Note: m_d_attributes are owned and freed by ModelManager through the m_geometries array.
+    // Do not free them here to avoid double-free.
+
+    // Free indices (owned by Entity after conversion from Int3 to unsigned int)
+    if (m_d_indices)
+    {
+        CUDA_CHECK(cudaFree(m_d_indices));
+        m_d_indices = nullptr;
+    }
 
     // Free original vertices for animation (these are owned by Entity)
     if (m_d_originalAttributes)
@@ -121,19 +127,71 @@ Entity::~Entity()
     }
 
     m_d_attributes = nullptr;
-    m_d_indices = nullptr;
 }
 
 bool Entity::loadGeometry()
 {
-    switch (m_type)
-    {
-    case EntityTypeMinecraftCharacter:
-        return loadMinecraftCharacterGeometry();
-    default:
-        std::cerr << "Unknown entity type: " << m_type << std::endl;
+    // Use ModelManager to get geometry for this entity type
+    auto& modelManager = Assets::ModelManager::Get();
+    const Assets::LoadedGeometry* geometry = modelManager.getGeometryForEntity(m_type);
+    
+    if (!geometry) {
+        std::cerr << "No geometry found for entity type: " << m_type << std::endl;
         return false;
     }
+    
+    // Copy geometry pointers (ModelManager owns the data)
+    m_d_attributes = geometry->d_attributes;
+    m_attributeSize = geometry->attributeSize;
+    
+    // Convert Int3 indices to unsigned int format for Entity interface compatibility
+    m_indicesSize = geometry->indicesSize * 3;  // Int3 count * 3 = unsigned int count
+    size_t indicesBufferSize = m_indicesSize * sizeof(unsigned int);
+    CUDA_CHECK(cudaMalloc((void**)&m_d_indices, indicesBufferSize));
+    
+    // Convert Int3* to unsigned int* on GPU
+    std::vector<unsigned int> tempIndices(m_indicesSize);
+    std::vector<Int3> int3Indices(geometry->indicesSize);
+    
+    // Copy Int3 data from GPU to host
+    CUDA_CHECK(cudaMemcpy(int3Indices.data(), geometry->d_indices, geometry->indicesSize * sizeof(Int3), cudaMemcpyDeviceToHost));
+    
+    // Convert Int3 to flat unsigned int array
+    for (size_t i = 0; i < geometry->indicesSize; ++i) {
+        tempIndices[i * 3 + 0] = int3Indices[i].x;
+        tempIndices[i * 3 + 1] = int3Indices[i].y;
+        tempIndices[i * 3 + 2] = int3Indices[i].z;
+    }
+    
+    // Copy converted indices back to GPU
+    CUDA_CHECK(cudaMemcpy(m_d_indices, tempIndices.data(), indicesBufferSize, cudaMemcpyHostToDevice));
+    
+    // Handle animation if present
+    if (geometry->hasAnimation) {
+        std::cout << "Setting up animation for entity with " << geometry->animationClips.size() << " animations" << std::endl;
+        
+        // Copy skeleton and animation clips
+        m_skeleton = geometry->skeleton;
+        m_animationClips = geometry->animationClips;
+        
+        // Allocate and copy original vertices for animation skinning
+        const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
+        CUDA_CHECK(cudaMalloc((void **)&m_d_originalAttributes, vertexBufferSize));
+        CUDA_CHECK(cudaMemcpy(m_d_originalAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
+
+        // Create and initialize animation manager
+        m_animationManager = std::make_unique<AnimationManager>();
+        m_animationManager->setSkeleton(m_skeleton);
+
+        // Add all animation clips to the manager
+        for (const auto &clip : m_animationClips) {
+            m_animationManager->addAnimationClip(clip);
+        }
+        
+        std::cout << "Successfully set up animated entity with " << m_animationClips.size() << " animations" << std::endl;
+    }
+    
+    return true;
 }
 
 void Entity::update(float deltaTime)
@@ -179,48 +237,3 @@ void Entity::update(float deltaTime)
     }
 }
 
-bool Entity::loadMinecraftCharacterGeometry()
-{
-    // Load Minecraft 1.8+ character with tessellated mesh from GLTF file with animation support
-    const std::string gltfFile = "data/models/character-pink-smoothie.gltf";
-
-    std::cout << "Loading animated Minecraft character from: " << gltfFile << std::endl;
-
-    // Use the new animated GLTF loader
-    if (GLTFUtils::loadAnimatedGLTFModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize,
-                                         m_skeleton, m_animationClips, gltfFile))
-    {
-        std::cout << "Successfully loaded animated character with " << m_animationClips.size() << " animations" << std::endl;
-
-        // Allocate and copy original vertices for animation skinning
-        const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
-        CUDA_CHECK(cudaMalloc((void **)&m_d_originalAttributes, vertexBufferSize));
-        CUDA_CHECK(cudaMemcpy(m_d_originalAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
-
-        // Create and initialize animation manager
-        m_animationManager = std::make_unique<AnimationManager>();
-        m_animationManager->setSkeleton(m_skeleton);
-
-        // Add all animation clips to the manager
-        for (const auto &clip : m_animationClips)
-        {
-            m_animationManager->addAnimationClip(clip);
-        }
-
-        return true;
-    }
-    else
-    {
-        std::cerr << "Failed to load animated GLTF model, falling back to static model" << std::endl;
-
-        // Fallback to regular model loading
-        loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
-
-        if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
