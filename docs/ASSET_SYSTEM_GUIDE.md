@@ -9,25 +9,25 @@ The asset management system provides a centralized, maintainable architecture fo
 ```mermaid
 flowchart TD
     subgraph "Asset Definition Layer"
-        A[materials.yaml<br/>or hardcoded]
-        B[models.yaml<br/>or hardcoded]
-        C[blocks.yaml<br/>or hardcoded]
+        A[materials.yaml]
+        B[models.yaml]
+        C[blocks.yaml]
     end
-    
+
     subgraph "Asset Registry"
         D[AssetRegistry<br/>- Central repository<br/>- YAML loading<br/>- Unified access]
     end
-    
+
     subgraph "Asset Managers"
         E[MaterialManager<br/>- GPU materials<br/>- Dynamic create<br/>- Runtime update]
         F[TextureManager<br/>- Texture objects<br/>- Mipmap generation<br/>- Default textures]
         G[BlockManager<br/>- Block classification<br/>- Instancing logic<br/>- Object ID mapping]
     end
-    
+
     subgraph "Rendering"
-        H[OptixRenderer<br/>- Uses managers<br/>- No direct asset loading]
+        H[OptixRenderer<br/>- Uses managers]
     end
-    
+
     A --> D
     B --> D
     C --> D
@@ -148,7 +148,7 @@ Centralized texture loading and management with caching and mipmap generation.
 ### File Structure
 All asset definitions are stored in `data/assets/`:
 - `materials.yaml` - Material definitions
-- `models.yaml` - 3D model definitions  
+- `models.yaml` - 3D model definitions
 - `blocks.yaml` - Block type definitions (generated enum boundary)
 
 ### Block Definition Format
@@ -258,11 +258,11 @@ The BlockManager provides centralized block classification replacing previous in
 **Before (scattered inline functions):**
 ```cpp
 // In BlockType.h (auto-generated)
-inline bool IsInstancedBlockType(unsigned int blockId) { 
-    return blockId >= 13; 
+inline bool IsInstancedBlockType(unsigned int blockId) {
+    return blockId >= 13;
 }
-inline unsigned int GetNumInstancedBlockTypes() { 
-    return BlockTypeNum - 13; 
+inline unsigned int GetNumInstancedBlockTypes() {
+    return BlockTypeNum - 13;
 }
 ```
 
@@ -319,7 +319,7 @@ enum BlockType
     BlockTypeSand,       // ID: 1 - Sand
     // ... more entries ...
     BlockTypeTestLight,  // ID: 16 - TestLight
-    
+
     BlockTypeNum = 17,
 };
 ```

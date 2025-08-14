@@ -18,7 +18,12 @@ bool AssetRegistry::loadFromYAML(const std::string& assetDirectory) {
     
     std::filesystem::path assetPath(assetDirectory);
     
-    // Load YAML files - no hardcoded fallback
+    // Load YAML files - blocks first so models can reference block types
+    if (!loadBlocks((assetPath / "blocks.yaml").string())) {
+        std::cerr << "ERROR: Failed to load blocks from YAML: " << (assetPath / "blocks.yaml").string() << std::endl;
+        return false;
+    }
+    
     if (!loadMaterials((assetPath / "materials.yaml").string())) {
         std::cerr << "ERROR: Failed to load materials from YAML: " << (assetPath / "materials.yaml").string() << std::endl;
         return false;
@@ -26,11 +31,6 @@ bool AssetRegistry::loadFromYAML(const std::string& assetDirectory) {
     
     if (!loadModels((assetPath / "models.yaml").string())) {
         std::cerr << "ERROR: Failed to load models from YAML: " << (assetPath / "models.yaml").string() << std::endl;
-        return false;
-    }
-    
-    if (!loadBlocks((assetPath / "blocks.yaml").string())) {
-        std::cerr << "ERROR: Failed to load blocks from YAML: " << (assetPath / "blocks.yaml").string() << std::endl;
         return false;
     }
     
@@ -199,12 +199,11 @@ bool AssetRegistry::loadModels(const std::string& filepath) {
             }
             if (modelNode["block_type"]) {
                 std::string blockTypeStr = modelNode["block_type"].as<std::string>();
-                // Map string block types to integers
-                if (blockTypeStr == "BlockTypeTest1") model.block_type = 13;
-                else if (blockTypeStr == "BlockTypeLeaves") model.block_type = 14;
-                else if (blockTypeStr == "BlockTypeTestLightBase") model.block_type = 15;
-                else if (blockTypeStr == "BlockTypeTestLight") model.block_type = 16;
-                else {
+                // Map string block types to integers using loaded block data
+                int blockId = getBlockIdFromType(blockTypeStr);
+                if (blockId != -1) {
+                    model.block_type = blockId;
+                } else {
                     std::cerr << "Unknown block type: " << blockTypeStr << std::endl;
                     model.block_type = -1;
                 }
@@ -299,6 +298,10 @@ bool AssetRegistry::loadBlocks(const std::string& filepath) {
             // Store the block
             m_blockIndex[block.id] = m_blocks.size();
             m_blockIdIndex[block.id] = m_blocks.size();
+            // Build block type string to ID mapping
+            if (!block.type.empty()) {
+                m_blockTypeToId[block.type] = block.id;
+            }
             m_blocks.push_back(block);
         }
         
@@ -386,7 +389,16 @@ void AssetRegistry::clear() {
     m_modelIndex.clear();
     m_blockIndex.clear();
     m_blockIdIndex.clear();
+    m_blockTypeToId.clear();
     m_isLoaded = false;
+}
+
+int AssetRegistry::getBlockIdFromType(const std::string& blockType) const {
+    auto it = m_blockTypeToId.find(blockType);
+    if (it != m_blockTypeToId.end()) {
+        return it->second;
+    }
+    return -1;  // Not found
 }
 
 std::unordered_set<std::string> AssetRegistry::collectTexturePaths() const {

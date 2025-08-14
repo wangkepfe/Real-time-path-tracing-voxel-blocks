@@ -23,9 +23,7 @@ int main(int argc, char *argv[])
         auto &globalSettings = GlobalSettings::Get();
         auto &ui = UI::Get();
         auto &bufferManager = BufferManager::Get();
-        // TextureManager is now initialized through AssetRegistry in OptixRenderer
-        // auto &textureManager = Assets::TextureManager::Get();
-        // textureManager.init();
+
         auto &voxelengine = VoxelEngine::Get();
 
         // Load global settings from YAML file at startup
@@ -34,7 +32,7 @@ int main(int argc, char *argv[])
         // Initialize ModelManager first so VoxelEngine can use it
         Assets::ModelManager::Get().initialize();
         Assets::BlockManager::Get().initialize();
-        
+
         voxelengine.init();
         backend.init();
         bufferManager.init();

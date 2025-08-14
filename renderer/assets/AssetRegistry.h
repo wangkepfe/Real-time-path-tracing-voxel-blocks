@@ -47,6 +47,9 @@ public:
     // Clear all registries
     void clear();
     
+    // Get block ID from block type string
+    int getBlockIdFromType(const std::string& blockType) const;
+    
     // Texture management
     void initializeTextureManager();
     
@@ -70,6 +73,7 @@ private:
     std::unordered_map<std::string, size_t> m_modelIndex;
     std::unordered_map<int, size_t> m_blockIndex;  // Maps block type to index
     std::unordered_map<int, size_t> m_blockIdIndex;  // Maps block ID to index
+    std::unordered_map<std::string, int> m_blockTypeToId;  // Maps block type string to ID
     
     bool m_isLoaded = false;  // Track whether YAML files have been loaded
 };
