@@ -6,6 +6,7 @@
 #include "BlockManager.h"
 #include <iostream>
 #include <algorithm>
+#include <cassert>
 
 namespace Assets {
 
@@ -62,7 +63,9 @@ bool MaterialManager::createGPUMaterials() {
     const unsigned int dynamicReserve = 64;  // Reserve space for dynamic materials
     const unsigned int totalCapacity = staticCount + dynamicReserve;
     
-    if (!ensureCapacity(totalCapacity)) {
+    bool capacityResult = ensureCapacity(totalCapacity);
+    assert(capacityResult && "Failed to allocate GPU memory for materials - this is a critical error");
+    if (!capacityResult) {
         return false;
     }
     
@@ -98,16 +101,20 @@ bool MaterialManager::createGPUMaterials() {
         }
     }
     
-    // Build entity type to material index mapping
-    // Special handling for entity materials
-    const std::unordered_map<std::string, int> entityTypeMap = {
-        {"minecraft_character", 0}  // EntityTypeMinecraftCharacter = 0
-    };
-    
-    for (const auto& [matId, entityType] : entityTypeMap) {
-        auto it = m_materialIdToIndex.find(matId);
-        if (it != m_materialIdToIndex.end()) {
-            m_entityTypeToMaterialIndex[entityType] = it->second;
+    // Build entity type to material index mapping dynamically from models
+    const auto& models = registry.getAllModels();
+    for (const auto& model : models) {
+        // Only process entity models
+        if (model.type == "entity" && model.entity_type >= 0) {
+            // Try to find a material with the same ID as the model
+            // This follows the convention: minecraft_character model -> minecraft_character material
+            auto materialIt = m_materialIdToIndex.find(model.id);
+            if (materialIt != m_materialIdToIndex.end()) {
+                m_entityTypeToMaterialIndex[model.entity_type] = materialIt->second;
+                std::cout << "Mapped entity type " << model.entity_type << " to material '" << model.id << "' (index " << materialIt->second << ")" << std::endl;
+            } else {
+                std::cerr << "WARNING: No material found for entity model '" << model.id << "' (entity type " << model.entity_type << ")" << std::endl;
+            }
         }
     }
     

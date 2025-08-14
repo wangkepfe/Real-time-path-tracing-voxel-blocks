@@ -6,6 +6,8 @@
 #include <string>
 #include "MaterialDefinition.h"
 #include "shaders/SystemParameter.h"
+#include "../animation/Animation.h"
+#include "../animation/Skeleton.h"
 
 namespace Assets {
 
@@ -17,6 +19,11 @@ struct LoadedGeometry {
     size_t vertexCount = 0;
     size_t triangleCount = 0;
     bool ownsData = true;  // Whether this geometry owns the GPU memory
+    
+    // Animation data (for animated models)
+    bool hasAnimation = false;
+    Skeleton skeleton;
+    std::vector<AnimationClip> animationClips;
 };
 
 class ModelManager {

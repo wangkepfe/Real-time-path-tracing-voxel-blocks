@@ -50,6 +50,9 @@ public:
     // Get block ID from block type string
     int getBlockIdFromType(const std::string& blockType) const;
     
+    // Get entity ID from entity type string
+    int getEntityIdFromType(const std::string& entityType) const;
+    
     // Texture management
     void initializeTextureManager();
     
@@ -74,6 +77,7 @@ private:
     std::unordered_map<int, size_t> m_blockIndex;  // Maps block type to index
     std::unordered_map<int, size_t> m_blockIdIndex;  // Maps block ID to index
     std::unordered_map<std::string, int> m_blockTypeToId;  // Maps block type string to ID
+    std::unordered_map<std::string, int> m_entityTypeToId;  // Maps entity type string to ID
     
     bool m_isLoaded = false;  // Track whether YAML files have been loaded
 };

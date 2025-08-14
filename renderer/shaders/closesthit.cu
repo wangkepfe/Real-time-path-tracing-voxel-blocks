@@ -182,8 +182,7 @@ extern "C" __global__ void __closesthit__radiance()
     state.albedo = parameters.albedo;
     if (parameters.textureAlbedo != 0)
     {
-        // Use the calculated texture coordinates
-        const Float3 texColor = Float3(tex2D<float4>(parameters.textureAlbedo, texCoords.x, texCoords.y));
+        const Float3 texColor = Float3(tex2DLod<float4>(parameters.textureAlbedo, texCoords.x, texCoords.y, lod));
         state.albedo *= texColor;
     }
     state.albedo = max3f(state.albedo, Float3(0.001f)); // Prevent divide-by-zero at demodulation

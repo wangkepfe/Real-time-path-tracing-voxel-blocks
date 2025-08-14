@@ -210,9 +210,11 @@ bool AssetRegistry::loadModels(const std::string& filepath) {
             }
             if (modelNode["entity_type"]) {
                 std::string entityTypeStr = modelNode["entity_type"].as<std::string>();
-                // Map string entity types to integers  
-                if (entityTypeStr == "EntityTypeMinecraftCharacter") model.entity_type = 0;
-                else {
+                // Map string entity types to integers using dynamic mapping
+                int entityId = getEntityIdFromType(entityTypeStr);
+                if (entityId != -1) {
+                    model.entity_type = entityId;
+                } else {
                     std::cerr << "Unknown entity type: " << entityTypeStr << std::endl;
                     model.entity_type = -1;
                 }
@@ -390,6 +392,7 @@ void AssetRegistry::clear() {
     m_blockIndex.clear();
     m_blockIdIndex.clear();
     m_blockTypeToId.clear();
+    m_entityTypeToId.clear();
     m_isLoaded = false;
 }
 
@@ -398,6 +401,14 @@ int AssetRegistry::getBlockIdFromType(const std::string& blockType) const {
     if (it != m_blockTypeToId.end()) {
         return it->second;
     }
+    return -1;  // Not found
+}
+
+int AssetRegistry::getEntityIdFromType(const std::string& entityType) const {
+    // For now, use hardcoded mapping since there's no entities.yaml
+    // This should be replaced with a proper entity definition system in the future
+    if (entityType == "EntityTypeMinecraftCharacter") return 0;
+    
     return -1;  // Not found
 }
 
@@ -419,10 +430,6 @@ std::unordered_set<std::string> AssetRegistry::collectTexturePaths() const {
         }
     }
     
-    // Add minecraft character textures
-    texturePaths.insert("data/textures/high_fidelity_pink_smoothie_albedo.png");
-    texturePaths.insert("data/textures/high_fidelity_pink_smoothie_normal.png");
-    texturePaths.insert("data/textures/high_fidelity_pink_smoothie_roughness.png");
     
     return texturePaths;
 }

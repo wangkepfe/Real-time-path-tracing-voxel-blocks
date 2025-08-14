@@ -82,6 +82,4 @@ private:
     std::vector<AnimationClip> m_animationClips;
     Skeleton m_skeleton;
 
-    // Load specific geometry based on entity type
-    bool loadMinecraftCharacterGeometry();
 };
