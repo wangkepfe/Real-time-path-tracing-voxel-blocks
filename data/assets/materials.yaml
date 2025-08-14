@@ -160,9 +160,9 @@ materials:
   - id: leaves
     name: "Leaves Material"
     textures:
-      albedo: "GreenLeaf10_4K_back_albedo.png"
-      normal: "GreenLeaf10_4K_back_normal.png"
-      roughness: "GreenLeaf10_4K_back_rough.png"
+      albedo: "textures/GreenLeaf10_4K_back_albedo.png"
+      normal: "textures/GreenLeaf10_4K_back_normal.png"
+      roughness: "textures/GreenLeaf10_4K_back_rough.png"
     properties:
       translucency: 0.5
       is_thinfilm: true
@@ -172,10 +172,10 @@ materials:
   - id: lantern_base
     name: "Lantern Base Material"
     textures:
-      albedo: "beaten-up-metal1_albedo.png"
-      normal: "beaten-up-metal1_normal.png"
-      roughness: "beaten-up-metal1_rough.png"
-      metallic: "beaten-up-metal1_metal.png"
+      albedo: "textures/beaten-up-metal1_albedo.png"
+      normal: "textures/beaten-up-metal1_normal.png"
+      roughness: "textures/beaten-up-metal1_rough.png"
+      metallic: "textures/beaten-up-metal1_metal.png"
     properties:
       use_world_grid_uv: true
       roughness: 0.4

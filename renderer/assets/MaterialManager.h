@@ -45,6 +45,7 @@ public:
     unsigned int getMaterialIndex(const std::string& materialId) const;
     unsigned int getMaterialIndexForBlock(int blockType) const;
     unsigned int getMaterialIndexForEntity(int entityType) const;
+    unsigned int getMaterialIndexForObjectId(unsigned int objectId) const;
     
     
 private:

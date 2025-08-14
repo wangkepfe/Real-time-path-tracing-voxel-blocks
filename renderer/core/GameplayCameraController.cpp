@@ -3,7 +3,7 @@
 #include "../shaders/LinearMath.h"
 #include "GlobalSettings.h"
 #include "../../voxelengine/VoxelEngine.h"
-#include "../../voxelengine/Block.h"
+#include "voxelengine/BlockType.h"
 
 GameplayCameraController::GameplayCameraController()
 {

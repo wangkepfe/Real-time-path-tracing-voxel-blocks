@@ -1,7 +1,7 @@
 #include "Entity.h"
 #include "../util/DebugUtils.h"
-#include "../util/ModelUtils.h"
-#include "../util/GLTFUtils.h"
+#include "../assets/ModelUtils.h"
+#include "../assets/GLTFUtils.h"
 #include "../animation/VertexSkinning.h"
 #include "../animation/Animation.h"
 #include "../animation/AnimationManager.h"
@@ -215,7 +215,7 @@ bool Entity::loadMinecraftCharacterGeometry()
         std::cerr << "Failed to load animated GLTF model, falling back to static model" << std::endl;
 
         // Fallback to regular model loading
-        loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
+        ModelUtils::loadModel(&m_d_attributes, &m_d_indices, m_attributeSize, m_indicesSize, gltfFile);
 
         if (m_d_attributes && m_d_indices && m_attributeSize > 0 && m_indicesSize > 0)
         {

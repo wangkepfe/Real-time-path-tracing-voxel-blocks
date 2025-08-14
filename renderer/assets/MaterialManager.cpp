@@ -1,7 +1,9 @@
 #include "MaterialManager.h"
 #include "AssetRegistry.h"
-#include "../util/TextureUtils.h"
+#include "TextureManager.h"
 #include "util/DebugUtils.h"
+#include "voxelengine/BlockType.h"
+#include "BlockManager.h"
 #include <iostream>
 #include <algorithm>
 
@@ -361,6 +363,14 @@ unsigned int MaterialManager::getMaterialIndexForEntity(int entityType) const {
         return it->second;
     }
     return 0;  // Default material
+}
+
+unsigned int MaterialManager::getMaterialIndexForObjectId(unsigned int objectId) const {
+    // Convert object ID to block ID and use existing block-to-material mapping
+    int blockType = static_cast<int>(Assets::BlockManager::Get().objectIdToBlockId(objectId));
+    unsigned int materialIndex = getMaterialIndexForBlock(blockType);
+    
+    return materialIndex;
 }
 
 } // namespace Assets

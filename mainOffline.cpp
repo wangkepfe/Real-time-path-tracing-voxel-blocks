@@ -3,7 +3,9 @@
 #include "core/OfflineBackend.h"
 #include "core/OptixRenderer.h"
 #include "core/BufferManager.h"
-#include "util/TextureUtils.h"
+#include "assets/TextureManager.h"
+#include "assets/ModelManager.h"
+#include "assets/BlockManager.h"
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
@@ -119,11 +121,19 @@ int main(int argc, char *argv[])
     try
     {
         auto &bufferManager = BufferManager::Get();
-        auto &textureManager = TextureManager::Get();
-        textureManager.init();
+        // TextureManager is now initialized through AssetRegistry in OptixRenderer
+        // auto &textureManager = Assets::TextureManager::Get();
+        // textureManager.init();
         auto &voxelengine = VoxelEngine::Get();
 
         // Initialize components in order
+        // Initialize ModelManager first so VoxelEngine can use it
+        std::cout << "Initializing ModelManager..." << std::endl;
+        Assets::ModelManager::Get().initialize();
+        
+        std::cout << "Initializing BlockManager..." << std::endl;
+        Assets::BlockManager::Get().initialize();
+        
         std::cout << "Initializing voxel engine..." << std::endl;
         voxelengine.init();
 

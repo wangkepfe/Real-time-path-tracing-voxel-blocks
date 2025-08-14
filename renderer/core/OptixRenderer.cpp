@@ -5,7 +5,7 @@
 #include "OptixRenderer.h"
 #include "core/Scene.h"
 #include "core/BufferManager.h"
-#include "util/TextureUtils.h"
+#include "assets/TextureManager.h"
 #include "core/GlobalSettings.h"
 #include "sky/Sky.h"
 #include "core/RenderCamera.h"
@@ -19,6 +19,7 @@
 #include "assets/AssetRegistry.h"
 #include "assets/MaterialManager.h"
 #include "assets/ModelManager.h"
+#include "assets/BlockManager.h"
 
 #ifdef _WIN32
 // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -40,7 +41,7 @@
 #include <vector>
 #include <filesystem>
 
-#include "voxelengine/Block.h"
+#include "voxelengine/BlockType.h"
 #include "voxelengine/VoxelEngine.h"
 
 namespace
@@ -223,7 +224,7 @@ unsigned int OptixRenderer::getUninstancedGeometryIndex(unsigned int chunkIndex,
 unsigned int OptixRenderer::getInstancedGeometryIndex(unsigned int objectId) const
 {
     const auto &scene = Scene::Get();
-    return scene.numChunks * scene.uninstancedGeometryCount + (objectId - GetInstancedObjectIdBegin());
+    return scene.numChunks * scene.uninstancedGeometryCount + (objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin());
 }
 
 unsigned int OptixRenderer::getEntityGeometryIndex(unsigned int entityIndex) const
@@ -434,7 +435,7 @@ void OptixRenderer::createGasAndOptixInstanceForUninstancedObject()
 {
     auto &scene = Scene::Get();
 
-    assert(GetUninstancedObjectIdBegin() == 0);
+    assert(Assets::BlockManager::Get().getUninstancedObjectIdBegin() == 0);
 
     // Ensure m_geometries is properly sized for all uninstanced geometries
     size_t requiredSize = scene.numChunks * scene.uninstancedGeometryCount;
@@ -445,10 +446,10 @@ void OptixRenderer::createGasAndOptixInstanceForUninstancedObject()
 
     for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
     {
-        for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+        for (unsigned int objectId = Assets::BlockManager::Get().getUninstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getUninstancedObjectIdEnd(); ++objectId)
         {
             auto &scene = Scene::Get();
-            unsigned int blockId = ObjectIdToBlockId(objectId);
+            unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
             unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
 
             assert(scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0);
@@ -484,7 +485,7 @@ void OptixRenderer::createGasAndOptixInstanceForUninstancedObject()
                     0.0f, 0.0f, 1.0f, (float)(chunkZ * VoxelChunk::width)};
             memcpy(instance.transform, transformMatrix, sizeof(float) * 12);
             instance.instanceId = geometryIndex;
-            instance.visibilityMask = IsTransparentBlockType(blockId) ? 1 : 255;
+            instance.visibilityMask = Assets::BlockManager::Get().isTransparentBlockType(blockId) ? 1 : 255;
             instance.sbtOffset = geometryIndex * NUM_RAY_TYPES;
             instance.flags = OPTIX_INSTANCE_FLAG_NONE;
             instance.traversableHandle = blasHandle;
@@ -550,10 +551,10 @@ void OptixRenderer::createBlasForInstancedObjects()
 {
     auto &scene = Scene::Get();
 
-    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
     {
         // Convert objectId to array index (0-based)
-        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+        unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
         // Create BLAS for instanced geometry using the loaded geometry data
         assert(scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0);
@@ -576,7 +577,7 @@ void OptixRenderer::createOptixInstanceForInstancedObject()
 {
     auto &scene = Scene::Get();
 
-    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
     {
         unsigned int geometryIndex = getInstancedGeometryIndex(objectId);
         for (int instanceId : scene.geometryInstanceIdMap[objectId])
@@ -714,7 +715,7 @@ void OptixRenderer::update()
         // Update SBT records with new geometry pointers for uninstanced objects
         for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
-            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+            for (unsigned int objectId = Assets::BlockManager::Get().getUninstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getUninstancedObjectIdEnd(); ++objectId)
             {
                 unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
                 if (geometryIndex < m_geometries.size())
@@ -738,17 +739,17 @@ void OptixRenderer::update()
         for (int i = 0; i < scene.sceneUpdateObjectId.size(); ++i)
         {
             auto objectId = scene.sceneUpdateObjectId[i];
-            unsigned int blockId = ObjectIdToBlockId(objectId);
+            unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
 
             // Uninstanced
-            if (IsUninstancedBlockType(blockId))
+            if (Assets::BlockManager::Get().isUninstancedBlockType(blockId))
             {
                 // Optimized: only update specific chunks that have changed
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
                 updateGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
             }
             // Instanced
-            else if (IsInstancedBlockType(blockId))
+            else if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
             {
                 auto instanceId = scene.sceneUpdateInstanceId[i];
                 updateInstancedObjectInstance(instanceId, objectId);
@@ -885,8 +886,8 @@ void OptixRenderer::init()
         // Initialize material manager (TextureManager is already initialized in main.cpp)
         Assets::MaterialManager::Get().initialize();
         
-        // Initialize model manager
-        Assets::ModelManager::Get().initialize();
+        // ModelManager is now initialized earlier in main to avoid duplication
+        // Assets::ModelManager::Get().initialize();
         
         // Materials are now managed by MaterialManager
         // No need to create them here - they're already in GPU memory
@@ -1121,27 +1122,27 @@ void OptixRenderer::init()
         // Setup SBT records for chunk-based uninstanced geometry
         for (unsigned int chunkIndex = 0; chunkIndex < scene.numChunks; ++chunkIndex)
         {
-            for (unsigned int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+            for (unsigned int objectId = Assets::BlockManager::Get().getUninstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getUninstancedObjectIdEnd(); ++objectId)
             {
                 unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
                 unsigned int sbtBaseIndex = geometryIndex * NUM_RAY_TYPES;
 
-                // Use objectId directly as material index (matches original system)
-                unsigned int materialIndex = objectId;
+                // Get material index from MaterialManager for proper mapping
+                unsigned int materialIndex = Assets::MaterialManager::Get().getMaterialIndexForObjectId(objectId);
                 initializeSbtRecord(sbtBaseIndex, geometryIndex, materialIndex);
             }
         }
 
         // Setup SBT records for instanced geometry
-        for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+        for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
         {
             // Calculate the correct geometry index for instanced objects
             // Instanced geometries are stored after all chunk-based geometries
             unsigned int geometryIndex = getInstancedGeometryIndex(objectId);
             unsigned int sbtBaseIndex = geometryIndex * NUM_RAY_TYPES;
 
-            // Use objectId directly as material index (matches original system)
-            unsigned int materialIndex = objectId;
+            // Get material index from MaterialManager for proper mapping
+            unsigned int materialIndex = Assets::MaterialManager::Get().getMaterialIndexForObjectId(objectId);
             initializeSbtRecord(sbtBaseIndex, geometryIndex, materialIndex);
         }
 

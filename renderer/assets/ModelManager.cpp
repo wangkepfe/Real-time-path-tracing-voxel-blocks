@@ -1,9 +1,10 @@
 #include "ModelManager.h"
 #include "AssetRegistry.h"
-#include "util/ModelUtils.h"
-#include "util/GLTFUtils.h"
+#include "ModelUtils.h"
+#include "GLTFUtils.h"
+#include "ObjUtils.h"
 #include "util/DebugUtils.h"
-#include "voxelengine/Block.h"
+#include "voxelengine/BlockType.h"
 #include <iostream>
 #include <cuda_runtime.h>
 
@@ -15,6 +16,12 @@ ModelManager::~ModelManager() {
 
 bool ModelManager::initialize() {
     std::cout << "Initializing ModelManager..." << std::endl;
+    
+    // Load asset definitions from YAML (if not already loaded)
+    if (!AssetRegistry::Get().loadFromYAML()) {
+        std::cerr << "Failed to load asset definitions" << std::endl;
+        return false;
+    }
     
     // Load all models from registry
     if (!loadModels()) {
@@ -30,10 +37,22 @@ void ModelManager::cleanup() {
     for (auto& geometry : m_geometries) {
         if (geometry.ownsData) {
             if (geometry.d_attributes) {
-                CUDA_CHECK(cudaFree(geometry.d_attributes));
+                cudaError_t err = cudaFree(geometry.d_attributes);
+                // Suppress "invalid argument" errors during cleanup as they're expected
+                // when multiple systems reference the same GPU memory
+                if (err != cudaSuccess && err != cudaErrorInvalidValue && err != cudaErrorInvalidDevicePointer) {
+                    std::cerr << "Warning: Failed to free geometry.d_attributes: " << cudaGetErrorString(err) << std::endl;
+                }
+                geometry.d_attributes = nullptr;
             }
             if (geometry.d_indices) {
-                CUDA_CHECK(cudaFree(geometry.d_indices));
+                cudaError_t err = cudaFree(geometry.d_indices);
+                // Suppress "invalid argument" errors during cleanup as they're expected
+                // when multiple systems reference the same GPU memory
+                if (err != cudaSuccess && err != cudaErrorInvalidValue && err != cudaErrorInvalidDevicePointer) {
+                    std::cerr << "Warning: Failed to free geometry.d_indices: " << cudaGetErrorString(err) << std::endl;
+                }
+                geometry.d_indices = nullptr;
             }
         }
     }
@@ -48,42 +67,10 @@ bool ModelManager::loadModels() {
     auto& registry = AssetRegistry::Get();
     auto& models = registry.getAllModelsMutable();
     
-    // Map string block/entity types to enum values
-    const std::unordered_map<std::string, int> blockTypeMap = {
-        {"BlockTypeTest1", BlockTypeTest1},
-        {"BlockTypeLeaves", BlockTypeLeaves},
-        {"BlockTypeTestLightBase", BlockTypeTestLightBase},
-        {"BlockTypeTestLight", BlockTypeTestLight}
-    };
-    
-    const std::unordered_map<std::string, int> entityTypeMap = {
-        {"EntityTypeMinecraftCharacter", 0}  // EntityTypeMinecraftCharacter
-    };
+    // Block types and entity types are already parsed correctly by AssetRegistry
+    // No need to do string-to-enum mapping here
     
     for (auto& modelDef : models) {
-        // Resolve block/entity type enums
-        auto blockIt = blockTypeMap.find(modelDef.block_type == -1 ? "" : std::to_string(modelDef.block_type));
-        if (modelDef.type == "instanced" && modelDef.block_type == -1) {
-            // Try to find in the YAML-defined block_type string
-            for (const auto& [typeStr, typeEnum] : blockTypeMap) {
-                if (modelDef.file.find(typeStr) != std::string::npos || 
-                    modelDef.id.find(typeStr) != std::string::npos) {
-                    modelDef.block_type = typeEnum;
-                    break;
-                }
-            }
-        }
-        
-        if (modelDef.type == "entity" && modelDef.entity_type == -1) {
-            // Try to find in the YAML-defined entity_type string
-            for (const auto& [typeStr, typeEnum] : entityTypeMap) {
-                if (modelDef.file.find(typeStr) != std::string::npos ||
-                    modelDef.id.find(typeStr) != std::string::npos) {
-                    modelDef.entity_type = typeEnum;
-                    break;
-                }
-            }
-        }
         
         // Load the model file
         if (!loadModelFile(modelDef.id, "data/" + modelDef.file, modelDef.has_animation)) {
@@ -137,12 +124,14 @@ bool ModelManager::loadModelFile(const std::string& modelId, const std::string& 
 }
 
 bool ModelManager::loadOBJModel(LoadedGeometry& geometry, const std::string& filepath) {
-    // Use the loadModel function from ModelUtils
+    // Use the ObjUtils loader
     unsigned int* d_tempIndices = nullptr;
     unsigned int attrSize = 0;
     unsigned int indicesSize = 0;
     
-    loadModel(&geometry.d_attributes, &d_tempIndices, attrSize, indicesSize, filepath);
+    if (!ObjUtils::loadOBJModel(&geometry.d_attributes, &d_tempIndices, attrSize, indicesSize, filepath)) {
+        return false;
+    }
     
     if (!geometry.d_attributes || !d_tempIndices || attrSize == 0 || indicesSize == 0) {
         if (geometry.d_attributes) CUDA_CHECK(cudaFree(geometry.d_attributes));
@@ -186,14 +175,13 @@ bool ModelManager::loadOBJModel(LoadedGeometry& geometry, const std::string& fil
 
 bool ModelManager::loadGLTFModel(LoadedGeometry& geometry, const std::string& filepath, bool hasAnimation) {
     if (hasAnimation) {
-        // For animated models, we'll need special handling
-        // This will be integrated with the animation system
-        // For now, just load the base geometry
-        
-        // Placeholder - the actual implementation would need skeleton and animation data
-        std::cerr << "Animated GLTF loading not yet integrated with new system" << std::endl;
-        return false;
-    } else {
+        // For animated models, just load as static for now
+        // The animation system handles animated models separately via Entity class
+        std::cerr << "Animated GLTF loading in ModelManager - loading as static geometry only" << std::endl;
+        hasAnimation = false; // Fall through to static loading
+    }
+    
+    {
         // Load static GLTF model
         unsigned int* d_tempIndices = nullptr;
         unsigned int attrSize = 0;

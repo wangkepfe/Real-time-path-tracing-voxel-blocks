@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <string>
 #include <optional>
@@ -46,6 +47,9 @@ public:
     // Clear all registries
     void clear();
     
+    // Texture management
+    void initializeTextureManager();
+    
 private:
     AssetRegistry() = default;
     ~AssetRegistry() = default;
@@ -54,9 +58,9 @@ private:
     bool loadModels(const std::string& filepath);
     bool loadBlocks(const std::string& filepath);
     
-    void loadHardcodedMaterials();
-    void loadHardcodedModels();
-    void loadHardcodedBlocks();
+    // Collect texture paths from all materials
+    std::unordered_set<std::string> collectTexturePaths() const;
+    
     
     std::vector<MaterialDefinition> m_materials;
     std::vector<ModelDefinition> m_models;
@@ -66,6 +70,8 @@ private:
     std::unordered_map<std::string, size_t> m_modelIndex;
     std::unordered_map<int, size_t> m_blockIndex;  // Maps block type to index
     std::unordered_map<int, size_t> m_blockIdIndex;  // Maps block ID to index
+    
+    bool m_isLoaded = false;  // Track whether YAML files have been loaded
 };
 
 } // namespace Assets

@@ -10,7 +10,7 @@
 #include "core/FreeCameraController.h"
 #include "core/CharacterFollowCameraController.h"
 #include "voxelengine/VoxelEngine.h"
-#include "voxelengine/Block.h"
+#include "voxelengine/BlockType.h"
 
 #include <fstream>
 

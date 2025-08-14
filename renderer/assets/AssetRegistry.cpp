@@ -1,293 +1,317 @@
 #include "AssetRegistry.h"
+#include "TextureManager.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-#include <json.hpp>
-
-using json = nlohmann::json;
+#include <yaml-cpp/yaml.h>
 
 namespace Assets {
 
+
 bool AssetRegistry::loadFromYAML(const std::string& assetDirectory) {
+    // If already loaded, return success without reloading
+    if (m_isLoaded) {
+        return true;
+    }
+    
     clear();
     
     std::filesystem::path assetPath(assetDirectory);
     
-    // For now, we'll use JSON files instead of YAML since we have json.hpp available
-    // Load materials
-    if (!loadMaterials((assetPath / "materials.json").string())) {
-        // Fall back to hardcoded materials if JSON doesn't exist
-        loadHardcodedMaterials();
+    // Load YAML files - no hardcoded fallback
+    if (!loadMaterials((assetPath / "materials.yaml").string())) {
+        std::cerr << "ERROR: Failed to load materials from YAML: " << (assetPath / "materials.yaml").string() << std::endl;
+        return false;
     }
     
-    // Load models
-    if (!loadModels((assetPath / "models.json").string())) {
-        // Fall back to hardcoded models if JSON doesn't exist
-        loadHardcodedModels();
+    if (!loadModels((assetPath / "models.yaml").string())) {
+        std::cerr << "ERROR: Failed to load models from YAML: " << (assetPath / "models.yaml").string() << std::endl;
+        return false;
     }
     
-    // Load blocks
-    if (!loadBlocks((assetPath / "blocks.json").string())) {
-        // Fall back to hardcoded blocks if JSON doesn't exist
-        loadHardcodedBlocks();
+    if (!loadBlocks((assetPath / "blocks.yaml").string())) {
+        std::cerr << "ERROR: Failed to load blocks from YAML: " << (assetPath / "blocks.yaml").string() << std::endl;
+        return false;
     }
     
-    std::cout << "Loaded " << m_materials.size() << " materials, " 
+    std::cout << "Successfully loaded " << m_materials.size() << " materials, " 
               << m_models.size() << " models, "
-              << m_blocks.size() << " blocks" << std::endl;
+              << m_blocks.size() << " blocks from YAML" << std::endl;
+    
+    // Initialize texture manager with collected texture paths
+    initializeTextureManager();
+    
+    // Mark as loaded to prevent duplicate loading
+    m_isLoaded = true;
     
     return true;
 }
 
-void AssetRegistry::loadHardcodedMaterials() {
-    // CRITICAL: Material order MUST match the original system exactly!
-    // The original creates materials in this specific order:
-    // 0-11: Block texture materials from GetTextureFiles()
-    // 12: Test material
-    // 13: Leaves material  
-    // 14: Lantern base material
-    // 15: Lantern light material
-    // 16: Minecraft character material
-    
-    std::vector<std::string> textureFiles = {
-        "rocky_trail", "brown_mud_leaves_01", "aerial_rocks_02",
-        "bark_willow_02", "rocky_trail", "aerial_beach_01",
-        "gray_rocks", "stone_tiles_02", "seaworn_stone_tiles",
-        "beige_wall_001", "wood_planks", "wood_planks"
-    };
-    
-    // Materials 0-11: Create materials for each texture file (matches original loop)
-    for (size_t i = 0; i < textureFiles.size(); ++i) {
-        MaterialDefinition mat;
-        mat.id = "material_" + std::to_string(i);
-        mat.name = textureFiles[i];
-        mat.textures.albedo = "data/textures/" + textureFiles[i] + "_albedo.png";
-        mat.textures.normal = "data/textures/" + textureFiles[i] + "_normal.png";
-        mat.textures.roughness = "data/textures/" + textureFiles[i] + "_rough.png";
-        mat.properties.uv_scale = 2.5f;
-        mat.properties.use_world_grid_uv = true;
-        // Note: Original doesn't set roughness in properties, textures provide it
-        
-        m_materialIndex[mat.id] = m_materials.size();
-        m_materials.push_back(mat);
-    }
-    
-    // Material 12: Test material
-    {
-        MaterialDefinition mat;
-        mat.id = "test1";
-        mat.name = "Test Material";
-        mat.properties.albedo = Float3(1.0f);
-        mat.properties.roughness = 0.0f;
-        mat.properties.translucency = 0.0f;
-        
-        m_materialIndex[mat.id] = m_materials.size();
-        m_materials.push_back(mat);
-    }
-    
-    // Material 13: Leaves material
-    {
-        MaterialDefinition mat;
-        mat.id = "leaves";
-        mat.name = "Leaves Material";
-        mat.textures.albedo = "data/textures/GreenLeaf10_4K_back_albedo.png";
-        mat.textures.normal = "data/textures/GreenLeaf10_4K_back_normal.png";
-        mat.textures.roughness = "data/textures/GreenLeaf10_4K_back_rough.png";
-        mat.properties.translucency = 0.5f;
-        mat.properties.is_thinfilm = true;
-        
-        m_materialIndex[mat.id] = m_materials.size();
-        m_materials.push_back(mat);
-    }
-    
-    // Material 14: Lantern base
-    {
-        MaterialDefinition mat;
-        mat.id = "lantern_base";
-        mat.name = "Lantern Base Material";
-        mat.textures.albedo = "data/textures/beaten-up-metal1_albedo.png";
-        mat.textures.normal = "data/textures/beaten-up-metal1_normal.png";
-        mat.textures.roughness = "data/textures/beaten-up-metal1_rough.png";
-        mat.textures.metallic = "data/textures/beaten-up-metal1_metal.png";
-        mat.properties.use_world_grid_uv = true;
-        
-        m_materialIndex[mat.id] = m_materials.size();
-        m_materials.push_back(mat);
-    }
-    
-    // Material 15: Lantern light (emissive)
-    {
-        MaterialDefinition mat;
-        mat.id = "lantern_light";
-        mat.name = "Lantern Light Material";
-        mat.properties.emissive_radiance = Float3(255.0f, 182.0f, 78.0f) / 255.0f * 10000.0f / (683.0f * 108.0f);
-        mat.properties.is_emissive = true;
-        
-        m_materialIndex[mat.id] = m_materials.size();
-        m_materials.push_back(mat);
-    }
-    
-    // Material 16: Minecraft character
-    {
-        MaterialDefinition mat;
-        mat.id = "minecraft_character";
-        mat.name = "Minecraft Character Material";
-        mat.textures.albedo = "data/textures/high_fidelity_pink_smoothie_albedo.png";
-        mat.textures.normal = "data/textures/high_fidelity_pink_smoothie_normal.png";
-        mat.textures.roughness = "data/textures/high_fidelity_pink_smoothie_roughness.png";
-        mat.properties.albedo = Float3(1.0f, 1.0f, 1.0f);
-        mat.properties.roughness = 1.0f;
-        mat.properties.metallic = 0.0f;
-        mat.properties.use_world_grid_uv = false;
-        mat.properties.uv_scale = 1.0f;
-        
-        m_materialIndex[mat.id] = m_materials.size();
-        m_materials.push_back(mat);
-    }
-}
-
-void AssetRegistry::loadHardcodedModels() {
-    // Test plane model
-    {
-        ModelDefinition model;
-        model.id = "test_plane";
-        model.name = "Test Plane Model";
-        model.file = "models/test_plane.obj";
-        model.type = "instanced";
-        model.block_type = 13; // BlockTypeTest1
-        
-        m_modelIndex[model.id] = m_models.size();
-        m_models.push_back(model);
-    }
-    
-    // Leaves cube
-    {
-        ModelDefinition model;
-        model.id = "leaves_cube";
-        model.name = "Leaves Cube Model";
-        model.file = "models/leavesCube4.obj";
-        model.type = "instanced";
-        model.block_type = 14; // BlockTypeLeaves
-        
-        m_modelIndex[model.id] = m_models.size();
-        m_models.push_back(model);
-    }
-    
-    // Lantern base
-    {
-        ModelDefinition model;
-        model.id = "lantern_base_model";
-        model.name = "Lantern Base Model";
-        model.file = "models/lanternBase.obj";
-        model.type = "instanced";
-        model.block_type = 15; // BlockTypeTestLightBase
-        
-        m_modelIndex[model.id] = m_models.size();
-        m_models.push_back(model);
-    }
-    
-    // Lantern light
-    {
-        ModelDefinition model;
-        model.id = "lantern_light_model";
-        model.name = "Lantern Light Model";
-        model.file = "models/lanternLight.obj";
-        model.type = "instanced";
-        model.block_type = 16; // BlockTypeTestLight
-        
-        m_modelIndex[model.id] = m_models.size();
-        m_models.push_back(model);
-    }
-    
-    // Minecraft character
-    {
-        ModelDefinition model;
-        model.id = "minecraft_character_model";
-        model.name = "Minecraft Character Model";
-        model.file = "models/character-pink-smoothie.gltf";
-        model.type = "entity";
-        model.entity_type = 0; // EntityTypeMinecraftCharacter
-        model.has_animation = true;
-        
-        m_modelIndex[model.id] = m_models.size();
-        m_models.push_back(model);
-    }
-}
-
-void AssetRegistry::loadHardcodedBlocks() {
-    // Block definitions matching the original BlockType enum
-    const std::vector<std::tuple<int, std::string, std::string, std::string, std::string, bool, bool>> blockDefs = {
-        {0, "Empty", "BlockTypeEmpty", "", "", false, false},
-        {1, "Sand", "BlockTypeSand", "material_0", "", false, false},
-        {2, "Soil", "BlockTypeSoil", "material_1", "", false, false},
-        {3, "Cliff", "BlockTypeCliff", "material_2", "", false, false},
-        {4, "Trunk", "BlockTypeTrunk", "material_3", "", false, false},
-        {5, "Unused1", "BlockTypeUnused1", "material_4", "", false, false},
-        {6, "Unused2", "BlockTypeUnused2", "material_5", "", false, false},
-        {7, "Rocks", "BlockTypeRocks", "material_6", "", false, false},
-        {8, "Floor", "BlockTypeFloor", "material_7", "", false, false},
-        {9, "Brick", "BlockTypeBrick", "material_8", "", false, false},
-        {10, "Wall", "BlockTypeWall", "material_9", "", false, false},
-        {11, "Plank", "BlockTypePlank", "material_10", "", false, false},
-        {12, "Plank2", "BlockTypePlank2", "material_11", "", false, false},
-        {13, "Test1", "BlockTypeTest1", "test1", "test_plane", true, false},
-        {14, "Leaves", "BlockTypeLeaves", "leaves", "leaves_cube", true, false},
-        {15, "TestLightBase", "BlockTypeTestLightBase", "lantern_base", "lantern_base_model", true, true},
-        {16, "TestLight", "BlockTypeTestLight", "lantern_light", "lantern_light_model", true, false}
-    };
-    
-    for (const auto& [id, name, type, materialId, modelId, isInstanced, isBaseLight] : blockDefs) {
-        BlockDefinition block;
-        block.id = id;
-        block.name = name;
-        block.type = type;
-        if (!materialId.empty()) block.material_id = materialId;
-        if (!modelId.empty()) block.model_id = modelId;
-        block.is_instanced = isInstanced;
-        block.is_base_light = isBaseLight;
-        block.is_emissive = (id == 16); // BlockTypeTestLight
-        
-        m_blockIndex[block.id] = m_blocks.size();
-        m_blockIdIndex[block.id] = m_blocks.size();
-        m_blocks.push_back(block);
-    }
-}
-
 bool AssetRegistry::loadMaterials(const std::string& filepath) {
-    // Try to load from JSON file
     if (!std::filesystem::exists(filepath)) {
         return false;
     }
     
     try {
-        std::ifstream file(filepath);
-        json j;
-        file >> j;
+        YAML::Node root = YAML::LoadFile(filepath);
         
-        // Parse JSON materials - implementation would go here
-        // For now, return false to use hardcoded
+        if (!root["materials"] || !root["materials"].IsSequence()) {
+            std::cerr << "Invalid YAML structure: missing 'materials' sequence in " << filepath << std::endl;
+            return false;
+        }
+        
+        const auto& materialsNode = root["materials"];
+        
+        for (const auto& materialNodePtr : materialsNode) {
+            const auto& materialNode = *materialNodePtr;
+            if (!materialNode.IsMap()) continue;
+            
+            MaterialDefinition material;
+            
+            // Parse basic properties
+            if (materialNode["id"]) {
+                material.id = materialNode["id"].as<std::string>();
+            }
+            if (materialNode["name"]) {
+                material.name = materialNode["name"].as<std::string>();
+            }
+            
+            // Parse textures
+            
+            if (materialNode["textures"]) {
+                if (materialNode["textures"].IsMap()) {
+                    // Parse textures from YAML (when YAML parser is fixed)
+                    const auto& texturesNode = materialNode["textures"];
+                    
+                    if (texturesNode["albedo"]) {
+                        material.textures.albedo = "data/" + texturesNode["albedo"].as<std::string>();
+                    }
+                    if (texturesNode["normal"]) {
+                        material.textures.normal = "data/" + texturesNode["normal"].as<std::string>();
+                    }
+                    if (texturesNode["roughness"]) {
+                        material.textures.roughness = "data/" + texturesNode["roughness"].as<std::string>();
+                    }
+                    if (texturesNode["metallic"]) {
+                        material.textures.metallic = "data/" + texturesNode["metallic"].as<std::string>();
+                    }
+                    if (texturesNode["emissive"]) {
+                        material.textures.emissive = "data/" + texturesNode["emissive"].as<std::string>();
+                    }
+                }
+            }
+            
+            // Parse properties
+            if (materialNode["properties"] && materialNode["properties"].IsMap()) {
+                const auto& propsNode = materialNode["properties"];
+                
+                if (propsNode["albedo"] && propsNode["albedo"].IsSequence()) {
+                    auto albedoSeq = propsNode["albedo"];
+                    if (albedoSeq.size() >= 3) {
+                        material.properties.albedo.x = albedoSeq[std::size_t(0)].as<float>();
+                        material.properties.albedo.y = albedoSeq[std::size_t(1)].as<float>();
+                        material.properties.albedo.z = albedoSeq[std::size_t(2)].as<float>();
+                    }
+                }
+                if (propsNode["roughness"]) {
+                    material.properties.roughness = propsNode["roughness"].as<float>();
+                }
+                if (propsNode["metallic"]) {
+                    material.properties.metallic = propsNode["metallic"].as<float>();
+                }
+                if (propsNode["uv_scale"]) {
+                    material.properties.uv_scale = propsNode["uv_scale"].as<float>();
+                }
+                if (propsNode["translucency"]) {
+                    material.properties.translucency = propsNode["translucency"].as<float>();
+                }
+                if (propsNode["is_emissive"]) {
+                    material.properties.is_emissive = propsNode["is_emissive"].as<bool>();
+                }
+                if (propsNode["is_thinfilm"]) {
+                    material.properties.is_thinfilm = propsNode["is_thinfilm"].as<bool>();
+                }
+                if (propsNode["use_world_grid_uv"]) {
+                    material.properties.use_world_grid_uv = propsNode["use_world_grid_uv"].as<bool>();
+                }
+                if (propsNode["emissive_radiance"] && propsNode["emissive_radiance"].IsSequence()) {
+                    auto emissiveSeq = propsNode["emissive_radiance"];
+                    if (emissiveSeq.size() >= 3) {
+                        material.properties.emissive_radiance.x = emissiveSeq[std::size_t(0)].as<float>();
+                        material.properties.emissive_radiance.y = emissiveSeq[std::size_t(1)].as<float>();
+                        material.properties.emissive_radiance.z = emissiveSeq[std::size_t(2)].as<float>();
+                    }
+                }
+            }
+            
+            // Store the material
+            if (!material.id.empty()) {
+                m_materialIndex[material.id] = m_materials.size();
+                m_materials.push_back(material);
+            }
+        }
+        
+        std::cout << "Loaded " << m_materials.size() << " materials from YAML: " << filepath << std::endl;
+        return !m_materials.empty();
+        
+    } catch (const YAML::Exception& e) {
+        std::cerr << "YAML parsing error in " << filepath << ": " << e.what() << std::endl;
         return false;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading materials from " << filepath << ": " << e.what() << std::endl;
         return false;
     }
 }
 
 bool AssetRegistry::loadModels(const std::string& filepath) {
-    // Try to load from JSON file
     if (!std::filesystem::exists(filepath)) {
         return false;
     }
     
-    return false; // Use hardcoded for now
+    try {
+        YAML::Node root = YAML::LoadFile(filepath);
+        
+        if (!root["models"] || !root["models"].IsSequence()) {
+            std::cerr << "Invalid YAML structure: missing 'models' sequence in " << filepath << std::endl;
+            return false;
+        }
+        
+        const auto& modelsNode = root["models"];
+        
+        for (const auto& modelNodePtr : modelsNode) {
+            const auto& modelNode = *modelNodePtr;
+            if (!modelNode.IsMap()) continue;
+            
+            ModelDefinition model;
+            
+            // Parse basic properties
+            if (modelNode["id"]) {
+                model.id = modelNode["id"].as<std::string>();
+            }
+            if (modelNode["name"]) {
+                model.name = modelNode["name"].as<std::string>();
+            }
+            if (modelNode["file"]) {
+                model.file = modelNode["file"].as<std::string>();
+            }
+            if (modelNode["type"]) {
+                model.type = modelNode["type"].as<std::string>();
+            }
+            if (modelNode["block_type"]) {
+                std::string blockTypeStr = modelNode["block_type"].as<std::string>();
+                // Map string block types to integers
+                if (blockTypeStr == "BlockTypeTest1") model.block_type = 13;
+                else if (blockTypeStr == "BlockTypeLeaves") model.block_type = 14;
+                else if (blockTypeStr == "BlockTypeTestLightBase") model.block_type = 15;
+                else if (blockTypeStr == "BlockTypeTestLight") model.block_type = 16;
+                else {
+                    std::cerr << "Unknown block type: " << blockTypeStr << std::endl;
+                    model.block_type = -1;
+                }
+            }
+            if (modelNode["entity_type"]) {
+                std::string entityTypeStr = modelNode["entity_type"].as<std::string>();
+                // Map string entity types to integers  
+                if (entityTypeStr == "EntityTypeMinecraftCharacter") model.entity_type = 0;
+                else {
+                    std::cerr << "Unknown entity type: " << entityTypeStr << std::endl;
+                    model.entity_type = -1;
+                }
+            }
+            if (modelNode["has_animation"]) {
+                model.has_animation = modelNode["has_animation"].as<bool>();
+            }
+            
+            // ModelDefinition doesn't have properties - those are handled individually above
+            
+            // Store the model
+            if (!model.id.empty()) {
+                m_modelIndex[model.id] = m_models.size();
+                m_models.push_back(model);
+            }
+        }
+        
+        std::cout << "Loaded " << m_models.size() << " models from YAML: " << filepath << std::endl;
+        return !m_models.empty();
+        
+    } catch (const YAML::Exception& e) {
+        std::cerr << "YAML parsing error in " << filepath << ": " << e.what() << std::endl;
+        return false;
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading models from " << filepath << ": " << e.what() << std::endl;
+        return false;
+    }
 }
 
 bool AssetRegistry::loadBlocks(const std::string& filepath) {
-    // Try to load from JSON file
     if (!std::filesystem::exists(filepath)) {
         return false;
     }
     
-    return false; // Use hardcoded for now
+    try {
+        YAML::Node root = YAML::LoadFile(filepath);
+        
+        if (!root["blocks"] || !root["blocks"].IsSequence()) {
+            std::cerr << "Invalid YAML structure: missing 'blocks' sequence in " << filepath << std::endl;
+            return false;
+        }
+        
+        const auto& blocksNode = root["blocks"];
+        
+        for (const auto& blockNodePtr : blocksNode) {
+            const auto& blockNode = *blockNodePtr;
+            if (!blockNode.IsMap()) continue;
+            
+            BlockDefinition block;
+            
+            // Parse basic properties
+            if (blockNode["id"]) {
+                block.id = blockNode["id"].as<int>();
+            }
+            if (blockNode["name"]) {
+                block.name = blockNode["name"].as<std::string>();
+            }
+            if (blockNode["type"]) {
+                block.type = blockNode["type"].as<std::string>();
+            }
+            if (blockNode["material"]) {
+                block.material_id = blockNode["material"].as<std::string>();
+            }
+            if (blockNode["model_id"]) {
+                block.model_id = blockNode["model_id"].as<std::string>();
+            }
+            
+            // Parse boolean properties
+            if (blockNode["is_instanced"]) {
+                block.is_instanced = blockNode["is_instanced"].as<bool>();
+            }
+            if (blockNode["is_base_light"]) {
+                block.is_base_light = blockNode["is_base_light"].as<bool>();
+            }
+            if (blockNode["is_emissive"]) {
+                block.is_emissive = blockNode["is_emissive"].as<bool>();
+            }
+            // cast_shadows field removed - not in BlockDefinition
+            if (blockNode["is_transparent"]) {
+                block.is_transparent = blockNode["is_transparent"].as<bool>();
+            }
+            
+            // Store the block
+            m_blockIndex[block.id] = m_blocks.size();
+            m_blockIdIndex[block.id] = m_blocks.size();
+            m_blocks.push_back(block);
+        }
+        
+        std::cout << "Loaded " << m_blocks.size() << " blocks from YAML: " << filepath << std::endl;
+        return !m_blocks.empty();
+        
+    } catch (const YAML::Exception& e) {
+        std::cerr << "YAML parsing error in " << filepath << ": " << e.what() << std::endl;
+        return false;
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading blocks from " << filepath << ": " << e.what() << std::endl;
+        return false;
+    }
 }
 
 const MaterialDefinition* AssetRegistry::getMaterial(const std::string& id) const {
@@ -362,6 +386,42 @@ void AssetRegistry::clear() {
     m_modelIndex.clear();
     m_blockIndex.clear();
     m_blockIdIndex.clear();
+    m_isLoaded = false;
+}
+
+std::unordered_set<std::string> AssetRegistry::collectTexturePaths() const {
+    std::unordered_set<std::string> texturePaths;
+    
+    for (const auto& material : m_materials) {
+        if (material.textures.albedo.has_value()) {
+            texturePaths.insert(material.textures.albedo.value());
+        }
+        if (material.textures.normal.has_value()) {
+            texturePaths.insert(material.textures.normal.value());
+        }
+        if (material.textures.roughness.has_value()) {
+            texturePaths.insert(material.textures.roughness.value());
+        }
+        if (material.textures.metallic.has_value()) {
+            texturePaths.insert(material.textures.metallic.value());
+        }
+    }
+    
+    // Add minecraft character textures
+    texturePaths.insert("data/textures/high_fidelity_pink_smoothie_albedo.png");
+    texturePaths.insert("data/textures/high_fidelity_pink_smoothie_normal.png");
+    texturePaths.insert("data/textures/high_fidelity_pink_smoothie_roughness.png");
+    
+    return texturePaths;
+}
+
+void AssetRegistry::initializeTextureManager() {
+    std::unordered_set<std::string> texturePaths = collectTexturePaths();
+    
+    std::cout << "AssetRegistry: Collected " << texturePaths.size() << " texture paths from YAML materials" << std::endl;
+    
+    auto& textureManager = TextureManager::Get();
+    textureManager.initWithMaterialPaths(texturePaths);
 }
 
 } // namespace Assets

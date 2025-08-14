@@ -4,7 +4,7 @@
 
 #include "util/KernelHelper.h"
 
-#include "Block.h"
+#include "voxelengine/BlockType.h"
 
 #include <cub/cub.cuh> // For prefix sums
 

@@ -1,6 +1,6 @@
 #include "VoxelEngine.h"
 #include "VoxelMath.h"
-#include "Block.h"
+#include "voxelengine/BlockType.h"
 
 #include "core/Scene.h"
 #ifndef OFFLINE_MODE
@@ -11,7 +11,10 @@
 #include "core/SceneConfig.h"
 #include "core/GlobalSettings.h"
 
-#include "util/ModelUtils.h"
+#include "assets/ModelUtils.h"
+#include "assets/ModelManager.h"
+#include "assets/AssetRegistry.h"
+#include "assets/BlockManager.h"
 #include "shaders/ShaderDebugUtils.h"
 
 #ifndef OFFLINE_MODE
@@ -261,23 +264,37 @@ void VoxelEngine::initInstanceGeometry()
     auto &sceneGeometryAttributeSize = scene.m_instancedGeometryAttributeSize;
     auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
 
-    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
     {
         // Convert objectId to array index (0-based)
-        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+        unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
         sceneGeometryAttributeSize[arrayIndex] = 0;
         sceneGeometryIndicesSize[arrayIndex] = 0;
 
-        unsigned int blockId = ObjectIdToBlockId(objectId);
+        unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
 
-        std::string modelFileName = GetModelFileName(blockId);
-
-        loadModel(&(sceneGeometryAttributes[arrayIndex]),
-                  &(sceneGeometryIndices[arrayIndex]),
-                  sceneGeometryAttributeSize[arrayIndex],
-                  sceneGeometryIndicesSize[arrayIndex],
-                  modelFileName);
+        // Get geometry from ModelManager instead of loading directly
+        const Assets::LoadedGeometry* geometry = Assets::ModelManager::Get().getGeometryForBlock(blockId);
+        
+        if (geometry && geometry->d_attributes && geometry->d_indices) {
+            // Reference the ModelManager's loaded geometry directly (we don't own this memory)
+            sceneGeometryAttributes[arrayIndex] = geometry->d_attributes;
+            sceneGeometryAttributeSize[arrayIndex] = static_cast<unsigned int>(geometry->attributeSize);
+            
+            // ModelManager stores Int3* but VoxelEngine expects unsigned int*
+            // We need to convert Int3* to unsigned int* by casting
+            // Since Int3 contains 3 consecutive unsigned ints (x, y, z), we can cast the pointer
+            sceneGeometryIndices[arrayIndex] = reinterpret_cast<unsigned int*>(geometry->d_indices);
+            // Each Int3 contains 3 indices, so total unsigned int count = triangleCount * 3
+            sceneGeometryIndicesSize[arrayIndex] = static_cast<unsigned int>(geometry->triangleCount * 3);
+        } else {
+            std::cerr << "Failed to get geometry for block type " << blockId << " from ModelManager" << std::endl;
+            sceneGeometryAttributes[arrayIndex] = nullptr;
+            sceneGeometryIndices[arrayIndex] = nullptr;
+            sceneGeometryAttributeSize[arrayIndex] = 0;
+            sceneGeometryIndicesSize[arrayIndex] = 0;
+        }
     }
 }
 
@@ -298,12 +315,12 @@ void VoxelEngine::updateInstances()
     unsigned int totalNumTriLights = 0;
     unsigned int globalWidth = chunkConfig.getGlobalWidth();
 
-    for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
     {
         // Convert objectId to array index (0-based)
-        unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+        unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
-        unsigned int blockId = ObjectIdToBlockId(objectId);
+        unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
         for (unsigned int globalX = 0; globalX < chunkConfig.getGlobalWidth(); ++globalX)
         {
             for (unsigned int globalY = 0; globalY < chunkConfig.getGlobalHeight(); ++globalY)
@@ -314,7 +331,7 @@ void VoxelEngine::updateInstances()
                     bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
                     if (val.id == blockId || specialCase)
                     {
-                        unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, globalX, globalY, globalZ, globalWidth);
+                        unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, globalX, globalY, globalZ, globalWidth);
 
                         geometryInstanceIdMap[objectId].insert(instanceId);
 
@@ -329,7 +346,8 @@ void VoxelEngine::updateInstances()
         }
 
         // Accumulate light count
-        if (IsBlockEmissive(blockId))
+        const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+        if (blockDef && blockDef->is_emissive)
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
             unsigned int numTriPerInstance = sceneGeometryIndicesSize[arrayIndex] / 3;
@@ -351,13 +369,14 @@ void VoxelEngine::updateInstances()
         // Generate light info
         unsigned int currentGlobalOffset = 0;
         scene.instanceLightMapping.clear();
-        for (unsigned int objectId = GetInstancedObjectIdBegin(); objectId < GetInstancedObjectIdEnd(); ++objectId)
+        for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
         {
             // Convert objectId to array index (0-based)
-            unsigned int arrayIndex = objectId - GetInstancedObjectIdBegin();
+            unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
-            unsigned int blockId = ObjectIdToBlockId(objectId);
-            if (IsBlockEmissive(blockId))
+            unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
+            const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+            if (blockDef && blockDef->is_emissive)
             {
                 unsigned int numInstances = geometryInstanceIdMap[objectId].size();
                 unsigned int numTriPerInstance = sceneGeometryIndicesSize[arrayIndex] / 3;
@@ -372,7 +391,12 @@ void VoxelEngine::updateInstances()
                     lightOffset += numTriPerInstance;
                 }
 
-                Float3 radiance = GetEmissiveRadiance(blockId);
+                // Get emissive radiance from the material associated with this block
+                Float3 radiance = Float3(0.0f, 0.0f, 0.0f);
+                const Assets::MaterialDefinition* materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
+                if (materialDef && materialDef->properties.is_emissive) {
+                    radiance = materialDef->properties.emissive_radiance;
+                }
 
                 float *d_transforms = nullptr;
                 size_t transformsSizeInBytes = numInstances * 12 * sizeof(float);
@@ -413,9 +437,9 @@ void VoxelEngine::updateUninstancedMeshes(const std::vector<Voxel *> &d_dataChun
     // Process each chunk in parallel for each object type
     for (unsigned int chunkIndex = 0; chunkIndex < chunkConfig.getTotalChunks(); ++chunkIndex)
     {
-        for (int objectId = GetUninstancedObjectIdBegin(); objectId < GetUninstancedObjectIdEnd(); ++objectId)
+        for (int objectId = Assets::BlockManager::Get().getUninstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getUninstancedObjectIdEnd(); ++objectId)
         {
-            int blockId = ObjectIdToBlockId(objectId);
+            int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
 
             // Reset chunk-specific geometry data
             scene.getChunkGeometryAttributeSize(chunkIndex, objectId) = 0;
@@ -451,18 +475,18 @@ void VoxelEngine::init()
 
     auto &scene = Scene::Get();
 
-    scene.uninstancedGeometryCount = GetNumUninstancedBlockTypes();
-    scene.instancedGeometryCount = GetNumInstancedBlockTypes();
+    scene.uninstancedGeometryCount = Assets::BlockManager::Get().getNumUninstancedBlockTypes();
+    scene.instancedGeometryCount = Assets::BlockManager::Get().getNumInstancedBlockTypes();
 
     // Initialize chunk-based geometry buffers for uninstanced objects
-    scene.initChunkGeometry(chunkConfig.getTotalChunks(), GetNumUninstancedBlockTypes());
+    scene.initChunkGeometry(chunkConfig.getTotalChunks(), Assets::BlockManager::Get().getNumUninstancedBlockTypes());
 
     // Initialize instanced geometry buffers
-    scene.initInstancedGeometry(GetNumInstancedBlockTypes());
+    scene.initInstancedGeometry(Assets::BlockManager::Get().getNumInstancedBlockTypes());
 
     // Initialize chunk-specific face tracking buffers
     unsigned int numChunks = chunkConfig.getTotalChunks();
-    unsigned int numObjects = GetNumUninstancedBlockTypes();
+    unsigned int numObjects = Assets::BlockManager::Get().getNumUninstancedBlockTypes();
 
     faceLocation.resize(numChunks);
     currentFaceCount.resize(numChunks);
@@ -732,9 +756,9 @@ void VoxelEngine::update()
             if (hitSurface)
             {
                 unsigned int newVal = 0;
-                int objectId = BlockIdToObjectId(deleteBlockId);
+                int objectId = Assets::BlockManager::Get().blockIdToObjectId(deleteBlockId);
 
-                if (IsUninstancedBlockType(deleteBlockId))
+                if (Assets::BlockManager::Get().isUninstancedBlockType(deleteBlockId))
                 {
                     // Determine which chunk this voxel belongs to
                     unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
@@ -760,25 +784,25 @@ void VoxelEngine::update()
                     scene.sceneUpdateInstanceId.push_back(0);
                     scene.sceneUpdateChunkId.push_back(chunkIndex);
                 }
-                else if (IsInstancedBlockType(deleteBlockId))
+                else if (Assets::BlockManager::Get().isInstancedBlockType(deleteBlockId))
                 {
                     setVoxelAtGlobal(deletePos.x, deletePos.y, deletePos.z, newVal);
 
                     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
 
-                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
+                    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
                     geometryInstanceIdMap[objectId].erase(instanceId);
 
                     scene.needSceneUpdate = true;
                     scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(instanceId);
 
-                    if (IsBaseLightBlockType(deleteBlockId))
+                    if (Assets::BlockManager::Get().isBaseLightBlockType(deleteBlockId))
                     {
                         int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = BlockIdToObjectId(childBlockId);
+                        int childObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(childBlockId);
 
-                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
+                        unsigned int childInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
                         geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
 
                         scene.sceneUpdateObjectId.push_back(childObjectIdx);
@@ -794,9 +818,9 @@ void VoxelEngine::update()
                 auto &scene = Scene::Get();
 
                 unsigned int newVal = blockId;
-                int objectId = BlockIdToObjectId(blockId);
+                int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
 
-                if (IsUninstancedBlockType(blockId))
+                if (Assets::BlockManager::Get().isUninstancedBlockType(blockId))
                 {
                     // Determine which chunk this voxel belongs to
                     unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
@@ -822,14 +846,14 @@ void VoxelEngine::update()
                     scene.sceneUpdateInstanceId.push_back(0);
                     scene.sceneUpdateChunkId.push_back(chunkIndex);
                 }
-                else if (IsInstancedBlockType(blockId))
+                else if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
                 {
                     setVoxelAtGlobal(createPos.x, createPos.y, createPos.z, newVal);
 
                     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
                     std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
 
-                    unsigned int instanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
+                    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
                     geometryInstanceIdMap[objectId].insert(instanceId);
 
                     std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)createPos.x,
@@ -841,12 +865,12 @@ void VoxelEngine::update()
                     scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(instanceId);
 
-                    if (IsBaseLightBlockType(deleteBlockId))
+                    if (Assets::BlockManager::Get().isBaseLightBlockType(deleteBlockId))
                     {
                         int childBlockId = BlockTypeTestLight;
                         int childObjectIdx = childBlockId - 1;
 
-                        unsigned int childInstanceId = PositionToInstanceId(GetNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
+                        unsigned int childInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
                         geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
 
                         instanceTransformMatrices[childInstanceId] = transform;

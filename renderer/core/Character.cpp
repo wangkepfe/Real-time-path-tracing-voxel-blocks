@@ -2,7 +2,7 @@
 #include "../util/DebugUtils.h"
 #include "../voxelengine/VoxelEngine.h"
 #include "../voxelengine/Voxel.h"
-#include "../voxelengine/Block.h"
+#include "voxelengine/BlockType.h"
 #include "GlobalSettings.h"
 #include <iostream>
 #include <cmath>
