@@ -7,6 +7,7 @@
 #include "core/SceneConfig.h"
 #include "core/CameraController.h"
 #include "core/Character.h"
+#include "voxelengine/VoxelEngine.h"
 
 void UI::init()
 {
@@ -83,6 +84,21 @@ void UI::update()
     }
     
     ImGui::Text("Current selected block ID = %d", inputHandler.currentSelectedBlockId);
+    
+    // Display center block information
+    ImGui::Separator();
+    ImGui::Text("Center Block Info:");
+    auto& voxelEngine = VoxelEngine::Get();
+    if (voxelEngine.centerBlockInfo.hasValidBlock) {
+        ImGui::Text("Block ID: %d", voxelEngine.centerBlockInfo.blockId);
+        ImGui::Text("Block Name: %s", voxelEngine.centerBlockInfo.blockName.c_str());
+        ImGui::Text("Position: (%d, %d, %d)", 
+                   voxelEngine.centerBlockInfo.position.x,
+                   voxelEngine.centerBlockInfo.position.y,
+                   voxelEngine.centerBlockInfo.position.z);
+    } else {
+        ImGui::Text("No block in center crosshair");
+    }
 
     if (ImGui::CollapsingHeader("Temporal Denoising", 0))
     {

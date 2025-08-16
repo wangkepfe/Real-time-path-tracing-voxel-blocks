@@ -37,6 +37,14 @@ public:
 
     bool leftMouseButtonClicked = false;
 
+    // Center block information for GUI display
+    struct CenterBlockInfo {
+        int blockId = 0;
+        std::string blockName = "Empty";
+        Int3 position = Int3(-1, -1, -1);
+        bool hasValidBlock = false;
+    } centerBlockInfo;
+
     // Chunk-specific face tracking buffers
     // Structure: [chunkIndex][objectId]
     std::vector<std::vector<unsigned int>> currentFaceCount;

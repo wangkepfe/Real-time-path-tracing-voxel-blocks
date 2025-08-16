@@ -125,3 +125,9 @@ INL_HOST_DEVICE unsigned int GetLinearId(unsigned int x, unsigned int y, unsigne
 
     return x + width * (z + width * y);
 }
+
+INL_HOST_DEVICE unsigned int PositionToInstanceId(unsigned int offset, unsigned int geometryId, unsigned int x, unsigned int y, unsigned int z, unsigned int width)
+{
+    unsigned int linearId = GetLinearId(x, y, z, width);
+    return offset + geometryId * width * width * width + linearId;
+}

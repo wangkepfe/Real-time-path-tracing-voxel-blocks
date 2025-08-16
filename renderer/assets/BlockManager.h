@@ -48,8 +48,12 @@ public:
     // Advanced block queries using AssetRegistry
     bool hasModel(unsigned int blockId) const;
     bool isEmissive(unsigned int blockId) const;
+    bool isPlaceable(unsigned int blockId) const;
+    bool hasLightBase(unsigned int blockId) const;
+    unsigned int getLightBaseBlockId(unsigned int blockId) const;
     const std::string* getModelName(unsigned int blockId) const;
     const std::string* getMaterialName(unsigned int blockId) const;
+    const std::string* getBlockName(unsigned int blockId) const;
 
 private:
     BlockManager() = default;
