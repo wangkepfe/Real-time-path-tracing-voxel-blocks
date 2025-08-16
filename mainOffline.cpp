@@ -9,10 +9,13 @@
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
+#include "core/Scene.h"
 #include "util/ImageDiff.h"
 #include "util/PerformanceTracker.h"
 
 #include "voxelengine.h"
+#include "voxelengine/VoxelSceneGen.h"
+#include "voxelengine/VoxelMath.h"
 
 #include <iostream>
 #include <string>
@@ -201,6 +204,57 @@ int main(int argc, char *argv[])
         std::cout << "Camera setup - Direction: (" << camera.dir.x << ", " << camera.dir.y << ", " << camera.dir.z << ")" << std::endl;
         std::cout << "Camera setup - FOV: " << sceneConfig.camera.fov << " degrees" << std::endl;
         std::cout << "Camera movement: DISABLED (static camera)" << std::endl;
+
+        {
+            // Add hardcoded test block for GUI testing
+            std::cout << "Adding test light block at (38,10,32)..." << std::endl;
+
+            // For instanced blocks (light), we need to update geometry and trigger scene updates
+            auto &scene = Scene::Get();
+            unsigned int blockId = BlockTypeTestLight;
+            unsigned int newVal = blockId;
+            int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
+
+            if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
+            {
+                // Set the voxel data
+                voxelengine.setVoxelAtGlobal(38, 10, 32, newVal);
+
+                std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+                std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+
+                unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, 38, 10, 32, voxelengine.chunkConfig.getGlobalWidth());
+                geometryInstanceIdMap[objectId].insert(instanceId);
+
+                std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, 38.0f,
+                                                   0.0f, 1.0f, 0.0f, 10.0f,
+                                                   0.0f, 0.0f, 1.0f, 32.0f};
+                instanceTransformMatrices[instanceId] = transform;
+
+                // Trigger scene update
+                scene.needSceneUpdate = true;
+                scene.sceneUpdateObjectId.push_back(objectId);
+                scene.sceneUpdateInstanceId.push_back(instanceId);
+
+                // If this is a light block, also place its base
+                if (Assets::BlockManager::Get().hasLightBase(blockId))
+                {
+                    unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
+                    int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
+
+                    unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
+                                                                       baseObjectIdx, 38, 10, 32, voxelengine.chunkConfig.getGlobalWidth());
+                    geometryInstanceIdMap[baseObjectIdx].insert(baseInstanceId);
+
+                    instanceTransformMatrices[baseInstanceId] = transform;
+
+                    scene.sceneUpdateObjectId.push_back(baseObjectIdx);
+                    scene.sceneUpdateInstanceId.push_back(baseInstanceId);
+                }
+            }
+
+            std::cout << "Test block added successfully." << std::endl;
+        }
 
         std::cout << "Starting rendering..." << std::endl;
 

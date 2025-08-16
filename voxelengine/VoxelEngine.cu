@@ -13,8 +13,8 @@
 
 #include "assets/ModelUtils.h"
 #include "assets/ModelManager.h"
-#include "assets/AssetRegistry.h"
 #include "assets/BlockManager.h"
+#include "assets/AssetRegistry.h"
 #include "shaders/ShaderDebugUtils.h"
 
 #ifndef OFFLINE_MODE
@@ -180,11 +180,6 @@ void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &
     cudaFree(d_radiance);
 }
 
-unsigned int PositionToInstanceId(unsigned int offset, unsigned int geometryId, unsigned int x, unsigned int y, unsigned int z, unsigned int width)
-{
-    unsigned int linearId = GetLinearId(x, y, z, width);
-    return offset + geometryId * width * width * width + linearId;
-}
 
 static void MouseButtonCallback(int button, int action, int mods)
 {
@@ -328,8 +323,10 @@ void VoxelEngine::updateInstances()
                 for (unsigned int globalZ = 0; globalZ < chunkConfig.getGlobalDepth(); ++globalZ)
                 {
                     auto val = getVoxelAtGlobal(globalX, globalY, globalZ);
-                    bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
-                    if (val.id == blockId || specialCase)
+                    // Check if this is a light base matching the current light block
+                    bool isLightBase = Assets::BlockManager::Get().hasLightBase(blockId) && 
+                                      (val.id == Assets::BlockManager::Get().getLightBaseBlockId(blockId));
+                    if (val.id == blockId || isLightBase)
                     {
                         unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, globalX, globalY, globalZ, globalWidth);
 
@@ -569,6 +566,12 @@ void VoxelEngine::update()
     Int3 deletePos(-1, -1, -1);
     int deleteBlockId = -1;
 
+    // Reset center block info
+    centerBlockInfo.hasValidBlock = false;
+    centerBlockInfo.blockId = 0;
+    centerBlockInfo.blockName = "Empty";
+    centerBlockInfo.position = Int3(-1, -1, -1);
+
     // Use unified time management from GlobalSettings
     float deltaTime = GlobalSettings::GetDeltaTime();
 
@@ -658,6 +661,20 @@ void VoxelEngine::update()
             hitZ = z;
             deletePos = Int3(x, y, z);
             deleteBlockId = voxel.id;
+            
+            // Store center block information for GUI
+            centerBlockInfo.hasValidBlock = true;
+            centerBlockInfo.blockId = voxel.id;
+            centerBlockInfo.position = Int3(x, y, z);
+            
+            // Get block name from BlockManager
+            const std::string* blockName = Assets::BlockManager::Get().getBlockName(voxel.id);
+            if (blockName) {
+                centerBlockInfo.blockName = *blockName;
+            } else {
+                centerBlockInfo.blockName = "Unknown";
+            }
+            
             // We stop here
             break;
         }
@@ -797,16 +814,37 @@ void VoxelEngine::update()
                     scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(instanceId);
 
+                    // If we're deleting a light base, remove associated light blocks
                     if (Assets::BlockManager::Get().isBaseLightBlockType(deleteBlockId))
                     {
-                        int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(childBlockId);
+                        // Find light blocks that use this base and remove them
+                        const auto& allBlocks = Assets::AssetRegistry::Get().getAllBlocks();
+                        for (const auto& block : allBlocks) {
+                            if (block.light_base_block.has_value() && 
+                                Assets::BlockManager::Get().getLightBaseBlockId(block.id) == deleteBlockId) {
+                                
+                                int lightObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(block.id);
+                                unsigned int lightInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+                                                                                   lightObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
+                                geometryInstanceIdMap[lightObjectIdx].erase(lightInstanceId);
 
-                        unsigned int childInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
-                        geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
+                                scene.sceneUpdateObjectId.push_back(lightObjectIdx);
+                                scene.sceneUpdateInstanceId.push_back(lightInstanceId);
+                            }
+                        }
+                    }
+                    // If we're deleting a light, also remove its base
+                    else if (Assets::BlockManager::Get().hasLightBase(deleteBlockId))
+                    {
+                        unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(deleteBlockId);
+                        int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
 
-                        scene.sceneUpdateObjectId.push_back(childObjectIdx);
-                        scene.sceneUpdateInstanceId.push_back(childInstanceId);
+                        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+                                                                           baseObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
+                        geometryInstanceIdMap[baseObjectIdx].erase(baseInstanceId);
+
+                        scene.sceneUpdateObjectId.push_back(baseObjectIdx);
+                        scene.sceneUpdateInstanceId.push_back(baseInstanceId);
                     }
                 }
             }
@@ -865,18 +903,20 @@ void VoxelEngine::update()
                     scene.sceneUpdateObjectId.push_back(objectId);
                     scene.sceneUpdateInstanceId.push_back(instanceId);
 
-                    if (Assets::BlockManager::Get().isBaseLightBlockType(deleteBlockId))
+                    // If we're placing a light block, also place its base
+                    if (Assets::BlockManager::Get().hasLightBase(blockId))
                     {
-                        int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = childBlockId - 1;
+                        unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
+                        int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
 
-                        unsigned int childInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
-                        geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
+                        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+                                                                           baseObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
+                        geometryInstanceIdMap[baseObjectIdx].insert(baseInstanceId);
 
-                        instanceTransformMatrices[childInstanceId] = transform;
+                        instanceTransformMatrices[baseInstanceId] = transform;
 
-                        scene.sceneUpdateObjectId.push_back(childObjectIdx);
-                        scene.sceneUpdateInstanceId.push_back(childInstanceId);
+                        scene.sceneUpdateObjectId.push_back(baseObjectIdx);
+                        scene.sceneUpdateInstanceId.push_back(baseInstanceId);
                     }
                 }
             }

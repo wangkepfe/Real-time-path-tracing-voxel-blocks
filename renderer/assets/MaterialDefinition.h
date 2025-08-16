@@ -54,10 +54,12 @@ struct BlockDefinition {
     std::string type;  // BlockType enum name
     std::optional<std::string> material_id;
     std::optional<std::string> model_id;
+    std::optional<std::string> light_base_block;  // For light blocks, specifies which base block to place
     bool is_instanced = false;
     bool is_transparent = false;
     bool is_base_light = false;
     bool is_emissive = false;
+    bool is_placeable = true;  // If false, block cannot be directly placed by user
 };
 
 } // namespace Assets
