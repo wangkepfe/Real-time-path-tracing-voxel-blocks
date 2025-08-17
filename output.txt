@@ -1,0 +1,38 @@
+-- Selecting Windows SDK version 10.0.22621.0 to target Windows 10.0.26100.
+GLFW_PATH = D:/cmder/Real-time-path-tracing-voxel-blocks/3rdparty/glfw
+GLFW_INCLUDE_DIR = D:/cmder/Real-time-path-tracing-voxel-blocks/3rdparty/glfw/include
+GLFW_LIBRARY_DIR = D:/cmder/Real-time-path-tracing-voxel-blocks/3rdparty/glfw/lib-vc
+GLFW_LIBRARIES = D:/cmder/Real-time-path-tracing-voxel-blocks/3rdparty/glfw/lib-vc2022/glfw3.lib
+GLFW_FOUND = TRUE
+PTX_DIR = D:/cmder/Real-time-path-tracing-voxel-blocks/build/ptx
+-- Configuring done (0.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: D:/cmder/Real-time-path-tracing-voxel-blocks/build
+MSBuild version 17.13.19+0d9f5a35a for .NET Framework
+
+  MaterialManager.cpp
+  MaterialManager.cpp
+D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\assets\MaterialManager.cpp(89,49): error C2039: 'emissive': is not a member of 'MaterialParameter' [D:\cmder\Real-time-path-tracing-voxel-blocks\build\voxelgame_offline.vcxproj]
+      D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\shaders\SystemParameter.h(11,22):
+      see declaration of 'MaterialParameter'
+  
+D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\assets\MaterialManager.cpp(89,76): error C2039: 'emissive': is not a member of 'MaterialParameter' [D:\cmder\Real-time-path-tracing-voxel-blocks\build\voxelgame_offline.vcxproj]
+      D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\shaders\SystemParameter.h(11,22):
+      see declaration of 'MaterialParameter'
+  
+D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\assets\MaterialManager.cpp(89,103): error C2039: 'emissive': is not a member of 'MaterialParameter' [D:\cmder\Real-time-path-tracing-voxel-blocks\build\voxelgame_offline.vcxproj]
+      D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\shaders\SystemParameter.h(11,22):
+      see declaration of 'MaterialParameter'
+  
+D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\assets\MaterialManager.cpp(89,49): error C2039: 'emissive': is not a member of 'MaterialParameter' [D:\cmder\Real-time-path-tracing-voxel-blocks\build\voxelgame.vcxproj]
+      D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\shaders\SystemParameter.h(11,22):
+      see declaration of 'MaterialParameter'
+  
+D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\assets\MaterialManager.cpp(89,76): error C2039: 'emissive': is not a member of 'MaterialParameter' [D:\cmder\Real-time-path-tracing-voxel-blocks\build\voxelgame.vcxproj]
+      D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\shaders\SystemParameter.h(11,22):
+      see declaration of 'MaterialParameter'
+  
+D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\assets\MaterialManager.cpp(89,103): error C2039: 'emissive': is not a member of 'MaterialParameter' [D:\cmder\Real-time-path-tracing-voxel-blocks\build\voxelgame.vcxproj]
+      D:\cmder\Real-time-path-tracing-voxel-blocks\renderer\shaders\SystemParameter.h(11,22):
+      see declaration of 'MaterialParameter'
+  

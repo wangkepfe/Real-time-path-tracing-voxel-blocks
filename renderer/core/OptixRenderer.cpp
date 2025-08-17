@@ -276,6 +276,13 @@ void OptixRenderer::initializeSbtRecord(unsigned int sbtRecordIndex, unsigned in
         m_sbtRecordGeometryInstanceData[currentSbtIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
         m_sbtRecordGeometryInstanceData[currentSbtIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
         m_sbtRecordGeometryInstanceData[currentSbtIndex].data.materialIndex = materialIndex;
+        
+        // Debug output for light block SBT records
+        if (materialIndex == 14 || materialIndex == 15) {
+            std::cout << "SBT RECORD SET: sbtIndex=" << currentSbtIndex << " geometryIndex=" << geometryIndex 
+                      << " materialIndex=" << materialIndex << " rayType=" << rayType << std::endl;
+        }
+        
     }
 }
 
@@ -681,7 +688,7 @@ void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsig
         memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
         instance.instanceId = instanceId;
         instance.visibilityMask = 255;                 // Visible to all ray types
-        instance.sbtOffset = objectId * NUM_RAY_TYPES; // SBT offset for material/shader binding
+        instance.sbtOffset = getInstancedGeometryIndex(objectId) * NUM_RAY_TYPES; // SBT offset for material/shader binding
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId]; // Link to geometry BLAS
 
@@ -726,6 +733,16 @@ void OptixRenderer::update()
         }
 
         // Upload SBT
+        std::cout << "SBT UPLOAD: Uploading " << m_sbtRecordGeometryInstanceData.size() << " SBT records to GPU" << std::endl;
+        
+        // Debug: Check material indices in SBT records before upload
+        for (size_t i = 0; i < m_sbtRecordGeometryInstanceData.size(); ++i) {
+            unsigned int matIdx = m_sbtRecordGeometryInstanceData[i].data.materialIndex;
+            if (matIdx == 14 || matIdx == 15) {
+                std::cout << "SBT PRE-UPLOAD: Record " << i << " has materialIndex=" << matIdx << std::endl;
+            }
+        }
+        
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
         // Instanced
@@ -756,6 +773,16 @@ void OptixRenderer::update()
             }
         }
         // Upload SBT
+        std::cout << "SBT UPLOAD: Uploading " << m_sbtRecordGeometryInstanceData.size() << " SBT records to GPU" << std::endl;
+        
+        // Debug: Check material indices in SBT records before upload
+        for (size_t i = 0; i < m_sbtRecordGeometryInstanceData.size(); ++i) {
+            unsigned int matIdx = m_sbtRecordGeometryInstanceData[i].data.materialIndex;
+            if (matIdx == 14 || matIdx == 15) {
+                std::cout << "SBT PRE-UPLOAD: Record " << i << " has materialIndex=" << matIdx << std::endl;
+            }
+        }
+        
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
@@ -1143,6 +1170,14 @@ void OptixRenderer::init()
 
             // Get material index from MaterialManager for proper mapping
             unsigned int materialIndex = Assets::MaterialManager::Get().getMaterialIndexForObjectId(objectId);
+            int blockType = Assets::BlockManager::Get().objectIdToBlockId(objectId);
+            
+            // Debug output for light blocks
+            if (blockType == 15 || blockType == 16) { // TestLightBase and TestLight
+                std::cout << "SBT DEBUG: Block " << blockType << " (object " << objectId << ") geometry " << geometryIndex 
+                          << " material " << materialIndex << std::endl;
+            }
+            
             initializeSbtRecord(sbtBaseIndex, geometryIndex, materialIndex);
         }
 
@@ -1190,9 +1225,13 @@ void OptixRenderer::init()
     {
         // Materials are now managed by MaterialManager
         m_systemParameter.materialParameters = Assets::MaterialManager::Get().getGPUMaterialsPointer();
+        
+        std::cout << "SYSTEM PARAM: materialParameters pointer = " << (void*)m_systemParameter.materialParameters << std::endl;
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        
+        std::cout << "SYSTEM PARAM: Uploaded SystemParameter to GPU" << std::endl;
     }
 
     // Destroy modules

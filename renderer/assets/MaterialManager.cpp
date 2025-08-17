@@ -83,6 +83,7 @@ bool MaterialManager::createGPUMaterials() {
         // Store runtime index in definition
         matDef.runtimeIndex = i;
         
+        
         // Add to CPU array
         m_cpuMaterials.push_back(param);
         
@@ -97,6 +98,8 @@ bool MaterialManager::createGPUMaterials() {
             auto it = m_materialIdToIndex.find(block.material_id.value());
             if (it != m_materialIdToIndex.end()) {
                 m_blockTypeToMaterialIndex[block.id] = it->second;
+            } else {
+                std::cout << "Warning: Block type " << block.id << " (" << block.name << ") references unknown material '" << block.material_id.value() << "'" << std::endl;
             }
         }
     }
@@ -120,6 +123,16 @@ bool MaterialManager::createGPUMaterials() {
     
     m_materialCount = m_cpuMaterials.size();
     
+    // Debug output for materials before GPU upload
+    for (size_t i = 0; i < m_cpuMaterials.size(); ++i) {
+        const auto& param = m_cpuMaterials[i];
+        const auto& matDef = materials[i];
+        if (matDef.id == "lantern_base" || matDef.id == "lantern_light") {
+            std::cout << "GPU UPLOAD: Material '" << matDef.id << "' index " << i << " isEmissive=" << param.isEmissive 
+                      << " albedo=" << param.albedo.x << "," << param.albedo.y << "," << param.albedo.z << std::endl;
+        }
+    }
+    
     // Upload to GPU
     return uploadMaterials();
 }
@@ -139,6 +152,8 @@ MaterialParameter MaterialManager::createMaterialParameter(const MaterialDefinit
     
     if (param.isEmissive) {
         param.albedo = def.properties.emissive_radiance;
+        std::cout << "EMISSIVE DEBUG: Material " << def.id << " setting albedo to radiance: " 
+                  << param.albedo.x << "," << param.albedo.y << "," << param.albedo.z << std::endl;
     }
     
     // Set texture handles using the existing TextureManager
@@ -189,8 +204,21 @@ bool MaterialManager::uploadMaterials() {
         return false;
     }
     
+    // Debug output before GPU upload
+    std::cout << "=== MATERIAL BUFFER GPU UPLOAD (called at " << __FILE__ << ":" << __LINE__ << ") ===" << std::endl;
+    for (size_t i = 14; i <= 15; ++i) {
+        if (i < m_cpuMaterials.size()) {
+            const auto& param = m_cpuMaterials[i];
+            std::cout << "UPLOAD[" << i << "]: isEmissive=" << param.isEmissive 
+                      << " albedo=(" << param.albedo.x << "," << param.albedo.y << "," << param.albedo.z << ")"
+                      << " textureAlbedo=" << param.textureAlbedo << std::endl;
+        }
+    }
+    
     size_t uploadSize = sizeof(MaterialParameter) * m_materialCount;
     CUDA_CHECK(cudaMemcpy(m_d_materials, m_cpuMaterials.data(), uploadSize, cudaMemcpyHostToDevice));
+    
+    std::cout << "Uploaded " << m_materialCount << " materials (" << uploadSize << " bytes) to GPU" << std::endl;
     
     return true;
 }
@@ -376,6 +404,11 @@ unsigned int MaterialManager::getMaterialIndexForObjectId(unsigned int objectId)
     // Convert object ID to block ID and use existing block-to-material mapping
     int blockType = static_cast<int>(Assets::BlockManager::Get().objectIdToBlockId(objectId));
     unsigned int materialIndex = getMaterialIndexForBlock(blockType);
+    
+    // Debug output for light block objects
+    if (objectId == 14 || objectId == 15) {
+        std::cout << "SBT MATERIAL: Object " << objectId << " -> block " << blockType << " -> material " << materialIndex << std::endl;
+    }
     
     return materialIndex;
 }

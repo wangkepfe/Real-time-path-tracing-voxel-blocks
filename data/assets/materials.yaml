@@ -186,7 +186,11 @@ materials:
     properties:
       is_emissive: true
       # 1500 Kelvin color temperature, 10000 Lux
-      emissive_radiance: [3.737, 2.718, 1.189]  # Pre-calculated: (255, 182, 78) / 255 * 10000 / (683 * 108)
+      # Pre-calculated: (255, 182, 78) / 255 * 10000 / (683 * 108)
+      emissive_radiance:
+        - 3.737
+        - 2.718
+        - 1.189
       
   # Entity materials
   - id: minecraft_character

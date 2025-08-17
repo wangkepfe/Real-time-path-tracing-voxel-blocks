@@ -134,6 +134,7 @@ bool AssetRegistry::loadMaterials(const std::string& filepath) {
                 if (propsNode["use_world_grid_uv"]) {
                     material.properties.use_world_grid_uv = propsNode["use_world_grid_uv"].as<bool>();
                 }
+                
                 if (propsNode["emissive_radiance"] && propsNode["emissive_radiance"].IsSequence()) {
                     auto emissiveSeq = propsNode["emissive_radiance"];
                     if (emissiveSeq.size() >= 3) {
