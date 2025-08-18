@@ -114,7 +114,7 @@ SceneConfig SceneConfigParser::CreateDefault()
 {
     SceneConfig config;
     config.camera.position = Float3(20.0f, 15.0f, 20.0f);
-    config.camera.direction = Float3(-1.0f, -0.3f, -1.0f);
+    config.camera.direction = Float3(1.0f, -0.3f, 1.0f);
     config.camera.up = Float3(0.0f, 1.0f, 0.0f);
     config.camera.fov = 90.0f;
     config.camera.normalize();

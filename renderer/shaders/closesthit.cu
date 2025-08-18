@@ -83,33 +83,7 @@ extern "C" __global__ void __closesthit__radiance()
     bool isEmissive = parameters.isEmissive;
     bool isThinfilm = parameters.isThinfilm;
     
-    // Debug center pixel hits for our test light block
-    bool isCenterPixel = (pixelPosition.x == sysParam.camera.resolution.x / 2) && 
-                        (pixelPosition.y == sysParam.camera.resolution.y / 2);
-    if (isCenterPixel && rayData->depth == 0) {
-        // CUDA printf debug for center pixel
-        printf("CENTER PIXEL HIT: instanceId=%u, materialIndex=%u, materialId=%d\n", 
-               instanceId, instanceData->materialIndex, materialId);
-        printf("CENTER PIXEL MATERIAL: isEmissive=%d, albedo=(%.3f,%.3f,%.3f)\n", 
-               isEmissive, parameters.albedo.x, parameters.albedo.y, parameters.albedo.z);
-        printf("CENTER PIXEL TEXTURES: textureAlbedo=%llu, textureNormal=%llu\n", 
-               parameters.textureAlbedo, parameters.textureNormal);
-        printf("CENTER PIXEL SBT: instanceData ptr=%p, sbtGasIndex=%u\n", 
-               instanceData, optixGetSbtGASIndex());
-        
-        // For center pixel, show material-specific debug colors
-        if (isEmissive) {
-            // Show emissive material in bright green
-            rayData->radiance = Float3(0.0f, 10.0f, 0.0f);
-            printf("CENTER PIXEL: Showing EMISSIVE (green)\n");
-        } else {
-            // Show non-emissive material in bright red
-            rayData->radiance = Float3(10.0f, 0.0f, 0.0f);
-            printf("CENTER PIXEL: Showing NON-EMISSIVE (red)\n");
-        }
-        rayData->shouldTerminate = true;
-        return;
-    }
+    // Center pixel debug removed for clean testing
 
     if (isEmissive)
     {

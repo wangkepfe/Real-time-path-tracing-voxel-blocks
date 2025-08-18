@@ -117,6 +117,19 @@ void Backend::mainloop()
 
         renderer.update();
 
+        // HARDCODED TEST: Place 4 light blocks to reproduce crash
+        static int testFrameCount = 0;
+        static int testClickCount = 0;
+        testFrameCount++;
+        
+        // Place a light block every 2 seconds, 4 times total
+        if (testClickCount < 4 && testFrameCount == (120 + testClickCount * 120)) { // Every 2 seconds starting at 2 seconds
+            testClickCount++;
+            std::cout << "TEST: Placing light block #" << testClickCount << " (ID=16)..." << std::endl;
+            inputHandler.currentSelectedBlockId = 16; // BlockTypeTestLight
+            voxelengine.leftMouseButtonClicked = true;
+        }
+
         voxelengine.update();
 
         renderer.render();

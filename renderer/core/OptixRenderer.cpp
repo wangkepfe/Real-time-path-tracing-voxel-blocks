@@ -733,15 +733,9 @@ void OptixRenderer::update()
         }
 
         // Upload SBT
-        std::cout << "SBT UPLOAD: Uploading " << m_sbtRecordGeometryInstanceData.size() << " SBT records to GPU" << std::endl;
+        // SBT upload message removed for clean testing
         
-        // Debug: Check material indices in SBT records before upload
-        for (size_t i = 0; i < m_sbtRecordGeometryInstanceData.size(); ++i) {
-            unsigned int matIdx = m_sbtRecordGeometryInstanceData[i].data.materialIndex;
-            if (matIdx == 14 || matIdx == 15) {
-                std::cout << "SBT PRE-UPLOAD: Record " << i << " has materialIndex=" << matIdx << std::endl;
-            }
-        }
+        // SBT debug removed for clean testing
         
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
@@ -773,15 +767,9 @@ void OptixRenderer::update()
             }
         }
         // Upload SBT
-        std::cout << "SBT UPLOAD: Uploading " << m_sbtRecordGeometryInstanceData.size() << " SBT records to GPU" << std::endl;
+        // SBT upload message removed for clean testing
         
-        // Debug: Check material indices in SBT records before upload
-        for (size_t i = 0; i < m_sbtRecordGeometryInstanceData.size(); ++i) {
-            unsigned int matIdx = m_sbtRecordGeometryInstanceData[i].data.materialIndex;
-            if (matIdx == 14 || matIdx == 15) {
-                std::cout << "SBT PRE-UPLOAD: Record " << i << " has materialIndex=" << matIdx << std::endl;
-            }
-        }
+        // SBT debug removed for clean testing
         
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
