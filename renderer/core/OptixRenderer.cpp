@@ -1235,26 +1235,25 @@ void OptixRenderer::init()
 // Helper function to build Instance Acceleration Structure (IAS)
 void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex)
 {
-    std::cout << "IAS BUILD: Starting build for targetIasIndex=" << targetIasIndex << std::endl;
-    std::cout << "IAS BUILD: Number of instances=" << m_instances.size() << std::endl;
+    // Build Instance Acceleration Structure for the given target index
     
     // Check if we have instances to build
     if (m_instances.empty()) {
-        std::cout << "IAS BUILD WARNING: No instances to build!" << std::endl;
+        // No instances to build
         return;
     }
     
     // Upload instances to GPU
     CUdeviceptr d_instances = 0;
     const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-    std::cout << "IAS BUILD: Allocating " << instancesSizeInBytes << " bytes for instances" << std::endl;
+    // Allocate memory for instances
     
     cudaError_t cudaErr = cudaMalloc((void **)&d_instances, instancesSizeInBytes);
     if (cudaErr != cudaSuccess) {
         std::cerr << "IAS BUILD ERROR: Failed to allocate d_instances: " << cudaGetErrorString(cudaErr) << std::endl;
         return;
     }
-    std::cout << "IAS BUILD: d_instances allocated at " << (void*)d_instances << std::endl;
+    // Successfully allocated instances buffer
     
     if (d_instances == 0) {
         std::cerr << "IAS BUILD ERROR: d_instances is NULL after allocation!" << std::endl;
@@ -1271,7 +1270,7 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     
     // Sync to ensure copy is complete
     cudaDeviceSynchronize();
-    std::cout << "IAS BUILD: Instances copied to GPU" << std::endl;
+    // Instances copied to GPU
 
     // Setup build input
     OptixBuildInput instanceInput = {};
@@ -1293,23 +1292,22 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
         return;
     }
     
-    std::cout << "IAS BUILD: Memory requirements - output=" << iasBufferSizes.outputSizeInBytes 
-              << " temp=" << iasBufferSizes.tempSizeInBytes << std::endl;
+    // Computed memory requirements for IAS
 
     // Only reallocate if buffer doesn't exist or required size is larger than current
     if (m_d_ias[targetIasIndex] == 0 || iasBufferSizes.outputSizeInBytes > m_iasBufferSizes[targetIasIndex])
     {
-        std::cout << "IAS BUILD: Need to allocate/reallocate IAS buffer" << std::endl;
+        // Need to allocate/reallocate IAS buffer
         
         // Free existing buffer if needed
         if (m_d_ias[targetIasIndex] != 0)
         {
-            std::cout << "IAS BUILD: Freeing existing IAS buffer" << std::endl;
+            // Free existing buffer
             CUDA_CHECK(cudaFree((void *)m_d_ias[targetIasIndex]));
         }
 
         // Allocate new buffer
-        std::cout << "IAS BUILD: Allocating " << iasBufferSizes.outputSizeInBytes << " bytes for IAS" << std::endl;
+        // Allocate new IAS buffer
         cudaErr = cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes);
         if (cudaErr != cudaSuccess) {
             std::cerr << "IAS BUILD ERROR: Failed to allocate IAS buffer: " << cudaGetErrorString(cudaErr) << std::endl;
@@ -1317,7 +1315,7 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
             return;
         }
         m_iasBufferSizes[targetIasIndex] = iasBufferSizes.outputSizeInBytes;
-        std::cout << "IAS BUILD: IAS buffer allocated at " << (void*)m_d_ias[targetIasIndex] << std::endl;
+        // IAS buffer allocated successfully
     }
     
     if (m_d_ias[targetIasIndex] == 0) {
@@ -1327,14 +1325,14 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     }
 
     CUdeviceptr d_tmp = 0;
-    std::cout << "IAS BUILD: Allocating " << iasBufferSizes.tempSizeInBytes << " bytes for temp buffer" << std::endl;
+    // Allocate temporary buffer for build
     cudaErr = cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes);
     if (cudaErr != cudaSuccess) {
         std::cerr << "IAS BUILD ERROR: Failed to allocate temp buffer: " << cudaGetErrorString(cudaErr) << std::endl;
         cudaFree((void *)d_instances);
         return;
     }
-    std::cout << "IAS BUILD: Temp buffer allocated at " << (void*)d_tmp << std::endl;
+    // Temp buffer allocated
     
     if (d_tmp == 0) {
         std::cerr << "IAS BUILD ERROR: d_tmp is NULL after allocation!" << std::endl;
@@ -1346,9 +1344,7 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     cudaDeviceSynchronize();
     
     // Build the acceleration structure
-    std::cout << "IAS BUILD: Calling optixAccelBuild..." << std::endl;
-    std::cout << "  d_tmp=" << (void*)d_tmp << " tempSize=" << iasBufferSizes.tempSizeInBytes << std::endl;
-    std::cout << "  outputBuffer=" << (void*)m_d_ias[targetIasIndex] << " outputSize=" << iasBufferSizes.outputSizeInBytes << std::endl;
+    // Build the IAS
     
     if (m_d_ias[targetIasIndex] == 0) {
         std::cerr << "ERROR: outputBuffer is 0" << std::endl;
@@ -1363,7 +1359,7 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     if (optixRes != OPTIX_SUCCESS) {
         std::cerr << "IAS BUILD ERROR: optixAccelBuild failed with " << optixRes << std::endl;
     } else {
-        std::cout << "IAS BUILD: optixAccelBuild succeeded, topObject=" << (void*)m_systemParameter.topObject << std::endl;
+        // IAS build succeeded
     }
 
     // Synchronize and cleanup
@@ -1384,15 +1380,15 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
     
     // Upload updated SystemParameter with new topObject to GPU
     if (m_d_systemParameter != nullptr) {
-        std::cout << "IAS BUILD: Uploading updated SystemParameter to GPU" << std::endl;
+        // Upload updated SystemParameter with new topObject to GPU
         cudaErr = cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, 
                                   sizeof(SystemParameter), cudaMemcpyHostToDevice, cudaStream);
         if (cudaErr != cudaSuccess) {
             std::cerr << "IAS BUILD ERROR: Failed to upload SystemParameter: " << cudaGetErrorString(cudaErr) << std::endl;
         }
     } else {
-        std::cout << "IAS BUILD: SystemParameter not yet allocated (will be uploaded during render)" << std::endl;
+        // SystemParameter will be uploaded during render
     }
     
-    std::cout << "IAS BUILD: Completed successfully" << std::endl;
+    // IAS build completed
 }

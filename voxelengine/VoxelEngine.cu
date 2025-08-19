@@ -302,7 +302,7 @@ void VoxelEngine::updateDynamicLights()
         return;
     }
     
-    std::cout << "DYNAMIC LIGHT: Updating light system..." << std::endl;
+    // Update light system
     
     // Save the previous light array for mapping
     unsigned int prevNumLights = scene.m_currentNumLights;
@@ -344,9 +344,7 @@ void VoxelEngine::updateDynamicLights()
         }
     }
     
-    std::cout << "DYNAMIC LIGHT: Total triangle lights: " << totalNumTriLights 
-              << ", Previous: " << prevNumLights 
-              << ", Capacity: " << scene.m_maxLightCapacity << std::endl;
+    // Light count: current = totalNumTriLights, previous = prevNumLights
     
     // Allocate or reallocate light buffer if needed
     if (totalNumTriLights > scene.m_maxLightCapacity) {
@@ -462,20 +460,19 @@ void VoxelEngine::updateDynamicLights()
     }
     
     // Rebuild alias table
-    std::cout << "DYNAMIC LIGHT: Alias table - initialized: " << scene.lightAliasTable.initialized() 
-              << ", size: " << scene.lightAliasTable.size() << std::endl;
+    // Check alias table state
     
     if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights) {
         scene.lightAliasTable = AliasTable(); // Reset
     }
     if (totalNumTriLights > 0) {
-        std::cout << "DYNAMIC LIGHT: Building alias table for " << totalNumTriLights << " lights" << std::endl;
+        // Build alias table for lights
         buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
-        std::cout << "DYNAMIC LIGHT: Alias table built, luminance: " << scene.accumulatedLocalLightLuminance << std::endl;
+        // Alias table built successfully
         cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
     } else {
         // No lights - reset the alias table
-        std::cout << "DYNAMIC LIGHT: No lights, resetting alias table" << std::endl;
+        // No lights, reset alias table
         scene.lightAliasTable = AliasTable();
         scene.accumulatedLocalLightLuminance = 0.0f;
         cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
@@ -491,7 +488,7 @@ void VoxelEngine::updateDynamicLights()
     // Ensure all CUDA operations are complete before returning
     cudaDeviceSynchronize();
     
-    std::cout << "DYNAMIC LIGHT: Light system update complete" << std::endl;
+    // Light system update complete
 }
 
 void VoxelEngine::updateInstances()
@@ -1081,7 +1078,7 @@ void VoxelEngine::deleteInstancedBlock(const Int3& pos, int blockId)
     // Check if we're deleting an emissive block that needs light system update
     const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
     if (blockDef && blockDef->is_emissive) {
-        std::cout << "DYNAMIC LIGHT: Emissive block removed - marking lights for update" << std::endl;
+        // Emissive block removed - mark lights for update
         scene.m_lightsNeedUpdate = true;
     }
 
@@ -1129,7 +1126,7 @@ void VoxelEngine::deleteUninstancedBlock(const Int3& pos, int blockId)
 
 void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
 {
-    std::cout << "DYNAMIC: Adding instanced block " << blockId << " at (" << pos.x << "," << pos.y << "," << pos.z << ")" << std::endl;
+    // Adding instanced block to scene
     
     setVoxelAtGlobal(pos.x, pos.y, pos.z, blockId);
 
@@ -1152,10 +1149,10 @@ void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
     // Check if this is an emissive block that needs light system update
     const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
     if (blockDef && blockDef->is_emissive) {
-        std::cout << "DYNAMIC LIGHT: Emissive block placed - marking lights for update" << std::endl;
+        // Emissive block placed - mark lights for update
         scene.m_lightsNeedUpdate = true;
     } else {
-        std::cout << "DYNAMIC: Non-emissive block placed (no light update needed)" << std::endl;
+        // Non-emissive block placed
     }
 
     // If this is a light block, also place its base

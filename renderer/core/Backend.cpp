@@ -117,7 +117,9 @@ void Backend::mainloop()
 
         renderer.update();
 
-        // HARDCODED TEST: Place 4 leaves blocks to test dynamic instanced block placement without lights
+        // HARDCODED TEST: Disabled for production
+        // Uncomment to test dynamic block placement and removal
+        /*
         static int testFrameCount = 0;
         static int testClickCount = 0;
         testFrameCount++;
@@ -138,6 +140,7 @@ void Backend::mainloop()
             inputHandler.currentSelectedBlockId = 0; // BlockTypeEmpty for deletion
             voxelengine.leftMouseButtonClicked = true; // Simulate click to delete
         }
+        */
 
         voxelengine.update();
 
