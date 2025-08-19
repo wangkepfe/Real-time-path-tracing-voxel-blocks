@@ -80,6 +80,17 @@ public:
     std::vector<InstanceLightMapping> instanceLightMapping;
     InstanceLightMapping *d_instanceLightMapping;
     unsigned int numInstancedLightMesh;
+    
+    // Dynamic light management
+    unsigned int m_currentNumLights = 0;
+    unsigned int m_maxLightCapacity = 0;
+    bool m_lightsNeedUpdate = false;
+    
+    // Light ID mapping for temporal coherence (ReSTIR)
+    // Maps current frame light ID to previous frame light ID
+    // -1 means the light is new this frame
+    std::vector<int> m_lightIdToPrevFrameId;
+    int *d_lightIdToPrevFrameId = nullptr;
 
     // Entity management
     std::vector<std::unique_ptr<Entity>> m_entities;

@@ -276,13 +276,13 @@ void OptixRenderer::initializeSbtRecord(unsigned int sbtRecordIndex, unsigned in
         m_sbtRecordGeometryInstanceData[currentSbtIndex].data.indices = (Int3 *)m_geometries[geometryIndex].indices;
         m_sbtRecordGeometryInstanceData[currentSbtIndex].data.attributes = (VertexAttributes *)m_geometries[geometryIndex].attributes;
         m_sbtRecordGeometryInstanceData[currentSbtIndex].data.materialIndex = materialIndex;
-        
+
         // Debug output for light block SBT records
-        if (materialIndex == 14 || materialIndex == 15) {
-            std::cout << "SBT RECORD SET: sbtIndex=" << currentSbtIndex << " geometryIndex=" << geometryIndex 
+        if (materialIndex == 14 || materialIndex == 15)
+        {
+            std::cout << "SBT RECORD SET: sbtIndex=" << currentSbtIndex << " geometryIndex=" << geometryIndex
                       << " materialIndex=" << materialIndex << " rayType=" << rayType << std::endl;
         }
-        
     }
 }
 
@@ -358,6 +358,9 @@ void OptixRenderer::render()
     int nextIndex = (m_currentIasIdx + 1) % 2;
     buildInstanceAccelerationStructure(backend.getCudaStream(), nextIndex);
     m_currentIasIdx = nextIndex;
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaPeekAtLastError());
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
@@ -563,8 +566,13 @@ void OptixRenderer::createBlasForInstancedObjects()
         // Convert objectId to array index (0-based)
         unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
-        // Create BLAS for instanced geometry using the loaded geometry data
-        assert(scene.m_instancedGeometryAttributeSize[arrayIndex] > 0 && scene.m_instancedGeometryIndicesSize[arrayIndex] > 0);
+        // ALL instanced blocks should have geometry loaded at initialization
+        // This ensures we can dynamically add instances without creating BLAS on the fly
+        if (scene.m_instancedGeometryAttributeSize[arrayIndex] == 0 || scene.m_instancedGeometryIndicesSize[arrayIndex] == 0)
+        {
+            std::cerr << "ERROR: Instanced object " << objectId << " has no geometry data at initialization!" << std::endl;
+            continue;
+        }
 
         GeometryData geometry = {};
         OptixTraversableHandle blasHandle = Scene::CreateGeometry(
@@ -681,13 +689,21 @@ void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsig
     else
     {
         // Create new instance - object was added to scene
+
+        // BLAS should already exist for all instanced objects (created at initialization)
+        if (m_objectIdxToBlasHandleMap.find(objectId) == m_objectIdxToBlasHandleMap.end())
+        {
+            std::cerr << "ERROR: No BLAS found for object " << objectId << " - this should have been created at initialization!" << std::endl;
+            return;
+        }
+
         m_instanceIds.insert(instanceId);
 
         // Create OptixInstance with transformation matrix from scene
         OptixInstance instance = {};
         memcpy(instance.transform, scene.instanceTransformMatrices[instanceId].data(), sizeof(float) * 12);
         instance.instanceId = instanceId;
-        instance.visibilityMask = 255;                 // Visible to all ray types
+        instance.visibilityMask = 255;                                            // Visible to all ray types
         instance.sbtOffset = getInstancedGeometryIndex(objectId) * NUM_RAY_TYPES; // SBT offset for material/shader binding
         instance.flags = OPTIX_INSTANCE_FLAG_NONE;
         instance.traversableHandle = m_objectIdxToBlasHandleMap[objectId]; // Link to geometry BLAS
@@ -699,8 +715,6 @@ void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsig
 void OptixRenderer::update()
 {
     auto &scene = Scene::Get();
-
-    const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
 
     if (!scene.needSceneUpdate)
     {
@@ -733,10 +747,6 @@ void OptixRenderer::update()
         }
 
         // Upload SBT
-        // SBT upload message removed for clean testing
-        
-        // SBT debug removed for clean testing
-        
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
 
         // Instanced
@@ -755,9 +765,9 @@ void OptixRenderer::update()
             // Uninstanced
             if (Assets::BlockManager::Get().isUninstancedBlockType(blockId))
             {
-                // Optimized: only update specific chunks that have changed
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
                 updateGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
+                CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
             }
             // Instanced
             else if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
@@ -766,12 +776,6 @@ void OptixRenderer::update()
                 updateInstancedObjectInstance(instanceId, objectId);
             }
         }
-        // Upload SBT
-        // SBT upload message removed for clean testing
-        
-        // SBT debug removed for clean testing
-        
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
     }
 
     scene.sceneUpdateObjectId.clear();
@@ -785,8 +789,6 @@ void OptixRenderer::update()
 void OptixRenderer::init()
 {
     Scene &scene = Scene::Get();
-    const int numObjects = scene.uninstancedGeometryCount + scene.instancedGeometryCount;
-
     {
         m_systemParameter.topObject = 0;
         m_systemParameter.prevTopObject = 0;
@@ -897,13 +899,13 @@ void OptixRenderer::init()
     {
         // Initialize the new asset management system
         Assets::AssetRegistry::Get().loadFromYAML();
-        
+
         // Initialize material manager (TextureManager is already initialized in main.cpp)
         Assets::MaterialManager::Get().initialize();
-        
+
         // ModelManager is now initialized earlier in main to avoid duplication
         // Assets::ModelManager::Get().initialize();
-        
+
         // Materials are now managed by MaterialManager
         // No need to create them here - they're already in GPU memory
     }
@@ -1159,13 +1161,14 @@ void OptixRenderer::init()
             // Get material index from MaterialManager for proper mapping
             unsigned int materialIndex = Assets::MaterialManager::Get().getMaterialIndexForObjectId(objectId);
             int blockType = Assets::BlockManager::Get().objectIdToBlockId(objectId);
-            
+
             // Debug output for light blocks
-            if (blockType == 15 || blockType == 16) { // TestLightBase and TestLight
-                std::cout << "SBT DEBUG: Block " << blockType << " (object " << objectId << ") geometry " << geometryIndex 
+            if (blockType == 15 || blockType == 16)
+            { // TestLightBase and TestLight
+                std::cout << "SBT DEBUG: Block " << blockType << " (object " << objectId << ") geometry " << geometryIndex
                           << " material " << materialIndex << std::endl;
             }
-            
+
             initializeSbtRecord(sbtBaseIndex, geometryIndex, materialIndex);
         }
 
@@ -1213,12 +1216,12 @@ void OptixRenderer::init()
     {
         // Materials are now managed by MaterialManager
         m_systemParameter.materialParameters = Assets::MaterialManager::Get().getGPUMaterialsPointer();
-        
-        std::cout << "SYSTEM PARAM: materialParameters pointer = " << (void*)m_systemParameter.materialParameters << std::endl;
+
+        std::cout << "SYSTEM PARAM: materialParameters pointer = " << (void *)m_systemParameter.materialParameters << std::endl;
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
         CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
-        
+
         std::cout << "SYSTEM PARAM: Uploaded SystemParameter to GPU" << std::endl;
     }
 
@@ -1232,12 +1235,43 @@ void OptixRenderer::init()
 // Helper function to build Instance Acceleration Structure (IAS)
 void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex)
 {
+    std::cout << "IAS BUILD: Starting build for targetIasIndex=" << targetIasIndex << std::endl;
+    std::cout << "IAS BUILD: Number of instances=" << m_instances.size() << std::endl;
+    
+    // Check if we have instances to build
+    if (m_instances.empty()) {
+        std::cout << "IAS BUILD WARNING: No instances to build!" << std::endl;
+        return;
+    }
+    
     // Upload instances to GPU
-    CUdeviceptr d_instances;
+    CUdeviceptr d_instances = 0;
     const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
-    CUDA_CHECK(cudaMalloc((void **)&d_instances, instancesSizeInBytes));
-    CUDA_CHECK(cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
-                               cudaMemcpyHostToDevice, cudaStream));
+    std::cout << "IAS BUILD: Allocating " << instancesSizeInBytes << " bytes for instances" << std::endl;
+    
+    cudaError_t cudaErr = cudaMalloc((void **)&d_instances, instancesSizeInBytes);
+    if (cudaErr != cudaSuccess) {
+        std::cerr << "IAS BUILD ERROR: Failed to allocate d_instances: " << cudaGetErrorString(cudaErr) << std::endl;
+        return;
+    }
+    std::cout << "IAS BUILD: d_instances allocated at " << (void*)d_instances << std::endl;
+    
+    if (d_instances == 0) {
+        std::cerr << "IAS BUILD ERROR: d_instances is NULL after allocation!" << std::endl;
+        return;
+    }
+    
+    cudaErr = cudaMemcpyAsync((void *)d_instances, m_instances.data(), instancesSizeInBytes,
+                              cudaMemcpyHostToDevice, cudaStream);
+    if (cudaErr != cudaSuccess) {
+        std::cerr << "IAS BUILD ERROR: Failed to copy instances: " << cudaGetErrorString(cudaErr) << std::endl;
+        cudaFree((void *)d_instances);
+        return;
+    }
+    
+    // Sync to ensure copy is complete
+    cudaDeviceSynchronize();
+    std::cout << "IAS BUILD: Instances copied to GPU" << std::endl;
 
     // Setup build input
     OptixBuildInput instanceInput = {};
@@ -1252,34 +1286,113 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
 
     // Compute memory requirements
     OptixAccelBufferSizes iasBufferSizes = {};
-    OPTIX_CHECK(m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes));
+    OptixResult optixRes = m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes);
+    if (optixRes != OPTIX_SUCCESS) {
+        std::cerr << "IAS BUILD ERROR: optixAccelComputeMemoryUsage failed with " << optixRes << std::endl;
+        cudaFree((void *)d_instances);
+        return;
+    }
+    
+    std::cout << "IAS BUILD: Memory requirements - output=" << iasBufferSizes.outputSizeInBytes 
+              << " temp=" << iasBufferSizes.tempSizeInBytes << std::endl;
 
     // Only reallocate if buffer doesn't exist or required size is larger than current
     if (m_d_ias[targetIasIndex] == 0 || iasBufferSizes.outputSizeInBytes > m_iasBufferSizes[targetIasIndex])
     {
+        std::cout << "IAS BUILD: Need to allocate/reallocate IAS buffer" << std::endl;
+        
         // Free existing buffer if needed
         if (m_d_ias[targetIasIndex] != 0)
         {
+            std::cout << "IAS BUILD: Freeing existing IAS buffer" << std::endl;
             CUDA_CHECK(cudaFree((void *)m_d_ias[targetIasIndex]));
         }
 
         // Allocate new buffer
-        CUDA_CHECK(cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes));
+        std::cout << "IAS BUILD: Allocating " << iasBufferSizes.outputSizeInBytes << " bytes for IAS" << std::endl;
+        cudaErr = cudaMalloc((void **)&m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes);
+        if (cudaErr != cudaSuccess) {
+            std::cerr << "IAS BUILD ERROR: Failed to allocate IAS buffer: " << cudaGetErrorString(cudaErr) << std::endl;
+            cudaFree((void *)d_instances);
+            return;
+        }
         m_iasBufferSizes[targetIasIndex] = iasBufferSizes.outputSizeInBytes;
+        std::cout << "IAS BUILD: IAS buffer allocated at " << (void*)m_d_ias[targetIasIndex] << std::endl;
+    }
+    
+    if (m_d_ias[targetIasIndex] == 0) {
+        std::cerr << "IAS BUILD ERROR: m_d_ias[" << targetIasIndex << "] is NULL!" << std::endl;
+        cudaFree((void *)d_instances);
+        return;
     }
 
-    CUdeviceptr d_tmp;
-    CUDA_CHECK(cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes));
+    CUdeviceptr d_tmp = 0;
+    std::cout << "IAS BUILD: Allocating " << iasBufferSizes.tempSizeInBytes << " bytes for temp buffer" << std::endl;
+    cudaErr = cudaMalloc((void **)&d_tmp, iasBufferSizes.tempSizeInBytes);
+    if (cudaErr != cudaSuccess) {
+        std::cerr << "IAS BUILD ERROR: Failed to allocate temp buffer: " << cudaGetErrorString(cudaErr) << std::endl;
+        cudaFree((void *)d_instances);
+        return;
+    }
+    std::cout << "IAS BUILD: Temp buffer allocated at " << (void*)d_tmp << std::endl;
+    
+    if (d_tmp == 0) {
+        std::cerr << "IAS BUILD ERROR: d_tmp is NULL after allocation!" << std::endl;
+        cudaFree((void *)d_instances);
+        return;
+    }
 
+    // Add sync before build
+    cudaDeviceSynchronize();
+    
     // Build the acceleration structure
-    OPTIX_CHECK(m_api.optixAccelBuild(m_context, cudaStream,
-                                      &accelBuildOptions, &instanceInput, 1,
-                                      d_tmp, iasBufferSizes.tempSizeInBytes,
-                                      m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes,
-                                      &m_systemParameter.topObject, nullptr, 0));
+    std::cout << "IAS BUILD: Calling optixAccelBuild..." << std::endl;
+    std::cout << "  d_tmp=" << (void*)d_tmp << " tempSize=" << iasBufferSizes.tempSizeInBytes << std::endl;
+    std::cout << "  outputBuffer=" << (void*)m_d_ias[targetIasIndex] << " outputSize=" << iasBufferSizes.outputSizeInBytes << std::endl;
+    
+    if (m_d_ias[targetIasIndex] == 0) {
+        std::cerr << "ERROR: outputBuffer is 0" << std::endl;
+    }
+    
+    optixRes = m_api.optixAccelBuild(m_context, cudaStream,
+                                     &accelBuildOptions, &instanceInput, 1,
+                                     d_tmp, iasBufferSizes.tempSizeInBytes,
+                                     m_d_ias[targetIasIndex], iasBufferSizes.outputSizeInBytes,
+                                     &m_systemParameter.topObject, nullptr, 0);
+    
+    if (optixRes != OPTIX_SUCCESS) {
+        std::cerr << "IAS BUILD ERROR: optixAccelBuild failed with " << optixRes << std::endl;
+    } else {
+        std::cout << "IAS BUILD: optixAccelBuild succeeded, topObject=" << (void*)m_systemParameter.topObject << std::endl;
+    }
 
     // Synchronize and cleanup
-    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
-    CUDA_CHECK(cudaFree((void *)d_tmp));
-    CUDA_CHECK(cudaFree((void *)d_instances));
+    cudaErr = cudaStreamSynchronize(cudaStream);
+    if (cudaErr != cudaSuccess) {
+        std::cerr << "IAS BUILD ERROR: cudaStreamSynchronize failed: " << cudaGetErrorString(cudaErr) << std::endl;
+    }
+    
+    cudaErr = cudaFree((void *)d_tmp);
+    if (cudaErr != cudaSuccess) {
+        std::cerr << "IAS BUILD ERROR: Failed to free temp buffer: " << cudaGetErrorString(cudaErr) << std::endl;
+    }
+    
+    cudaErr = cudaFree((void *)d_instances);
+    if (cudaErr != cudaSuccess) {
+        std::cerr << "IAS BUILD ERROR: Failed to free instances buffer: " << cudaGetErrorString(cudaErr) << std::endl;
+    }
+    
+    // Upload updated SystemParameter with new topObject to GPU
+    if (m_d_systemParameter != nullptr) {
+        std::cout << "IAS BUILD: Uploading updated SystemParameter to GPU" << std::endl;
+        cudaErr = cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, 
+                                  sizeof(SystemParameter), cudaMemcpyHostToDevice, cudaStream);
+        if (cudaErr != cudaSuccess) {
+            std::cerr << "IAS BUILD ERROR: Failed to upload SystemParameter: " << cudaGetErrorString(cudaErr) << std::endl;
+        }
+    } else {
+        std::cout << "IAS BUILD: SystemParameter not yet allocated (will be uploaded during render)" << std::endl;
+    }
+    
+    std::cout << "IAS BUILD: Completed successfully" << std::endl;
 }

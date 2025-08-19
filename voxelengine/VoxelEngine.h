@@ -68,6 +68,7 @@ public:
     // Public block manipulation functions
     void deleteBlock(const Int3& pos, int blockId);
     void addBlock(const Int3& pos, int blockId);
+    void updateDynamicLights();
 
 private:
     // Refactored update functions

@@ -117,17 +117,26 @@ void Backend::mainloop()
 
         renderer.update();
 
-        // HARDCODED TEST: Place 4 light blocks to reproduce crash
+        // HARDCODED TEST: Place 4 leaves blocks to test dynamic instanced block placement without lights
         static int testFrameCount = 0;
         static int testClickCount = 0;
         testFrameCount++;
-        
-        // Place a light block every 2 seconds, 4 times total
-        if (testClickCount < 4 && testFrameCount == (120 + testClickCount * 120)) { // Every 2 seconds starting at 2 seconds
+
+        // Place 4 light blocks, then remove 2 of them
+        if (testClickCount < 4 && testFrameCount == (120 + testClickCount * 120))
+        { // Every 2 seconds starting at 2 seconds
             testClickCount++;
             std::cout << "TEST: Placing light block #" << testClickCount << " (ID=16)..." << std::endl;
-            inputHandler.currentSelectedBlockId = 16; // BlockTypeTestLight
+            inputHandler.currentSelectedBlockId = 16; // BlockTypeTestLight (instanced, emissive)
             voxelengine.leftMouseButtonClicked = true;
+        }
+        // After placing 4 blocks, start removing them
+        else if (testClickCount >= 4 && testClickCount < 6 && testFrameCount == (120 + testClickCount * 120))
+        {
+            testClickCount++;
+            std::cout << "TEST: Removing block #" << (testClickCount - 4) << "..." << std::endl;
+            inputHandler.currentSelectedBlockId = 0; // BlockTypeEmpty for deletion
+            voxelengine.leftMouseButtonClicked = true; // Simulate click to delete
         }
 
         voxelengine.update();
