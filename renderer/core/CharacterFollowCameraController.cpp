@@ -16,9 +16,8 @@ void CharacterFollowCameraController::updateCamera(Camera& camera, float deltaTi
     updateFromGlobalSettings();
     auto &globalCamera = GlobalSettings::GetCameraMovementParams();
     m_cameraFollowSpeed = globalCamera.followSpeed;
-    m_cameraOffset.x = 0.0f; // No side offset
+    m_cameraOffset.z = globalCamera.followDistance;
     m_cameraOffset.y = globalCamera.followHeight;
-    m_cameraOffset.z = -globalCamera.followDistance; // Rotate 180 degrees around character
     
     if (!m_character)
     {
@@ -148,9 +147,9 @@ void CharacterFollowCameraController::initializeCameraForCharacter(Camera& camer
     camera.pos = newCameraPos;
     camera.posDelta = Float3(0.0f, 0.0f, 0.0f);
     
-    // Make camera look AWAY from character (180 degrees rotation)
+    // Make camera look at character
     Float3 targetPos = m_character->getCameraTargetPosition();
-    Float3 lookVector = camera.pos - targetPos; // Reversed direction!
+    Float3 lookVector = targetPos - camera.pos;
     
     // Validate lookVector components first
     if (isnan(lookVector.x) || isnan(lookVector.y) || isnan(lookVector.z))

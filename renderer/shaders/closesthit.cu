@@ -82,8 +82,6 @@ extern "C" __global__ void __closesthit__radiance()
     int materialId = parameters.materialId;
     bool isEmissive = parameters.isEmissive;
     bool isThinfilm = parameters.isThinfilm;
-    
-    // Center pixel debug removed for clean testing
 
     if (isEmissive)
     {

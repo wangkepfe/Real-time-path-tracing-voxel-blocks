@@ -205,7 +205,6 @@ int main(int argc, char *argv[])
         std::cout << "Camera setup - FOV: " << sceneConfig.camera.fov << " degrees" << std::endl;
         std::cout << "Camera movement: DISABLED (static camera)" << std::endl;
 
-
         std::cout << "Starting rendering..." << std::endl;
 
         auto &perfTracker = PerformanceTracker::Get();
@@ -256,11 +255,11 @@ int main(int argc, char *argv[])
             // Add test blocks after first frame is rendered
             if (frameNumber >= 2 && frameNumber <= 6)
             {
-                std::cout << "Simulating mouse click #" << (frameNumber - 1) << " to place plank block at camera center..." << std::endl;
-                
+                std::cout << "Simulating mouse click #" << (frameNumber - 1) << " to place light block at camera center..." << std::endl;
+
                 // Simulate multiple mouse clicks to place light blocks along the ray
                 voxelengine.leftMouseButtonClicked = true;
-                
+
                 std::cout << "Mouse click simulated - VoxelEngine will handle placement on next update." << std::endl;
             }
 

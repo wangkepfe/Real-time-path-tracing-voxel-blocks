@@ -181,7 +181,6 @@ void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &
     cudaFree(d_radiance);
 }
 
-
 static void MouseButtonCallback(int button, int action, int mods)
 {
     if (button == 0 && action == 1)
@@ -271,20 +270,23 @@ void VoxelEngine::initInstanceGeometry()
         unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
 
         // Get geometry from ModelManager instead of loading directly
-        const Assets::LoadedGeometry* geometry = Assets::ModelManager::Get().getGeometryForBlock(blockId);
-        
-        if (geometry && geometry->d_attributes && geometry->d_indices) {
+        const Assets::LoadedGeometry *geometry = Assets::ModelManager::Get().getGeometryForBlock(blockId);
+
+        if (geometry && geometry->d_attributes && geometry->d_indices)
+        {
             // Reference the ModelManager's loaded geometry directly (we don't own this memory)
             sceneGeometryAttributes[arrayIndex] = geometry->d_attributes;
             sceneGeometryAttributeSize[arrayIndex] = static_cast<unsigned int>(geometry->attributeSize);
-            
+
             // ModelManager stores Int3* but VoxelEngine expects unsigned int*
             // We need to convert Int3* to unsigned int* by casting
             // Since Int3 contains 3 consecutive unsigned ints (x, y, z), we can cast the pointer
-            sceneGeometryIndices[arrayIndex] = reinterpret_cast<unsigned int*>(geometry->d_indices);
+            sceneGeometryIndices[arrayIndex] = reinterpret_cast<unsigned int *>(geometry->d_indices);
             // Each Int3 contains 3 indices, so total unsigned int count = triangleCount * 3
             sceneGeometryIndicesSize[arrayIndex] = static_cast<unsigned int>(geometry->triangleCount * 3);
-        } else {
+        }
+        else
+        {
             std::cerr << "Failed to get geometry for block type " << blockId << " from ModelManager" << std::endl;
             sceneGeometryAttributes[arrayIndex] = nullptr;
             sceneGeometryIndices[arrayIndex] = nullptr;
@@ -297,197 +299,222 @@ void VoxelEngine::initInstanceGeometry()
 void VoxelEngine::updateDynamicLights()
 {
     auto &scene = Scene::Get();
-    
-    if (!scene.m_lightsNeedUpdate) {
+
+    if (!scene.m_lightsNeedUpdate)
+    {
         return;
     }
-    
+
     // Update light system
-    
+
     // Save the previous light array for mapping
     unsigned int prevNumLights = scene.m_currentNumLights;
-    LightInfo* prevLights = nullptr;
-    if (prevNumLights > 0 && scene.m_lights) {
+    LightInfo *prevLights = nullptr;
+    if (prevNumLights > 0 && scene.m_lights)
+    {
         size_t prevLightsSize = prevNumLights * sizeof(LightInfo);
-        prevLights = (LightInfo*)malloc(prevLightsSize);
+        prevLights = (LightInfo *)malloc(prevLightsSize);
         cudaMemcpy(prevLights, scene.m_lights, prevLightsSize, cudaMemcpyDeviceToHost);
     }
-    
+
     // Count total lights needed
     unsigned int totalNumTriLights = 0;
     scene.instanceLightMapping.clear();
-    
+
     // Process each instanced object that might have lights
-    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); 
+    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin();
          objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
     {
         unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
-        const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
-        
-        if (blockDef && blockDef->is_emissive) {
+        const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+
+        if (blockDef && blockDef->is_emissive)
+        {
             // Count instances of this light block
             auto it = scene.geometryInstanceIdMap.find(objectId);
-            if (it != scene.geometryInstanceIdMap.end() && !it->second.empty()) {
+            if (it != scene.geometryInstanceIdMap.end() && !it->second.empty())
+            {
                 unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
                 unsigned int numTriangles = scene.m_instancedGeometryIndicesSize[arrayIndex] / 3;
                 unsigned int numInstances = it->second.size();
-                
+
                 // Store mapping for this mesh
                 InstanceLightMapping mapping;
                 mapping.instanceId = objectId;
                 mapping.lightOffset = totalNumTriLights;
                 mapping.lightCount = numTriangles * numInstances;
                 scene.instanceLightMapping.push_back(mapping);
-                
+
                 totalNumTriLights += numTriangles * numInstances;
             }
         }
     }
-    
+
     // Light count: current = totalNumTriLights, previous = prevNumLights
-    
+
     // Allocate or reallocate light buffer if needed
-    if (totalNumTriLights > scene.m_maxLightCapacity) {
+    if (totalNumTriLights > scene.m_maxLightCapacity)
+    {
         // Synchronize to ensure GPU isn't using the old buffer before freeing it
         cudaDeviceSynchronize();
-        
-        if (scene.m_lights) {
+
+        if (scene.m_lights)
+        {
             cudaFree(scene.m_lights);
         }
         scene.m_maxLightCapacity = totalNumTriLights + 100; // Add some headroom
-        cudaMalloc((void**)&scene.m_lights, scene.m_maxLightCapacity * sizeof(LightInfo));
+        cudaMalloc((void **)&scene.m_lights, scene.m_maxLightCapacity * sizeof(LightInfo));
         // Initialize to zero to avoid garbage data
         cudaMemset(scene.m_lights, 0, scene.m_maxLightCapacity * sizeof(LightInfo));
     }
-    
+
     // Generate light infos for each emissive instance
     unsigned int currentGlobalOffset = 0;
-    for (const auto& mapping : scene.instanceLightMapping) {
+    for (const auto &mapping : scene.instanceLightMapping)
+    {
         unsigned int objectId = mapping.instanceId;
         unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
         unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
-        
+
         // Get radiance from material
         Float3 radiance = Float3(0, 0, 0);
-        const Assets::MaterialDefinition* materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
-        if (materialDef && materialDef->properties.is_emissive) {
+        const Assets::MaterialDefinition *materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
+        if (materialDef && materialDef->properties.is_emissive)
+        {
             radiance = materialDef->properties.emissive_radiance;
         }
-        
+
         // Collect transforms for all instances
         std::vector<std::array<float, 12>> transforms;
         auto it = scene.geometryInstanceIdMap.find(objectId);
-        if (it != scene.geometryInstanceIdMap.end()) {
-            for (int instanceId : it->second) {
+        if (it != scene.geometryInstanceIdMap.end())
+        {
+            for (int instanceId : it->second)
+            {
                 transforms.push_back(scene.instanceTransformMatrices[instanceId]);
             }
         }
-        
-        if (!transforms.empty()) {
+
+        if (!transforms.empty())
+        {
             float *d_transforms = nullptr;
             size_t transformsSizeInBytes = transforms.size() * 12 * sizeof(float);
             cudaMalloc((void **)&d_transforms, transformsSizeInBytes);
             cudaMemcpy(d_transforms, &(transforms[0][0]), transformsSizeInBytes, cudaMemcpyHostToDevice);
-            
+
             launchGenerateLightInfos(
-                scene.m_instancedGeometryAttributes[arrayIndex], 
-                scene.m_instancedGeometryIndices[arrayIndex], 
-                scene.m_instancedGeometryIndicesSize[arrayIndex], 
-                d_transforms, 
-                transforms.size(), 
-                radiance, 
-                scene.m_lights, 
+                scene.m_instancedGeometryAttributes[arrayIndex],
+                scene.m_instancedGeometryIndices[arrayIndex],
+                scene.m_instancedGeometryIndicesSize[arrayIndex],
+                d_transforms,
+                transforms.size(),
+                radiance,
+                scene.m_lights,
                 currentGlobalOffset);
-            
+
             // Synchronize and check for errors
             cudaError_t err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
+            if (err != cudaSuccess)
+            {
                 std::cerr << "ERROR: launchGenerateLightInfos failed: " << cudaGetErrorString(err) << std::endl;
             }
-            
+
             cudaFree(d_transforms);
         }
-        
+
         currentGlobalOffset += mapping.lightCount;
     }
-    
+
     // Upload instance light mapping
-    if (scene.d_instanceLightMapping != nullptr) {
+    if (scene.d_instanceLightMapping != nullptr)
+    {
         cudaFree(scene.d_instanceLightMapping);
     }
     scene.numInstancedLightMesh = scene.instanceLightMapping.size();
-    if (scene.numInstancedLightMesh > 0) {
+    if (scene.numInstancedLightMesh > 0)
+    {
         size_t mappingSizeInBytes = scene.numInstancedLightMesh * sizeof(InstanceLightMapping);
         cudaMalloc((void **)&scene.d_instanceLightMapping, mappingSizeInBytes);
         cudaMemcpy(scene.d_instanceLightMapping, scene.instanceLightMapping.data(), mappingSizeInBytes, cudaMemcpyHostToDevice);
     }
-    
+
     // Build mapping from new light IDs to previous frame IDs
     scene.m_lightIdToPrevFrameId.clear();
     scene.m_lightIdToPrevFrameId.resize(totalNumTriLights, -1);
-    
-    if (prevLights && totalNumTriLights > 0) {
+
+    if (prevLights && totalNumTriLights > 0)
+    {
         // Download current lights to compare
-        LightInfo* currentLights = (LightInfo*)malloc(totalNumTriLights * sizeof(LightInfo));
+        LightInfo *currentLights = (LightInfo *)malloc(totalNumTriLights * sizeof(LightInfo));
         cudaMemcpy(currentLights, scene.m_lights, totalNumTriLights * sizeof(LightInfo), cudaMemcpyDeviceToHost);
-        
+
         // Simple mapping: match lights by position
         // This is a basic implementation - could be optimized with spatial hashing
-        for (unsigned int i = 0; i < totalNumTriLights; i++) {
-            for (unsigned int j = 0; j < prevNumLights; j++) {
+        for (unsigned int i = 0; i < totalNumTriLights; i++)
+        {
+            for (unsigned int j = 0; j < prevNumLights; j++)
+            {
                 // Compare centers and packed radiance values
                 if (length(currentLights[i].center - prevLights[j].center) < 0.01f &&
                     currentLights[i].radiance.x == prevLights[j].radiance.x &&
-                    currentLights[i].radiance.y == prevLights[j].radiance.y) {
+                    currentLights[i].radiance.y == prevLights[j].radiance.y)
+                {
                     scene.m_lightIdToPrevFrameId[i] = j;
                     break;
                 }
             }
         }
-        
+
         free(currentLights);
     }
-    
+
     // Upload mapping to GPU
-    if (scene.d_lightIdToPrevFrameId) {
+    if (scene.d_lightIdToPrevFrameId)
+    {
         cudaFree(scene.d_lightIdToPrevFrameId);
         scene.d_lightIdToPrevFrameId = nullptr;
     }
-    if (totalNumTriLights > 0) {
-        cudaMalloc((void**)&scene.d_lightIdToPrevFrameId, totalNumTriLights * sizeof(int));
-        cudaMemcpy(scene.d_lightIdToPrevFrameId, scene.m_lightIdToPrevFrameId.data(), 
+    if (totalNumTriLights > 0)
+    {
+        cudaMalloc((void **)&scene.d_lightIdToPrevFrameId, totalNumTriLights * sizeof(int));
+        cudaMemcpy(scene.d_lightIdToPrevFrameId, scene.m_lightIdToPrevFrameId.data(),
                    totalNumTriLights * sizeof(int), cudaMemcpyHostToDevice);
     }
-    
+
     // Rebuild alias table
     // Check alias table state
-    
-    if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights) {
+
+    if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights)
+    {
         scene.lightAliasTable = AliasTable(); // Reset
     }
-    if (totalNumTriLights > 0) {
+    if (totalNumTriLights > 0)
+    {
         // Build alias table for lights
         buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
         // Alias table built successfully
         cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
-    } else {
+    }
+    else
+    {
         // No lights - reset the alias table
         // No lights, reset alias table
         scene.lightAliasTable = AliasTable();
         scene.accumulatedLocalLightLuminance = 0.0f;
         cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
     }
-    
+
     scene.m_currentNumLights = totalNumTriLights;
     scene.m_lightsNeedUpdate = false;
-    
-    if (prevLights) {
+
+    if (prevLights)
+    {
         free(prevLights);
     }
-    
+
     // Ensure all CUDA operations are complete before returning
     cudaDeviceSynchronize();
-    
+
     // Light system update complete
 }
 
@@ -522,8 +549,8 @@ void VoxelEngine::updateInstances()
                 {
                     auto val = getVoxelAtGlobal(globalX, globalY, globalZ);
                     // Check if this is a light base matching the current light block
-                    bool isLightBase = Assets::BlockManager::Get().hasLightBase(blockId) && 
-                                      (val.id == Assets::BlockManager::Get().getLightBaseBlockId(blockId));
+                    bool isLightBase = Assets::BlockManager::Get().hasLightBase(blockId) &&
+                                       (val.id == Assets::BlockManager::Get().getLightBaseBlockId(blockId));
                     if (val.id == blockId || isLightBase)
                     {
                         unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, globalX, globalY, globalZ, globalWidth);
@@ -541,7 +568,7 @@ void VoxelEngine::updateInstances()
         }
 
         // Accumulate light count
-        const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+        const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
         if (blockDef && blockDef->is_emissive)
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
@@ -554,8 +581,6 @@ void VoxelEngine::updateInstances()
 
     if (totalNumTriLights > 0)
     {
-        std::cout << "LIGHT DEBUG: Creating light buffer with " << totalNumTriLights << " triangle lights" << std::endl;
-        
         // Allocate light info
         if (scene.m_lights != nullptr)
         {
@@ -572,7 +597,7 @@ void VoxelEngine::updateInstances()
             unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
             unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
-            const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+            const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
             if (blockDef && blockDef->is_emissive)
             {
                 unsigned int numInstances = geometryInstanceIdMap[objectId].size();
@@ -590,15 +615,11 @@ void VoxelEngine::updateInstances()
 
                 // Get emissive radiance from the material associated with this block
                 Float3 radiance = Float3(0.0f, 0.0f, 0.0f);
-                const Assets::MaterialDefinition* materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
-                if (materialDef && materialDef->properties.is_emissive) {
+                const Assets::MaterialDefinition *materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
+                if (materialDef && materialDef->properties.is_emissive)
+                {
                     radiance = materialDef->properties.emissive_radiance;
-                    std::cout << "LIGHT DEBUG: Block " << blockId << " material '" << materialDef->id << "' radiance: " 
-                              << radiance.x << "," << radiance.y << "," << radiance.z << std::endl;
-                } else {
-                    std::cout << "LIGHT DEBUG: Block " << blockId << " - no emissive material found" << std::endl;
                 }
-
                 float *d_transforms = nullptr;
                 size_t transformsSizeInBytes = numInstances * 12 * sizeof(float);
                 cudaMalloc((void **)&d_transforms, transformsSizeInBytes);
@@ -798,12 +819,11 @@ void VoxelEngine::update()
             Float3(rayResult.hitX - half, rayResult.hitY - half, rayResult.hitZ + half),
             Float3(rayResult.hitX + half, rayResult.hitY - half, rayResult.hitZ + half),
             Float3(rayResult.hitX + half, rayResult.hitY + half, rayResult.hitZ + half),
-            Float3(rayResult.hitX - half, rayResult.hitY + half, rayResult.hitZ + half)
-        };
+            Float3(rayResult.hitX - half, rayResult.hitY + half, rayResult.hitZ + half)};
 
         // Store face corners for edge highlighting (simplified - could be extracted to function)
         Float3 corners[4] = {voxelCorners[0], voxelCorners[3], voxelCorners[2], voxelCorners[1]};
-        
+
         Scene::Get().edgeToHighlight[0] = corners[0];
         Scene::Get().edgeToHighlight[1] = corners[1];
         Scene::Get().edgeToHighlight[2] = corners[2];
@@ -822,10 +842,12 @@ void VoxelEngine::update()
         auto &debugCamera = RenderCamera::Get().camera;
         std::cout << "CAMERA RAY DEBUG: Camera pos=(" << debugCamera.pos.x << "," << debugCamera.pos.y << "," << debugCamera.pos.z << ")" << std::endl;
         std::cout << "CAMERA RAY DEBUG: Camera dir=(" << debugCamera.dir.x << "," << debugCamera.dir.y << "," << debugCamera.dir.z << ")" << std::endl;
-        if (rayResult.hitSurface) {
+        if (rayResult.hitSurface)
+        {
             std::cout << "CAMERA RAY DEBUG: Hit block at (" << rayResult.hitX << "," << rayResult.hitY << "," << rayResult.hitZ << ")" << std::endl;
         }
-        if (rayResult.hasSpaceToCreate) {
+        if (rayResult.hasSpaceToCreate)
+        {
             std::cout << "CAMERA RAY DEBUG: Will place light block at (" << rayResult.createPos.x << "," << rayResult.createPos.y << "," << rayResult.createPos.z << ")" << std::endl;
         }
 #endif
@@ -845,9 +867,10 @@ void VoxelEngine::update()
             }
         }
     }
-    
+
     // Update lights if needed (at the end of voxelengine update)
-    if (Scene::Get().m_lightsNeedUpdate) {
+    if (Scene::Get().m_lightsNeedUpdate)
+    {
         updateDynamicLights();
     }
 }
@@ -915,7 +938,7 @@ void VoxelEngine::initEntities()
 VoxelEngine::RayTraversalResult VoxelEngine::performRayTraversal()
 {
     RayTraversalResult result;
-    
+
     auto &camera = RenderCamera::Get().camera;
     Ray ray{camera.pos, camera.dir};
 
@@ -925,7 +948,7 @@ VoxelEngine::RayTraversalResult VoxelEngine::performRayTraversal()
     {
         return result; // Degenerate direction vector
     }
-    
+
     ray.dir.x /= len;
     ray.dir.y /= len;
     ray.dir.z /= len;
@@ -985,19 +1008,22 @@ VoxelEngine::RayTraversalResult VoxelEngine::performRayTraversal()
             result.hitZ = z;
             result.deletePos = Int3(x, y, z);
             result.deleteBlockId = voxel.id;
-            
+
             // Store center block information for GUI
             centerBlockInfo.hasValidBlock = true;
             centerBlockInfo.blockId = voxel.id;
             centerBlockInfo.position = Int3(x, y, z);
-            
-            const std::string* blockName = Assets::BlockManager::Get().getBlockName(voxel.id);
-            if (blockName) {
+
+            const std::string *blockName = Assets::BlockManager::Get().getBlockName(voxel.id);
+            if (blockName)
+            {
                 centerBlockInfo.blockName = *blockName;
-            } else {
+            }
+            else
+            {
                 centerBlockInfo.blockName = "Unknown";
             }
-            
+
             break;
         }
 
@@ -1037,7 +1063,7 @@ VoxelEngine::RayTraversalResult VoxelEngine::performRayTraversal()
     return result;
 }
 
-void VoxelEngine::deleteBlock(const Int3& pos, int blockId)
+void VoxelEngine::deleteBlock(const Int3 &pos, int blockId)
 {
     if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
     {
@@ -1049,7 +1075,7 @@ void VoxelEngine::deleteBlock(const Int3& pos, int blockId)
     }
 }
 
-void VoxelEngine::addBlock(const Int3& pos, int blockId)
+void VoxelEngine::addBlock(const Int3 &pos, int blockId)
 {
     if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
     {
@@ -1061,7 +1087,7 @@ void VoxelEngine::addBlock(const Int3& pos, int blockId)
     }
 }
 
-void VoxelEngine::deleteInstancedBlock(const Int3& pos, int blockId)
+void VoxelEngine::deleteInstancedBlock(const Int3 &pos, int blockId)
 {
     setVoxelAtGlobal(pos.x, pos.y, pos.z, 0);
 
@@ -1069,15 +1095,16 @@ void VoxelEngine::deleteInstancedBlock(const Int3& pos, int blockId)
     std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
     int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
 
-    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
                                                    objectId, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
     geometryInstanceIdMap[objectId].erase(instanceId);
 
     updateSceneForBlock(objectId, instanceId);
-    
+
     // Check if we're deleting an emissive block that needs light system update
-    const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
-    if (blockDef && blockDef->is_emissive) {
+    const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+    if (blockDef && blockDef->is_emissive)
+    {
         // Emissive block removed - mark lights for update
         scene.m_lightsNeedUpdate = true;
     }
@@ -1088,7 +1115,7 @@ void VoxelEngine::deleteInstancedBlock(const Int3& pos, int blockId)
         unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
         int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
 
-        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
                                                            baseObjectIdx, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
         geometryInstanceIdMap[baseObjectIdx].erase(baseInstanceId);
 
@@ -1096,7 +1123,7 @@ void VoxelEngine::deleteInstancedBlock(const Int3& pos, int blockId)
     }
 }
 
-void VoxelEngine::deleteUninstancedBlock(const Int3& pos, int blockId)
+void VoxelEngine::deleteUninstancedBlock(const Int3 &pos, int blockId)
 {
     auto &scene = Scene::Get();
     unsigned int newVal = 0;
@@ -1124,10 +1151,10 @@ void VoxelEngine::deleteUninstancedBlock(const Int3& pos, int blockId)
     updateSceneForBlock(objectId, 0, chunkIndex);
 }
 
-void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
+void VoxelEngine::addInstancedBlock(const Int3 &pos, int blockId)
 {
     // Adding instanced block to scene
-    
+
     setVoxelAtGlobal(pos.x, pos.y, pos.z, blockId);
 
     auto &scene = Scene::Get();
@@ -1135,7 +1162,7 @@ void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
     std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
     int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
 
-    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
                                                    objectId, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
     geometryInstanceIdMap[objectId].insert(instanceId);
 
@@ -1147,11 +1174,14 @@ void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
     updateSceneForBlock(objectId, instanceId);
 
     // Check if this is an emissive block that needs light system update
-    const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
-    if (blockDef && blockDef->is_emissive) {
+    const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+    if (blockDef && blockDef->is_emissive)
+    {
         // Emissive block placed - mark lights for update
         scene.m_lightsNeedUpdate = true;
-    } else {
+    }
+    else
+    {
         // Non-emissive block placed
     }
 
@@ -1161,7 +1191,7 @@ void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
         unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
         int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
 
-        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), 
+        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
                                                            baseObjectIdx, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
         geometryInstanceIdMap[baseObjectIdx].insert(baseInstanceId);
 
@@ -1171,7 +1201,7 @@ void VoxelEngine::addInstancedBlock(const Int3& pos, int blockId)
     }
 }
 
-void VoxelEngine::addUninstancedBlock(const Int3& pos, int blockId)
+void VoxelEngine::addUninstancedBlock(const Int3 &pos, int blockId)
 {
     auto &scene = Scene::Get();
     unsigned int newVal = blockId;
@@ -1205,7 +1235,8 @@ void VoxelEngine::updateSceneForBlock(int objectId, unsigned int instanceId, uns
     scene.needSceneUpdate = true;
     scene.sceneUpdateObjectId.push_back(objectId);
     scene.sceneUpdateInstanceId.push_back(instanceId);
-    if (chunkIndex > 0) {
+    if (chunkIndex > 0)
+    {
         scene.sceneUpdateChunkId.push_back(chunkIndex);
     }
 }
