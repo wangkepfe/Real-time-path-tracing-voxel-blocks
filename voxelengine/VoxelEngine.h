@@ -37,6 +37,14 @@ public:
 
     bool leftMouseButtonClicked = false;
 
+    // Center block information for GUI display
+    struct CenterBlockInfo {
+        int blockId = 0;
+        std::string blockName = "Empty";
+        Int3 position = Int3(-1, -1, -1);
+        bool hasValidBlock = false;
+    } centerBlockInfo;
+
     // Chunk-specific face tracking buffers
     // Structure: [chunkIndex][objectId]
     std::vector<std::vector<unsigned int>> currentFaceCount;
@@ -57,7 +65,30 @@ public:
     Voxel getVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ) const;
     void setVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ, unsigned int blockId);
 
+    // Public block manipulation functions
+    void deleteBlock(const Int3& pos, int blockId);
+    void addBlock(const Int3& pos, int blockId);
+    void updateDynamicLights();
+
 private:
+    // Refactored update functions
+    struct RayTraversalResult {
+        bool hasSpaceToCreate = false;
+        bool hitSurface = false;
+        Int3 createPos = Int3(-1, -1, -1);
+        Int3 deletePos = Int3(-1, -1, -1);
+        int deleteBlockId = -1;
+        int hitX = -1, hitY = -1, hitZ = -1;
+    };
+    
+    RayTraversalResult performRayTraversal();
+    
+    void deleteInstancedBlock(const Int3& pos, int blockId);
+    void deleteUninstancedBlock(const Int3& pos, int blockId);
+    void addInstancedBlock(const Int3& pos, int blockId);
+    void addUninstancedBlock(const Int3& pos, int blockId);
+    
+    void updateSceneForBlock(int objectId, unsigned int instanceId, unsigned int chunkIndex = 0);
     void initInstanceGeometry();
     void updateInstances();
     void updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks);

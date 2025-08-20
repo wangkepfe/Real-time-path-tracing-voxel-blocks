@@ -8,13 +8,14 @@
 #endif
 #include "core/RenderCamera.h"
 #include "core/Character.h"
+#include "core/Entity.h"
 #include "core/SceneConfig.h"
 #include "core/GlobalSettings.h"
 
 #include "assets/ModelUtils.h"
 #include "assets/ModelManager.h"
-#include "assets/AssetRegistry.h"
 #include "assets/BlockManager.h"
+#include "assets/AssetRegistry.h"
 #include "shaders/ShaderDebugUtils.h"
 
 #ifndef OFFLINE_MODE
@@ -180,12 +181,6 @@ void buildAliasTable(LightInfo *d_lights, unsigned int totalLights, AliasTable &
     cudaFree(d_radiance);
 }
 
-unsigned int PositionToInstanceId(unsigned int offset, unsigned int geometryId, unsigned int x, unsigned int y, unsigned int z, unsigned int width)
-{
-    unsigned int linearId = GetLinearId(x, y, z, width);
-    return offset + geometryId * width * width * width + linearId;
-}
-
 static void MouseButtonCallback(int button, int action, int mods)
 {
     if (button == 0 && action == 1)
@@ -275,20 +270,23 @@ void VoxelEngine::initInstanceGeometry()
         unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
 
         // Get geometry from ModelManager instead of loading directly
-        const Assets::LoadedGeometry* geometry = Assets::ModelManager::Get().getGeometryForBlock(blockId);
-        
-        if (geometry && geometry->d_attributes && geometry->d_indices) {
+        const Assets::LoadedGeometry *geometry = Assets::ModelManager::Get().getGeometryForBlock(blockId);
+
+        if (geometry && geometry->d_attributes && geometry->d_indices)
+        {
             // Reference the ModelManager's loaded geometry directly (we don't own this memory)
             sceneGeometryAttributes[arrayIndex] = geometry->d_attributes;
             sceneGeometryAttributeSize[arrayIndex] = static_cast<unsigned int>(geometry->attributeSize);
-            
+
             // ModelManager stores Int3* but VoxelEngine expects unsigned int*
             // We need to convert Int3* to unsigned int* by casting
             // Since Int3 contains 3 consecutive unsigned ints (x, y, z), we can cast the pointer
-            sceneGeometryIndices[arrayIndex] = reinterpret_cast<unsigned int*>(geometry->d_indices);
+            sceneGeometryIndices[arrayIndex] = reinterpret_cast<unsigned int *>(geometry->d_indices);
             // Each Int3 contains 3 indices, so total unsigned int count = triangleCount * 3
             sceneGeometryIndicesSize[arrayIndex] = static_cast<unsigned int>(geometry->triangleCount * 3);
-        } else {
+        }
+        else
+        {
             std::cerr << "Failed to get geometry for block type " << blockId << " from ModelManager" << std::endl;
             sceneGeometryAttributes[arrayIndex] = nullptr;
             sceneGeometryIndices[arrayIndex] = nullptr;
@@ -296,6 +294,228 @@ void VoxelEngine::initInstanceGeometry()
             sceneGeometryIndicesSize[arrayIndex] = 0;
         }
     }
+}
+
+void VoxelEngine::updateDynamicLights()
+{
+    auto &scene = Scene::Get();
+
+    if (!scene.m_lightsNeedUpdate)
+    {
+        return;
+    }
+
+    // Update light system
+
+    // Save the previous light array for mapping
+    unsigned int prevNumLights = scene.m_currentNumLights;
+    LightInfo *prevLights = nullptr;
+    if (prevNumLights > 0 && scene.m_lights)
+    {
+        size_t prevLightsSize = prevNumLights * sizeof(LightInfo);
+        prevLights = (LightInfo *)malloc(prevLightsSize);
+        cudaMemcpy(prevLights, scene.m_lights, prevLightsSize, cudaMemcpyDeviceToHost);
+    }
+
+    // Count total lights needed
+    unsigned int totalNumTriLights = 0;
+    scene.instanceLightMapping.clear();
+
+    // Process each instanced object that might have lights
+    for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin();
+         objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
+    {
+        unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
+        const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+
+        if (blockDef && blockDef->is_emissive)
+        {
+            // Count instances of this light block
+            auto it = scene.geometryInstanceIdMap.find(objectId);
+            if (it != scene.geometryInstanceIdMap.end() && !it->second.empty())
+            {
+                unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
+                unsigned int numTriangles = scene.m_instancedGeometryIndicesSize[arrayIndex] / 3;
+                unsigned int numInstances = it->second.size();
+
+                // Store mapping for this mesh
+                InstanceLightMapping mapping;
+                mapping.instanceId = objectId;
+                mapping.lightOffset = totalNumTriLights;
+                mapping.lightCount = numTriangles * numInstances;
+                scene.instanceLightMapping.push_back(mapping);
+
+                totalNumTriLights += numTriangles * numInstances;
+            }
+        }
+    }
+
+    // Light count: current = totalNumTriLights, previous = prevNumLights
+
+    // Allocate or reallocate light buffer if needed
+    if (totalNumTriLights > scene.m_maxLightCapacity)
+    {
+        // Synchronize to ensure GPU isn't using the old buffer before freeing it
+        cudaDeviceSynchronize();
+
+        if (scene.m_lights)
+        {
+            cudaFree(scene.m_lights);
+        }
+        scene.m_maxLightCapacity = totalNumTriLights + 100; // Add some headroom
+        cudaMalloc((void **)&scene.m_lights, scene.m_maxLightCapacity * sizeof(LightInfo));
+        // Initialize to zero to avoid garbage data
+        cudaMemset(scene.m_lights, 0, scene.m_maxLightCapacity * sizeof(LightInfo));
+    }
+
+    // Generate light infos for each emissive instance
+    unsigned int currentGlobalOffset = 0;
+    for (const auto &mapping : scene.instanceLightMapping)
+    {
+        unsigned int objectId = mapping.instanceId;
+        unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
+        unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
+
+        // Get radiance from material
+        Float3 radiance = Float3(0, 0, 0);
+        const Assets::MaterialDefinition *materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
+        if (materialDef && materialDef->properties.is_emissive)
+        {
+            radiance = materialDef->properties.emissive_radiance;
+        }
+
+        // Collect transforms for all instances
+        std::vector<std::array<float, 12>> transforms;
+        auto it = scene.geometryInstanceIdMap.find(objectId);
+        if (it != scene.geometryInstanceIdMap.end())
+        {
+            for (int instanceId : it->second)
+            {
+                transforms.push_back(scene.instanceTransformMatrices[instanceId]);
+            }
+        }
+
+        if (!transforms.empty())
+        {
+            float *d_transforms = nullptr;
+            size_t transformsSizeInBytes = transforms.size() * 12 * sizeof(float);
+            cudaMalloc((void **)&d_transforms, transformsSizeInBytes);
+            cudaMemcpy(d_transforms, &(transforms[0][0]), transformsSizeInBytes, cudaMemcpyHostToDevice);
+
+            launchGenerateLightInfos(
+                scene.m_instancedGeometryAttributes[arrayIndex],
+                scene.m_instancedGeometryIndices[arrayIndex],
+                scene.m_instancedGeometryIndicesSize[arrayIndex],
+                d_transforms,
+                transforms.size(),
+                radiance,
+                scene.m_lights,
+                currentGlobalOffset);
+
+            // Synchronize and check for errors
+            cudaError_t err = cudaDeviceSynchronize();
+            if (err != cudaSuccess)
+            {
+                std::cerr << "ERROR: launchGenerateLightInfos failed: " << cudaGetErrorString(err) << std::endl;
+            }
+
+            cudaFree(d_transforms);
+        }
+
+        currentGlobalOffset += mapping.lightCount;
+    }
+
+    // Upload instance light mapping
+    if (scene.d_instanceLightMapping != nullptr)
+    {
+        cudaFree(scene.d_instanceLightMapping);
+    }
+    scene.numInstancedLightMesh = scene.instanceLightMapping.size();
+    if (scene.numInstancedLightMesh > 0)
+    {
+        size_t mappingSizeInBytes = scene.numInstancedLightMesh * sizeof(InstanceLightMapping);
+        cudaMalloc((void **)&scene.d_instanceLightMapping, mappingSizeInBytes);
+        cudaMemcpy(scene.d_instanceLightMapping, scene.instanceLightMapping.data(), mappingSizeInBytes, cudaMemcpyHostToDevice);
+    }
+
+    // Build mapping from new light IDs to previous frame IDs
+    scene.m_lightIdToPrevFrameId.clear();
+    scene.m_lightIdToPrevFrameId.resize(totalNumTriLights, -1);
+
+    if (prevLights && totalNumTriLights > 0)
+    {
+        // Download current lights to compare
+        LightInfo *currentLights = (LightInfo *)malloc(totalNumTriLights * sizeof(LightInfo));
+        cudaMemcpy(currentLights, scene.m_lights, totalNumTriLights * sizeof(LightInfo), cudaMemcpyDeviceToHost);
+
+        // Simple mapping: match lights by position
+        // This is a basic implementation - could be optimized with spatial hashing
+        for (unsigned int i = 0; i < totalNumTriLights; i++)
+        {
+            for (unsigned int j = 0; j < prevNumLights; j++)
+            {
+                // Compare centers and packed radiance values
+                if (length(currentLights[i].center - prevLights[j].center) < 0.01f &&
+                    currentLights[i].radiance.x == prevLights[j].radiance.x &&
+                    currentLights[i].radiance.y == prevLights[j].radiance.y)
+                {
+                    scene.m_lightIdToPrevFrameId[i] = j;
+                    break;
+                }
+            }
+        }
+
+        free(currentLights);
+    }
+
+    // Upload mapping to GPU
+    if (scene.d_lightIdToPrevFrameId)
+    {
+        cudaFree(scene.d_lightIdToPrevFrameId);
+        scene.d_lightIdToPrevFrameId = nullptr;
+    }
+    if (totalNumTriLights > 0)
+    {
+        cudaMalloc((void **)&scene.d_lightIdToPrevFrameId, totalNumTriLights * sizeof(int));
+        cudaMemcpy(scene.d_lightIdToPrevFrameId, scene.m_lightIdToPrevFrameId.data(),
+                   totalNumTriLights * sizeof(int), cudaMemcpyHostToDevice);
+    }
+
+    // Rebuild alias table
+    // Check alias table state
+
+    if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights)
+    {
+        scene.lightAliasTable = AliasTable(); // Reset
+    }
+    if (totalNumTriLights > 0)
+    {
+        // Build alias table for lights
+        buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
+        // Alias table built successfully
+        cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
+    }
+    else
+    {
+        // No lights - reset the alias table
+        // No lights, reset alias table
+        scene.lightAliasTable = AliasTable();
+        scene.accumulatedLocalLightLuminance = 0.0f;
+        cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
+    }
+
+    scene.m_currentNumLights = totalNumTriLights;
+    scene.m_lightsNeedUpdate = false;
+
+    if (prevLights)
+    {
+        free(prevLights);
+    }
+
+    // Ensure all CUDA operations are complete before returning
+    cudaDeviceSynchronize();
+
+    // Light system update complete
 }
 
 void VoxelEngine::updateInstances()
@@ -328,8 +548,10 @@ void VoxelEngine::updateInstances()
                 for (unsigned int globalZ = 0; globalZ < chunkConfig.getGlobalDepth(); ++globalZ)
                 {
                     auto val = getVoxelAtGlobal(globalX, globalY, globalZ);
-                    bool specialCase = (val.id == BlockTypeTestLightBase) && (blockId == BlockTypeTestLight);
-                    if (val.id == blockId || specialCase)
+                    // Check if this is a light base matching the current light block
+                    bool isLightBase = Assets::BlockManager::Get().hasLightBase(blockId) &&
+                                       (val.id == Assets::BlockManager::Get().getLightBaseBlockId(blockId));
+                    if (val.id == blockId || isLightBase)
                     {
                         unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, globalX, globalY, globalZ, globalWidth);
 
@@ -346,7 +568,7 @@ void VoxelEngine::updateInstances()
         }
 
         // Accumulate light count
-        const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+        const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
         if (blockDef && blockDef->is_emissive)
         {
             unsigned int numInstances = geometryInstanceIdMap[objectId].size();
@@ -375,7 +597,7 @@ void VoxelEngine::updateInstances()
             unsigned int arrayIndex = objectId - Assets::BlockManager::Get().getInstancedObjectIdBegin();
 
             unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
-            const Assets::BlockDefinition* blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+            const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
             if (blockDef && blockDef->is_emissive)
             {
                 unsigned int numInstances = geometryInstanceIdMap[objectId].size();
@@ -393,11 +615,11 @@ void VoxelEngine::updateInstances()
 
                 // Get emissive radiance from the material associated with this block
                 Float3 radiance = Float3(0.0f, 0.0f, 0.0f);
-                const Assets::MaterialDefinition* materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
-                if (materialDef && materialDef->properties.is_emissive) {
+                const Assets::MaterialDefinition *materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
+                if (materialDef && materialDef->properties.is_emissive)
+                {
                     radiance = materialDef->properties.emissive_radiance;
                 }
-
                 float *d_transforms = nullptr;
                 size_t transformsSizeInBytes = numInstances * 12 * sizeof(float);
                 cudaMalloc((void **)&d_transforms, transformsSizeInBytes);
@@ -559,20 +781,18 @@ void VoxelEngine::reload()
 
 void VoxelEngine::update()
 {
-    auto &camera = RenderCamera::Get().camera;
-    auto &scene = Scene::Get();
-    Ray ray{camera.pos, camera.dir};
-
-    bool hasSpaceToCreate = false;
-    bool hitSurface = false;
-    Int3 createPos(-1, -1, -1);
-    Int3 deletePos(-1, -1, -1);
-    int deleteBlockId = -1;
+    // Reset center block info
+    centerBlockInfo.hasValidBlock = false;
+    centerBlockInfo.blockId = 0;
+    centerBlockInfo.blockName = "Empty";
+    centerBlockInfo.position = Int3(-1, -1, -1);
 
     // Use unified time management from GlobalSettings
     float deltaTime = GlobalSettings::GetDeltaTime();
 
-    for (size_t i = 0; i < scene.getEntityCount(); ++i)
+    // Update entities
+    auto &scene = Scene::Get();
+    for (int i = 0; i < scene.getEntityCount(); ++i)
     {
         Entity *entity = scene.getEntity(i);
         if (entity)
@@ -583,162 +803,34 @@ void VoxelEngine::update()
 
     cudaDeviceSynchronize();
 
-    // Normalize the ray direction
+    // Perform ray traversal to find target block
+    RayTraversalResult rayResult = performRayTraversal();
+
+    // Calculate and store edge highlighting for hit voxel
+    if (rayResult.hitSurface)
     {
-        float len = std::sqrt(ray.dir.x * ray.dir.x + ray.dir.y * ray.dir.y + ray.dir.z * ray.dir.z);
-        if (len > 1e-8f)
-        {
-            ray.dir.x /= len;
-            ray.dir.y /= len;
-            ray.dir.z /= len;
-        }
-        else
-        {
-            // Degenerate direction vector: no traversal possible
-            return; // Or handle error
-        }
-    }
+        // Edge highlighting calculation (kept inline as it's view-dependent)
+        float half = 0.5f;
+        Float3 voxelCorners[8] = {
+            Float3(rayResult.hitX - half, rayResult.hitY - half, rayResult.hitZ - half),
+            Float3(rayResult.hitX + half, rayResult.hitY - half, rayResult.hitZ - half),
+            Float3(rayResult.hitX + half, rayResult.hitY + half, rayResult.hitZ - half),
+            Float3(rayResult.hitX - half, rayResult.hitY + half, rayResult.hitZ - half),
+            Float3(rayResult.hitX - half, rayResult.hitY - half, rayResult.hitZ + half),
+            Float3(rayResult.hitX + half, rayResult.hitY - half, rayResult.hitZ + half),
+            Float3(rayResult.hitX + half, rayResult.hitY + half, rayResult.hitZ + half),
+            Float3(rayResult.hitX - half, rayResult.hitY + half, rayResult.hitZ + half)};
 
-    // Find the starting voxel indices
-    int x = static_cast<int>(std::floor(ray.orig.x));
-    int y = static_cast<int>(std::floor(ray.orig.y));
-    int z = static_cast<int>(std::floor(ray.orig.z));
+        // Store face corners for edge highlighting (simplified - could be extracted to function)
+        Float3 corners[4] = {voxelCorners[0], voxelCorners[3], voxelCorners[2], voxelCorners[1]};
 
-    // Determine step direction along each axis
-    int stepX = (ray.dir.x > 0.0f) ? 1 : -1;
-    int stepY = (ray.dir.y > 0.0f) ? 1 : -1;
-    int stepZ = (ray.dir.z > 0.0f) ? 1 : -1;
-
-    // Compute tDeltaX, tDeltaY, tDeltaZ
-    float tDeltaX = (std::fabs(ray.dir.x) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(ray.dir.x));
-    float tDeltaY = (std::fabs(ray.dir.y) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(ray.dir.y));
-    float tDeltaZ = (std::fabs(ray.dir.z) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(ray.dir.z));
-
-    float nextBoundaryX = (stepX > 0) ? (float)(x + 1) : (float)(x);
-    float nextBoundaryY = (stepY > 0) ? (float)(y + 1) : (float)(y);
-    float nextBoundaryZ = (stepZ > 0) ? (float)(z + 1) : (float)(z);
-
-    float tMaxX = (std::fabs(ray.dir.x) < 1e-8f) ? FLT_MAX : (nextBoundaryX - ray.orig.x) / ray.dir.x;
-    float tMaxY = (std::fabs(ray.dir.y) < 1e-8f) ? FLT_MAX : (nextBoundaryY - ray.orig.y) / ray.dir.y;
-    float tMaxZ = (std::fabs(ray.dir.z) < 1e-8f) ? FLT_MAX : (nextBoundaryZ - ray.orig.z) / ray.dir.z;
-
-    int iterationCount = 0;
-    int maxIteration = 1000;
-
-    int hitAxis = -1; // 0=x,1=y,2=z
-    int hitX = -1, hitY = -1, hitZ = -1;
-
-    // Traverse the voxel grid
-    while (iterationCount++ < maxIteration)
-    {
-        // Check if the voxel is within bounds (global bounds)
-        if (x < 0 || x >= (int)chunkConfig.getGlobalWidth() ||
-            y < 0 || y >= (int)chunkConfig.getGlobalHeight() ||
-            z < 0 || z >= (int)chunkConfig.getGlobalDepth())
-        {
-            // Out of bounds, stop
-            break;
-        }
-
-        Voxel voxel = getVoxelAtGlobal(x, y, z);
-
-        if (voxel.id == 0)
-        {
-            // Empty voxel: we can potentially place something here
-            hasSpaceToCreate = true;
-            createPos = Int3(x, y, z);
-            // Continue traversal to find a solid surface
-        }
-        else
-        {
-            // Solid voxel hit
-            hitSurface = true;
-            hitX = x;
-            hitY = y;
-            hitZ = z;
-            deletePos = Int3(x, y, z);
-            deleteBlockId = voxel.id;
-            // We stop here
-            break;
-        }
-
-        // Move to the next voxel:
-        // Choose the axis with the smallest tMax
-        if (tMaxX < tMaxY)
-        {
-            if (tMaxX < tMaxZ)
-            {
-                x += stepX;
-                tMaxX += tDeltaX;
-                hitAxis = 0; // moved along x-axis
-            }
-            else
-            {
-                z += stepZ;
-                tMaxZ += tDeltaZ;
-                hitAxis = 2; // moved along z-axis
-            }
-        }
-        else
-        {
-            if (tMaxY < tMaxZ)
-            {
-                y += stepY;
-                tMaxY += tDeltaY;
-                hitAxis = 1; // moved along y-axis
-            }
-            else
-            {
-                z += stepZ;
-                tMaxZ += tDeltaZ;
-                hitAxis = 2; // moved along z-axis
-            }
-        }
-    }
-
-    if (hitSurface && hitX >= 0 && hitY >= 0 && hitZ >= 0)
-    {
-        // Determine which face was hit based on hitAxis and step directions
-        Float3 corners[4];
-
-        // Each voxel spans from (hitX, hitY, hitZ) to (hitX+1, hitY+1, hitZ+1).
-        if (hitAxis == 0)
-        {
-            // Hit along X-axis
-            // If we moved in +X, we hit the voxel's left face at x=hitX
-            // If we moved in -X, we hit the voxel's right face at x=hitX+1
-            float faceX = (stepX > 0) ? (float)hitX : (float)(hitX + 1);
-            corners[0] = Float3(faceX, (float)hitY, (float)hitZ);
-            corners[1] = Float3(faceX, (float)hitY + 1, (float)hitZ);
-            corners[2] = Float3(faceX, (float)hitY + 1, (float)hitZ + 1);
-            corners[3] = Float3(faceX, (float)hitY, (float)hitZ + 1);
-        }
-        else if (hitAxis == 1)
-        {
-            // Hit along Y-axis
-            float faceY = (stepY > 0) ? (float)hitY : (float)(hitY + 1);
-            corners[0] = Float3((float)hitX, faceY, (float)hitZ);
-            corners[1] = Float3((float)hitX + 1, faceY, (float)hitZ);
-            corners[2] = Float3((float)hitX + 1, faceY, (float)hitZ + 1);
-            corners[3] = Float3((float)hitX, faceY, (float)hitZ + 1);
-        }
-        else if (hitAxis == 2)
-        {
-            // Hit along Z-axis
-            float faceZ = (stepZ > 0) ? (float)hitZ : (float)(hitZ + 1);
-            corners[0] = Float3((float)hitX, (float)hitY, faceZ);
-            corners[1] = Float3((float)hitX + 1, (float)hitY, faceZ);
-            corners[2] = Float3((float)hitX + 1, (float)hitY + 1, faceZ);
-            corners[3] = Float3((float)hitX, (float)hitY + 1, faceZ);
-        }
-
-        // Now store these corners in edgeToHighlight
         Scene::Get().edgeToHighlight[0] = corners[0];
         Scene::Get().edgeToHighlight[1] = corners[1];
         Scene::Get().edgeToHighlight[2] = corners[2];
         Scene::Get().edgeToHighlight[3] = corners[3];
     }
 
+    // Handle mouse input for block placement/deletion
     if (leftMouseButtonClicked)
     {
         leftMouseButtonClicked = false;
@@ -746,143 +838,44 @@ void VoxelEngine::update()
 #ifndef OFFLINE_MODE
         int blockId = InputHandler::Get().currentSelectedBlockId;
 #else
-        int blockId = 1; // Default block ID for offline mode
+        int blockId = BlockTypeTestLight; // Use light block for debugging
+        auto &debugCamera = RenderCamera::Get().camera;
+        std::cout << "CAMERA RAY DEBUG: Camera pos=(" << debugCamera.pos.x << "," << debugCamera.pos.y << "," << debugCamera.pos.z << ")" << std::endl;
+        std::cout << "CAMERA RAY DEBUG: Camera dir=(" << debugCamera.dir.x << "," << debugCamera.dir.y << "," << debugCamera.dir.z << ")" << std::endl;
+        if (rayResult.hitSurface)
+        {
+            std::cout << "CAMERA RAY DEBUG: Hit block at (" << rayResult.hitX << "," << rayResult.hitY << "," << rayResult.hitZ << ")" << std::endl;
+        }
+        if (rayResult.hasSpaceToCreate)
+        {
+            std::cout << "CAMERA RAY DEBUG: Will place light block at (" << rayResult.createPos.x << "," << rayResult.createPos.y << "," << rayResult.createPos.z << ")" << std::endl;
+        }
 #endif
 
-        auto &scene = Scene::Get();
-
-        if (blockId == 0) // delete a block
+        if (blockId == 0) // Delete block
         {
-            if (hitSurface)
+            if (rayResult.hitSurface)
             {
-                unsigned int newVal = 0;
-                int objectId = Assets::BlockManager::Get().blockIdToObjectId(deleteBlockId);
-
-                if (Assets::BlockManager::Get().isUninstancedBlockType(deleteBlockId))
-                {
-                    // Determine which chunk this voxel belongs to
-                    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
-                    globalToChunkCoords(deletePos.x, deletePos.y, deletePos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
-                    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
-
-                    updateSingleVoxelGlobal(
-                        deletePos.x, deletePos.y, deletePos.z,
-                        newVal,
-                        voxelChunks,
-                        chunkConfig,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        faceLocation[chunkIndex][objectId],
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
-                        currentFaceCount[chunkIndex][objectId],
-                        maxFaceCount[chunkIndex][objectId],
-                        freeFaces[chunkIndex][objectId]);
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(0);
-                    scene.sceneUpdateChunkId.push_back(chunkIndex);
-                }
-                else if (Assets::BlockManager::Get().isInstancedBlockType(deleteBlockId))
-                {
-                    setVoxelAtGlobal(deletePos.x, deletePos.y, deletePos.z, newVal);
-
-                    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
-
-                    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
-                    geometryInstanceIdMap[objectId].erase(instanceId);
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(instanceId);
-
-                    if (Assets::BlockManager::Get().isBaseLightBlockType(deleteBlockId))
-                    {
-                        int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(childBlockId);
-
-                        unsigned int childInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), childObjectIdx, deletePos.x, deletePos.y, deletePos.z, chunkConfig.getGlobalWidth());
-                        geometryInstanceIdMap[childObjectIdx].erase(childInstanceId);
-
-                        scene.sceneUpdateObjectId.push_back(childObjectIdx);
-                        scene.sceneUpdateInstanceId.push_back(childInstanceId);
-                    }
-                }
+                deleteBlock(rayResult.deletePos, rayResult.deleteBlockId);
             }
         }
-        else // create a block
+        else // Create block
         {
-            if (hasSpaceToCreate && hitSurface)
+            if (rayResult.hasSpaceToCreate && rayResult.hitSurface)
             {
-                auto &scene = Scene::Get();
-
-                unsigned int newVal = blockId;
-                int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
-
-                if (Assets::BlockManager::Get().isUninstancedBlockType(blockId))
-                {
-                    // Determine which chunk this voxel belongs to
-                    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
-                    globalToChunkCoords(createPos.x, createPos.y, createPos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
-                    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
-
-                    updateSingleVoxelGlobal(
-                        createPos.x, createPos.y, createPos.z,
-                        newVal,
-                        voxelChunks,
-                        chunkConfig,
-                        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
-                        *scene.getChunkGeometryIndices(chunkIndex, objectId),
-                        faceLocation[chunkIndex][objectId],
-                        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-                        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
-                        currentFaceCount[chunkIndex][objectId],
-                        maxFaceCount[chunkIndex][objectId],
-                        freeFaces[chunkIndex][objectId]);
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(0);
-                    scene.sceneUpdateChunkId.push_back(chunkIndex);
-                }
-                else if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
-                {
-                    setVoxelAtGlobal(createPos.x, createPos.y, createPos.z, newVal);
-
-                    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
-                    std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
-
-                    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), objectId, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
-                    geometryInstanceIdMap[objectId].insert(instanceId);
-
-                    std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)createPos.x,
-                                                       0.0f, 1.0f, 0.0f, (float)createPos.y,
-                                                       0.0f, 0.0f, 1.0f, (float)createPos.z};
-                    instanceTransformMatrices[instanceId] = transform;
-
-                    scene.needSceneUpdate = true;
-                    scene.sceneUpdateObjectId.push_back(objectId);
-                    scene.sceneUpdateInstanceId.push_back(instanceId);
-
-                    if (Assets::BlockManager::Get().isBaseLightBlockType(deleteBlockId))
-                    {
-                        int childBlockId = BlockTypeTestLight;
-                        int childObjectIdx = childBlockId - 1;
-
-                        unsigned int childInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(), childObjectIdx, createPos.x, createPos.y, createPos.z, chunkConfig.getGlobalWidth());
-                        geometryInstanceIdMap[childObjectIdx].insert(childInstanceId);
-
-                        instanceTransformMatrices[childInstanceId] = transform;
-
-                        scene.sceneUpdateObjectId.push_back(childObjectIdx);
-                        scene.sceneUpdateInstanceId.push_back(childInstanceId);
-                    }
-                }
+                addBlock(rayResult.createPos, blockId);
             }
         }
     }
+
+    // Update lights if needed (at the end of voxelengine update)
+    if (Scene::Get().m_lightsNeedUpdate)
+    {
+        updateDynamicLights();
+    }
 }
+
+// Refactored functions for better maintainability
 
 void VoxelEngine::initEntities()
 {
@@ -938,4 +931,312 @@ void VoxelEngine::initEntities()
 
     // Add character to scene (Character inherits from Entity)
     scene.addEntity(std::move(minecraftCharacter));
+}
+
+// Refactored functions for better maintainability
+
+VoxelEngine::RayTraversalResult VoxelEngine::performRayTraversal()
+{
+    RayTraversalResult result;
+
+    auto &camera = RenderCamera::Get().camera;
+    Ray ray{camera.pos, camera.dir};
+
+    // Normalize the ray direction
+    float len = std::sqrt(ray.dir.x * ray.dir.x + ray.dir.y * ray.dir.y + ray.dir.z * ray.dir.z);
+    if (len <= 1e-8f)
+    {
+        return result; // Degenerate direction vector
+    }
+
+    ray.dir.x /= len;
+    ray.dir.y /= len;
+    ray.dir.z /= len;
+
+    // Find the starting voxel indices
+    int x = static_cast<int>(std::floor(ray.orig.x));
+    int y = static_cast<int>(std::floor(ray.orig.y));
+    int z = static_cast<int>(std::floor(ray.orig.z));
+
+    // Determine step direction along each axis
+    int stepX = (ray.dir.x > 0.0f) ? 1 : -1;
+    int stepY = (ray.dir.y > 0.0f) ? 1 : -1;
+    int stepZ = (ray.dir.z > 0.0f) ? 1 : -1;
+
+    // Compute tDeltaX, tDeltaY, tDeltaZ
+    float tDeltaX = (std::fabs(ray.dir.x) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(ray.dir.x));
+    float tDeltaY = (std::fabs(ray.dir.y) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(ray.dir.y));
+    float tDeltaZ = (std::fabs(ray.dir.z) < 1e-8f) ? FLT_MAX : (1.0f / std::fabs(ray.dir.z));
+
+    float nextBoundaryX = (stepX > 0) ? (float)(x + 1) : (float)(x);
+    float nextBoundaryY = (stepY > 0) ? (float)(y + 1) : (float)(y);
+    float nextBoundaryZ = (stepZ > 0) ? (float)(z + 1) : (float)(z);
+
+    float tMaxX = (std::fabs(ray.dir.x) < 1e-8f) ? FLT_MAX : (nextBoundaryX - ray.orig.x) / ray.dir.x;
+    float tMaxY = (std::fabs(ray.dir.y) < 1e-8f) ? FLT_MAX : (nextBoundaryY - ray.orig.y) / ray.dir.y;
+    float tMaxZ = (std::fabs(ray.dir.z) < 1e-8f) ? FLT_MAX : (nextBoundaryZ - ray.orig.z) / ray.dir.z;
+
+    int iterationCount = 0;
+    int maxIteration = 1000;
+    int hitAxis = -1;
+
+    // Traverse the voxel grid
+    while (iterationCount++ < maxIteration)
+    {
+        // Check if the voxel is within bounds
+        if (x < 0 || x >= (int)chunkConfig.getGlobalWidth() ||
+            y < 0 || y >= (int)chunkConfig.getGlobalHeight() ||
+            z < 0 || z >= (int)chunkConfig.getGlobalDepth())
+        {
+            break;
+        }
+
+        Voxel voxel = getVoxelAtGlobal(x, y, z);
+
+        if (voxel.id == 0)
+        {
+            // Empty voxel: we can potentially place something here
+            result.hasSpaceToCreate = true;
+            result.createPos = Int3(x, y, z);
+        }
+        else
+        {
+            // Solid voxel hit
+            result.hitSurface = true;
+            result.hitX = x;
+            result.hitY = y;
+            result.hitZ = z;
+            result.deletePos = Int3(x, y, z);
+            result.deleteBlockId = voxel.id;
+
+            // Store center block information for GUI
+            centerBlockInfo.hasValidBlock = true;
+            centerBlockInfo.blockId = voxel.id;
+            centerBlockInfo.position = Int3(x, y, z);
+
+            const std::string *blockName = Assets::BlockManager::Get().getBlockName(voxel.id);
+            if (blockName)
+            {
+                centerBlockInfo.blockName = *blockName;
+            }
+            else
+            {
+                centerBlockInfo.blockName = "Unknown";
+            }
+
+            break;
+        }
+
+        // Move to the next voxel
+        if (tMaxX < tMaxY)
+        {
+            if (tMaxX < tMaxZ)
+            {
+                x += stepX;
+                tMaxX += tDeltaX;
+                hitAxis = 0;
+            }
+            else
+            {
+                z += stepZ;
+                tMaxZ += tDeltaZ;
+                hitAxis = 2;
+            }
+        }
+        else
+        {
+            if (tMaxY < tMaxZ)
+            {
+                y += stepY;
+                tMaxY += tDeltaY;
+                hitAxis = 1;
+            }
+            else
+            {
+                z += stepZ;
+                tMaxZ += tDeltaZ;
+                hitAxis = 2;
+            }
+        }
+    }
+
+    return result;
+}
+
+void VoxelEngine::deleteBlock(const Int3 &pos, int blockId)
+{
+    if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
+    {
+        deleteInstancedBlock(pos, blockId);
+    }
+    else if (Assets::BlockManager::Get().isUninstancedBlockType(blockId))
+    {
+        deleteUninstancedBlock(pos, blockId);
+    }
+}
+
+void VoxelEngine::addBlock(const Int3 &pos, int blockId)
+{
+    if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
+    {
+        addInstancedBlock(pos, blockId);
+    }
+    else if (Assets::BlockManager::Get().isUninstancedBlockType(blockId))
+    {
+        addUninstancedBlock(pos, blockId);
+    }
+}
+
+void VoxelEngine::deleteInstancedBlock(const Int3 &pos, int blockId)
+{
+    setVoxelAtGlobal(pos.x, pos.y, pos.z, 0);
+
+    auto &scene = Scene::Get();
+    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+    int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
+
+    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
+                                                   objectId, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+    geometryInstanceIdMap[objectId].erase(instanceId);
+
+    updateSceneForBlock(objectId, instanceId);
+
+    // Check if we're deleting an emissive block that needs light system update
+    const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+    if (blockDef && blockDef->is_emissive)
+    {
+        // Emissive block removed - mark lights for update
+        scene.m_lightsNeedUpdate = true;
+    }
+
+    // If we're deleting a light block, also remove its base
+    if (Assets::BlockManager::Get().hasLightBase(blockId))
+    {
+        unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
+        int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
+
+        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
+                                                           baseObjectIdx, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+        geometryInstanceIdMap[baseObjectIdx].erase(baseInstanceId);
+
+        updateSceneForBlock(baseObjectIdx, baseInstanceId);
+    }
+}
+
+void VoxelEngine::deleteUninstancedBlock(const Int3 &pos, int blockId)
+{
+    auto &scene = Scene::Get();
+    unsigned int newVal = 0;
+    int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
+
+    // Determine which chunk this voxel belongs to
+    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+    globalToChunkCoords(pos.x, pos.y, pos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
+    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+
+    updateSingleVoxelGlobal(
+        pos.x, pos.y, pos.z,
+        newVal,
+        voxelChunks,
+        chunkConfig,
+        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+        faceLocation[chunkIndex][objectId],
+        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
+        currentFaceCount[chunkIndex][objectId],
+        maxFaceCount[chunkIndex][objectId],
+        freeFaces[chunkIndex][objectId]);
+
+    updateSceneForBlock(objectId, 0, chunkIndex);
+}
+
+void VoxelEngine::addInstancedBlock(const Int3 &pos, int blockId)
+{
+    // Adding instanced block to scene
+
+    setVoxelAtGlobal(pos.x, pos.y, pos.z, blockId);
+
+    auto &scene = Scene::Get();
+    std::unordered_map<int, std::set<int>> &geometryInstanceIdMap = scene.geometryInstanceIdMap;
+    std::unordered_map<int, std::array<float, 12>> &instanceTransformMatrices = scene.instanceTransformMatrices;
+    int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
+
+    unsigned int instanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
+                                                   objectId, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+    geometryInstanceIdMap[objectId].insert(instanceId);
+
+    std::array<float, 12> transform = {1.0f, 0.0f, 0.0f, (float)pos.x,
+                                       0.0f, 1.0f, 0.0f, (float)pos.y,
+                                       0.0f, 0.0f, 1.0f, (float)pos.z};
+    instanceTransformMatrices[instanceId] = transform;
+
+    updateSceneForBlock(objectId, instanceId);
+
+    // Check if this is an emissive block that needs light system update
+    const Assets::BlockDefinition *blockDef = Assets::AssetRegistry::Get().getBlockById(blockId);
+    if (blockDef && blockDef->is_emissive)
+    {
+        // Emissive block placed - mark lights for update
+        scene.m_lightsNeedUpdate = true;
+    }
+    else
+    {
+        // Non-emissive block placed
+    }
+
+    // If this is a light block, also place its base
+    if (Assets::BlockManager::Get().hasLightBase(blockId))
+    {
+        unsigned int baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
+        int baseObjectIdx = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
+
+        unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
+                                                           baseObjectIdx, pos.x, pos.y, pos.z, chunkConfig.getGlobalWidth());
+        geometryInstanceIdMap[baseObjectIdx].insert(baseInstanceId);
+
+        instanceTransformMatrices[baseInstanceId] = transform;
+
+        updateSceneForBlock(baseObjectIdx, baseInstanceId);
+    }
+}
+
+void VoxelEngine::addUninstancedBlock(const Int3 &pos, int blockId)
+{
+    auto &scene = Scene::Get();
+    unsigned int newVal = blockId;
+    int objectId = Assets::BlockManager::Get().blockIdToObjectId(blockId);
+
+    // Determine which chunk this voxel belongs to
+    unsigned int chunkX, chunkY, chunkZ, localX, localY, localZ;
+    globalToChunkCoords(pos.x, pos.y, pos.z, chunkX, chunkY, chunkZ, localX, localY, localZ);
+    unsigned int chunkIndex = getChunkIndex(chunkX, chunkY, chunkZ);
+
+    updateSingleVoxelGlobal(
+        pos.x, pos.y, pos.z,
+        newVal,
+        voxelChunks,
+        chunkConfig,
+        *scene.getChunkGeometryAttributes(chunkIndex, objectId),
+        *scene.getChunkGeometryIndices(chunkIndex, objectId),
+        faceLocation[chunkIndex][objectId],
+        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
+        scene.getChunkGeometryIndicesSize(chunkIndex, objectId),
+        currentFaceCount[chunkIndex][objectId],
+        maxFaceCount[chunkIndex][objectId],
+        freeFaces[chunkIndex][objectId]);
+
+    updateSceneForBlock(objectId, 0, chunkIndex);
+}
+
+void VoxelEngine::updateSceneForBlock(int objectId, unsigned int instanceId, unsigned int chunkIndex)
+{
+    auto &scene = Scene::Get();
+    scene.needSceneUpdate = true;
+    scene.sceneUpdateObjectId.push_back(objectId);
+    scene.sceneUpdateInstanceId.push_back(instanceId);
+    if (chunkIndex > 0)
+    {
+        scene.sceneUpdateChunkId.push_back(chunkIndex);
+    }
 }

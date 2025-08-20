@@ -130,4 +130,37 @@ const std::string* BlockManager::getMaterialName(unsigned int blockId) const {
     return nullptr;
 }
 
+const std::string* BlockManager::getBlockName(unsigned int blockId) const {
+    const BlockDefinition* blockDef = AssetRegistry::Get().getBlockById(blockId);
+    if (blockDef && !blockDef->name.empty()) {
+        return &blockDef->name;
+    }
+    return nullptr;
+}
+
+bool BlockManager::isPlaceable(unsigned int blockId) const {
+    const BlockDefinition* blockDef = AssetRegistry::Get().getBlockById(blockId);
+    return blockDef && blockDef->is_placeable;
+}
+
+bool BlockManager::hasLightBase(unsigned int blockId) const {
+    const BlockDefinition* blockDef = AssetRegistry::Get().getBlockById(blockId);
+    return blockDef && blockDef->light_base_block.has_value();
+}
+
+unsigned int BlockManager::getLightBaseBlockId(unsigned int blockId) const {
+    const BlockDefinition* blockDef = AssetRegistry::Get().getBlockById(blockId);
+    if (blockDef && blockDef->light_base_block.has_value()) {
+        // Convert block type string to block ID
+        const auto& assetRegistry = AssetRegistry::Get();
+        const auto& allBlocks = assetRegistry.getAllBlocks();
+        for (const auto& block : allBlocks) {
+            if (block.type == blockDef->light_base_block.value()) {
+                return block.id;
+            }
+        }
+    }
+    return 0; // Return empty block if not found
+}
+
 } // namespace Assets

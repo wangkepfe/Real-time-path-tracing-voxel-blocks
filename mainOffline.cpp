@@ -9,10 +9,13 @@
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
+#include "core/Scene.h"
 #include "util/ImageDiff.h"
 #include "util/PerformanceTracker.h"
 
 #include "voxelengine.h"
+#include "voxelengine/VoxelSceneGen.h"
+#include "voxelengine/VoxelMath.h"
 
 #include <iostream>
 #include <string>
@@ -248,6 +251,17 @@ int main(int argc, char *argv[])
 
             // End performance tracking and print stats
             perfTracker.endFrame();
+
+            // Add test blocks after first frame is rendered
+            if (frameNumber >= 2 && frameNumber <= 6)
+            {
+                std::cout << "Simulating mouse click #" << (frameNumber - 1) << " to place light block at camera center..." << std::endl;
+
+                // Simulate multiple mouse clicks to place light blocks along the ray
+                voxelengine.leftMouseButtonClicked = true;
+
+                std::cout << "Mouse click simulated - VoxelEngine will handle placement on next update." << std::endl;
+            }
 
             // Print performance stats for saved frames or every 16th frame
             if (shouldSave || (frameNumber % 16 == 0))

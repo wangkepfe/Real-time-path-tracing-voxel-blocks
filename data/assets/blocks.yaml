@@ -104,6 +104,7 @@ blocks:
     model: lantern_base
     is_instanced: true
     is_base_light: true
+    is_placeable: false
     
   - id: 16
     name: "TestLight"
@@ -112,3 +113,4 @@ blocks:
     model: lantern_light
     is_instanced: true
     is_emissive: true
+    light_base_block: "BlockTypeTestLightBase"

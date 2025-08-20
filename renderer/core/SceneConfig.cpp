@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 
-bool SceneConfigParser::LoadFromFile(const std::string& filepath, SceneConfig& config)
+bool SceneConfigParser::LoadFromFile(const std::string &filepath, SceneConfig &config)
 {
     std::ifstream file(filepath);
     if (!file.is_open())
@@ -84,7 +84,7 @@ bool SceneConfigParser::LoadFromFile(const std::string& filepath, SceneConfig& c
     return true;
 }
 
-void SceneConfigParser::SaveToFile(const std::string& filepath, const SceneConfig& config)
+void SceneConfigParser::SaveToFile(const std::string &filepath, const SceneConfig &config)
 {
     std::ofstream file(filepath);
     if (!file.is_open())
@@ -101,7 +101,7 @@ void SceneConfigParser::SaveToFile(const std::string& filepath, const SceneConfi
     file << "  direction: " << float3ToString(config.camera.direction) << "\n";
     file << "  up: " << float3ToString(config.camera.up) << "\n";
     file << "  fov: " << config.camera.fov << "\n\n";
-    
+
     file << "character:\n";
     file << "  position: " << float3ToString(config.character.position) << "\n";
     file << "  rotation: " << float3ToString(config.character.rotation) << "\n";
@@ -114,19 +114,19 @@ SceneConfig SceneConfigParser::CreateDefault()
 {
     SceneConfig config;
     config.camera.position = Float3(20.0f, 15.0f, 20.0f);
-    config.camera.direction = Float3(-1.0f, -0.3f, -1.0f);
+    config.camera.direction = Float3(1.0f, -0.3f, 1.0f);
     config.camera.up = Float3(0.0f, 1.0f, 0.0f);
     config.camera.fov = 90.0f;
     config.camera.normalize();
-    
+
     config.character.position = Float3(16.0f, 10.0f, 16.0f);
     config.character.rotation = Float3(0.0f, 0.0f, 0.0f);
     config.character.scale = Float3(1.0f, 1.0f, 1.0f);
-    
+
     return config;
 }
 
-std::string SceneConfigParser::trim(const std::string& str)
+std::string SceneConfigParser::trim(const std::string &str)
 {
     size_t start = str.find_first_not_of(" \t\r\n");
     if (start == std::string::npos)
@@ -136,7 +136,7 @@ std::string SceneConfigParser::trim(const std::string& str)
     return str.substr(start, end - start + 1);
 }
 
-bool SceneConfigParser::parseFloat3(const std::string& value, Float3& result)
+bool SceneConfigParser::parseFloat3(const std::string &value, Float3 &result)
 {
     // Expected format: [x, y, z] or x, y, z
     std::string cleanValue = value;
@@ -160,7 +160,7 @@ bool SceneConfigParser::parseFloat3(const std::string& value, Float3& result)
             values[count] = std::stof(token);
             count++;
         }
-        catch (const std::exception&)
+        catch (const std::exception &)
         {
             return false;
         }
@@ -175,20 +175,20 @@ bool SceneConfigParser::parseFloat3(const std::string& value, Float3& result)
     return false;
 }
 
-bool SceneConfigParser::parseFloat(const std::string& value, float& result)
+bool SceneConfigParser::parseFloat(const std::string &value, float &result)
 {
     try
     {
         result = std::stof(trim(value));
         return true;
     }
-    catch (const std::exception&)
+    catch (const std::exception &)
     {
         return false;
     }
 }
 
-std::string SceneConfigParser::float3ToString(const Float3& vec)
+std::string SceneConfigParser::float3ToString(const Float3 &vec)
 {
     std::ostringstream oss;
     oss << "[" << vec.x << ", " << vec.y << ", " << vec.z << "]";

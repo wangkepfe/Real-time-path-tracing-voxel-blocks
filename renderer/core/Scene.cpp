@@ -5,6 +5,17 @@ Scene::Scene()
 {
     CUDA_CHECK(cudaMallocManaged(&edgeToHighlight, 4 * sizeof(Float3)));
     CUDA_CHECK(cudaMalloc(&d_lightAliasTable, sizeof(AliasTable)));
+    
+    // Initialize the alias table to empty state
+    AliasTable emptyTable;
+    CUDA_CHECK(cudaMemcpy(d_lightAliasTable, &emptyTable, sizeof(AliasTable), cudaMemcpyHostToDevice));
+    
+    // Pre-allocate light buffer to avoid null pointer issues
+    m_maxLightCapacity = 100;  // Initial capacity
+    CUDA_CHECK(cudaMalloc((void**)&m_lights, m_maxLightCapacity * sizeof(LightInfo)));
+    // Initialize to zero to avoid garbage data
+    CUDA_CHECK(cudaMemset(m_lights, 0, m_maxLightCapacity * sizeof(LightInfo)));
+    m_currentNumLights = 0;
 }
 
 Scene::~Scene()

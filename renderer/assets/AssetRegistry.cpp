@@ -134,6 +134,7 @@ bool AssetRegistry::loadMaterials(const std::string& filepath) {
                 if (propsNode["use_world_grid_uv"]) {
                     material.properties.use_world_grid_uv = propsNode["use_world_grid_uv"].as<bool>();
                 }
+                
                 if (propsNode["emissive_radiance"] && propsNode["emissive_radiance"].IsSequence()) {
                     auto emissiveSeq = propsNode["emissive_radiance"];
                     if (emissiveSeq.size() >= 3) {
@@ -291,6 +292,12 @@ bool AssetRegistry::loadBlocks(const std::string& filepath) {
             }
             if (blockNode["is_emissive"]) {
                 block.is_emissive = blockNode["is_emissive"].as<bool>();
+            }
+            if (blockNode["is_placeable"]) {
+                block.is_placeable = blockNode["is_placeable"].as<bool>();
+            }
+            if (blockNode["light_base_block"]) {
+                block.light_base_block = blockNode["light_base_block"].as<std::string>();
             }
             // cast_shadows field removed - not in BlockDefinition
             if (blockNode["is_transparent"]) {
