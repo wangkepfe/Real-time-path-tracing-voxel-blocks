@@ -10,9 +10,9 @@
 #endif
 
 // Helper functions for YAML parsing (similar to SceneConfig.cpp)
-namespace 
+namespace
 {
-    std::string trim(const std::string& str)
+    std::string trim(const std::string &str)
     {
         size_t start = str.find_first_not_of(" \t\r\n");
         if (start == std::string::npos)
@@ -22,37 +22,37 @@ namespace
         return str.substr(start, end - start + 1);
     }
 
-    bool parseFloat(const std::string& value, float& result)
+    bool parseFloat(const std::string &value, float &result)
     {
         try
         {
             result = std::stof(trim(value));
             return true;
         }
-        catch (const std::exception&)
+        catch (const std::exception &)
         {
             return false;
         }
     }
 
-    bool parseInt(const std::string& value, int& result)
+    bool parseInt(const std::string &value, int &result)
     {
         try
         {
             result = std::stoi(trim(value));
             return true;
         }
-        catch (const std::exception&)
+        catch (const std::exception &)
         {
             return false;
         }
     }
 
-    bool parseBool(const std::string& value, bool& result)
+    bool parseBool(const std::string &value, bool &result)
     {
         std::string trimmedValue = trim(value);
         std::transform(trimmedValue.begin(), trimmedValue.end(), trimmedValue.begin(), ::tolower);
-        
+
         if (trimmedValue == "true" || trimmedValue == "1" || trimmedValue == "yes" || trimmedValue == "on")
         {
             result = true;
@@ -67,7 +67,7 @@ namespace
     }
 }
 
-bool GlobalSettings::LoadFromYAML(const std::string& filepath)
+bool GlobalSettings::LoadFromYAML(const std::string &filepath)
 {
     std::ifstream file(filepath);
     if (!file.is_open())
@@ -137,7 +137,7 @@ bool GlobalSettings::LoadFromYAML(const std::string& filepath)
     return true;
 }
 
-void GlobalSettings::SaveToYAML(const std::string& filepath) const
+void GlobalSettings::SaveToYAML(const std::string &filepath) const
 {
     std::ofstream file(filepath);
     if (!file.is_open())
@@ -151,6 +151,7 @@ void GlobalSettings::SaveToYAML(const std::string& filepath) const
 
     // Save Denoising Parameters
     file << "denoising:\n";
+    file << "  enableDenoiser: " << (denoisingParams.enableDenoiser ? "true" : "false") << "\n";
     file << "  enableHitDistanceReconstruction: " << (denoisingParams.enableHitDistanceReconstruction ? "true" : "false") << "\n";
     file << "  enablePrePass: " << (denoisingParams.enablePrePass ? "true" : "false") << "\n";
     file << "  enableTemporalAccumulation: " << (denoisingParams.enableTemporalAccumulation ? "true" : "false") << "\n";
@@ -158,7 +159,6 @@ void GlobalSettings::SaveToYAML(const std::string& filepath) const
     file << "  enableHistoryClamping: " << (denoisingParams.enableHistoryClamping ? "true" : "false") << "\n";
     file << "  enableSpatialFiltering: " << (denoisingParams.enableSpatialFiltering ? "true" : "false") << "\n";
     file << "  enableAntiFirefly: " << (denoisingParams.enableAntiFirefly ? "true" : "false") << "\n";
-    file << "  enableRoughnessEdgeStopping: " << (denoisingParams.enableRoughnessEdgeStopping ? "true" : "false") << "\n";
     file << "  maxAccumulatedFrameNum: " << denoisingParams.maxAccumulatedFrameNum << "\n";
     file << "  maxFastAccumulatedFrameNum: " << denoisingParams.maxFastAccumulatedFrameNum << "\n";
     file << "  historyFixFrameNum: " << denoisingParams.historyFixFrameNum << "\n";
@@ -250,108 +250,184 @@ void GlobalSettings::SaveToYAML(const std::string& filepath) const
 }
 
 // Private helper methods for parsing specific sections
-void GlobalSettings::parseDenosingSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseDenosingSettings(const std::string &key, const std::string &value)
 {
-    if (key == "enableHitDistanceReconstruction") parseBool(value, denoisingParams.enableHitDistanceReconstruction);
-    else if (key == "enablePrePass") parseBool(value, denoisingParams.enablePrePass);
-    else if (key == "enableTemporalAccumulation") parseBool(value, denoisingParams.enableTemporalAccumulation);
-    else if (key == "enableHistoryFix") parseBool(value, denoisingParams.enableHistoryFix);
-    else if (key == "enableHistoryClamping") parseBool(value, denoisingParams.enableHistoryClamping);
-    else if (key == "enableSpatialFiltering") parseBool(value, denoisingParams.enableSpatialFiltering);
-    else if (key == "enableAntiFirefly") parseBool(value, denoisingParams.enableAntiFirefly);
-    else if (key == "enableRoughnessEdgeStopping") parseBool(value, denoisingParams.enableRoughnessEdgeStopping);
-    else if (key == "maxAccumulatedFrameNum") parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
-    else if (key == "maxFastAccumulatedFrameNum") parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
-    else if (key == "historyFixFrameNum") parseFloat(value, denoisingParams.historyFixFrameNum);
-    else if (key == "prepassBlurRadius") parseFloat(value, denoisingParams.prepassBlurRadius);
-    else if (key == "minHitDistanceWeight") parseFloat(value, denoisingParams.minHitDistanceWeight);
-    else if (key == "phiLuminance") parseFloat(value, denoisingParams.phiLuminance);
-    else if (key == "lobeAngleFraction") parseFloat(value, denoisingParams.lobeAngleFraction);
-    else if (key == "roughnessFraction") parseFloat(value, denoisingParams.roughnessFraction);
-    else if (key == "depthThreshold") parseFloat(value, denoisingParams.depthThreshold);
-    else if (key == "minLuminanceWeight") parseFloat(value, denoisingParams.minLuminanceWeight);
-    else if (key == "atrousIterationNum") parseInt(value, denoisingParams.atrousIterationNum);
-    else if (key == "luminanceEdgeStoppingRelaxation") parseFloat(value, denoisingParams.luminanceEdgeStoppingRelaxation);
-    else if (key == "normalEdgeStoppingRelaxation") parseFloat(value, denoisingParams.normalEdgeStoppingRelaxation);
-    else if (key == "roughnessEdgeStoppingRelaxation") parseFloat(value, denoisingParams.roughnessEdgeStoppingRelaxation);
-    else if (key == "antilagAccelerationAmount") parseFloat(value, denoisingParams.antilagAccelerationAmount);
-    else if (key == "antilagSpatialSigmaScale") parseFloat(value, denoisingParams.antilagSpatialSigmaScale);
-    else if (key == "antilagTemporalSigmaScale") parseFloat(value, denoisingParams.antilagTemporalSigmaScale);
-    else if (key == "antilagResetAmount") parseFloat(value, denoisingParams.antilagResetAmount);
-    else if (key == "historyClampingColorBoxSigmaScale") parseFloat(value, denoisingParams.historyClampingColorBoxSigmaScale);
-    else if (key == "historyFixBasePixelStride") parseInt(value, denoisingParams.historyFixBasePixelStride);
-    else if (key == "spatialVarianceEstimationHistoryThreshold") parseInt(value, denoisingParams.spatialVarianceEstimationHistoryThreshold);
-    else if (key == "disocclusionThreshold") parseFloat(value, denoisingParams.disocclusionThreshold);
-    else if (key == "disocclusionThresholdAlternate") parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
-    else if (key == "confidenceDrivenRelaxationMultiplier") parseFloat(value, denoisingParams.confidenceDrivenRelaxationMultiplier);
-    else if (key == "confidenceDrivenLuminanceEdgeStoppingRelaxation") parseFloat(value, denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
-    else if (key == "confidenceDrivenNormalEdgeStoppingRelaxation") parseFloat(value, denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation);
-    else if (key == "denoisingRange") parseFloat(value, denoisingParams.denoisingRange);
+    if (key == "enableDenoiser")
+        parseBool(value, denoisingParams.enableDenoiser);
+    else if (key == "enableHitDistanceReconstruction")
+        parseBool(value, denoisingParams.enableHitDistanceReconstruction);
+    else if (key == "enablePrePass")
+        parseBool(value, denoisingParams.enablePrePass);
+    else if (key == "enableTemporalAccumulation")
+        parseBool(value, denoisingParams.enableTemporalAccumulation);
+    else if (key == "enableHistoryFix")
+        parseBool(value, denoisingParams.enableHistoryFix);
+    else if (key == "enableHistoryClamping")
+        parseBool(value, denoisingParams.enableHistoryClamping);
+    else if (key == "enableSpatialFiltering")
+        parseBool(value, denoisingParams.enableSpatialFiltering);
+    else if (key == "enableAntiFirefly")
+        parseBool(value, denoisingParams.enableAntiFirefly);
+    else if (key == "maxAccumulatedFrameNum")
+        parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
+    else if (key == "maxFastAccumulatedFrameNum")
+        parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
+    else if (key == "historyFixFrameNum")
+        parseFloat(value, denoisingParams.historyFixFrameNum);
+    else if (key == "prepassBlurRadius")
+        parseFloat(value, denoisingParams.prepassBlurRadius);
+    else if (key == "minHitDistanceWeight")
+        parseFloat(value, denoisingParams.minHitDistanceWeight);
+    else if (key == "phiLuminance")
+        parseFloat(value, denoisingParams.phiLuminance);
+    else if (key == "lobeAngleFraction")
+        parseFloat(value, denoisingParams.lobeAngleFraction);
+    else if (key == "roughnessFraction")
+        parseFloat(value, denoisingParams.roughnessFraction);
+    else if (key == "depthThreshold")
+        parseFloat(value, denoisingParams.depthThreshold);
+    else if (key == "minLuminanceWeight")
+        parseFloat(value, denoisingParams.minLuminanceWeight);
+    else if (key == "atrousIterationNum")
+        parseInt(value, denoisingParams.atrousIterationNum);
+    else if (key == "luminanceEdgeStoppingRelaxation")
+        parseFloat(value, denoisingParams.luminanceEdgeStoppingRelaxation);
+    else if (key == "normalEdgeStoppingRelaxation")
+        parseFloat(value, denoisingParams.normalEdgeStoppingRelaxation);
+    else if (key == "roughnessEdgeStoppingRelaxation")
+        parseFloat(value, denoisingParams.roughnessEdgeStoppingRelaxation);
+    else if (key == "antilagAccelerationAmount")
+        parseFloat(value, denoisingParams.antilagAccelerationAmount);
+    else if (key == "antilagSpatialSigmaScale")
+        parseFloat(value, denoisingParams.antilagSpatialSigmaScale);
+    else if (key == "antilagTemporalSigmaScale")
+        parseFloat(value, denoisingParams.antilagTemporalSigmaScale);
+    else if (key == "antilagResetAmount")
+        parseFloat(value, denoisingParams.antilagResetAmount);
+    else if (key == "historyClampingColorBoxSigmaScale")
+        parseFloat(value, denoisingParams.historyClampingColorBoxSigmaScale);
+    else if (key == "historyFixBasePixelStride")
+        parseInt(value, denoisingParams.historyFixBasePixelStride);
+    else if (key == "spatialVarianceEstimationHistoryThreshold")
+        parseInt(value, denoisingParams.spatialVarianceEstimationHistoryThreshold);
+    else if (key == "disocclusionThreshold")
+        parseFloat(value, denoisingParams.disocclusionThreshold);
+    else if (key == "disocclusionThresholdAlternate")
+        parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
+    else if (key == "confidenceDrivenRelaxationMultiplier")
+        parseFloat(value, denoisingParams.confidenceDrivenRelaxationMultiplier);
+    else if (key == "confidenceDrivenLuminanceEdgeStoppingRelaxation")
+        parseFloat(value, denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
+    else if (key == "confidenceDrivenNormalEdgeStoppingRelaxation")
+        parseFloat(value, denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation);
+    else if (key == "denoisingRange")
+        parseFloat(value, denoisingParams.denoisingRange);
 }
 
-void GlobalSettings::parsePostProcessSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parsePostProcessSettings(const std::string &key, const std::string &value)
 {
-    if (key == "postGain") parseFloat(value, postProcessParams.postGain);
-    else if (key == "gain") parseFloat(value, postProcessParams.gain);
-    else if (key == "maxWhite") parseFloat(value, postProcessParams.maxWhite);
+    if (key == "postGain")
+        parseFloat(value, postProcessParams.postGain);
+    else if (key == "gain")
+        parseFloat(value, postProcessParams.gain);
+    else if (key == "maxWhite")
+        parseFloat(value, postProcessParams.maxWhite);
 }
 
-void GlobalSettings::parseSkySettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseSkySettings(const std::string &key, const std::string &value)
 {
-    if (key == "timeOfDay") parseFloat(value, skyParams.timeOfDay);
-    else if (key == "sunAxisAngle") parseFloat(value, skyParams.sunAxisAngle);
-    else if (key == "sunAxisRotate") parseFloat(value, skyParams.sunAxisRotate);
-    else if (key == "skyBrightness") parseFloat(value, skyParams.skyBrightness);
+    if (key == "timeOfDay")
+        parseFloat(value, skyParams.timeOfDay);
+    else if (key == "sunAxisAngle")
+        parseFloat(value, skyParams.sunAxisAngle);
+    else if (key == "sunAxisRotate")
+        parseFloat(value, skyParams.sunAxisRotate);
+    else if (key == "skyBrightness")
+        parseFloat(value, skyParams.skyBrightness);
 }
 
-void GlobalSettings::parseCharacterMovementSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseCharacterMovementSettings(const std::string &key, const std::string &value)
 {
-    if (key == "walkMoveForce") parseFloat(value, characterMovementParams.walkMoveForce);
-    else if (key == "runMoveForce") parseFloat(value, characterMovementParams.runMoveForce);
-    else if (key == "walkMaxSpeed") parseFloat(value, characterMovementParams.walkMaxSpeed);
-    else if (key == "runMaxSpeed") parseFloat(value, characterMovementParams.runMaxSpeed);
-    else if (key == "jumpForce") parseFloat(value, characterMovementParams.jumpForce);
-    else if (key == "gravity") parseFloat(value, characterMovementParams.gravity);
-    else if (key == "friction") parseFloat(value, characterMovementParams.friction);
-    else if (key == "rotationSpeed") parseFloat(value, characterMovementParams.rotationSpeed);
-    else if (key == "radius") parseFloat(value, characterMovementParams.radius);
-    else if (key == "height") parseFloat(value, characterMovementParams.height);
+    if (key == "walkMoveForce")
+        parseFloat(value, characterMovementParams.walkMoveForce);
+    else if (key == "runMoveForce")
+        parseFloat(value, characterMovementParams.runMoveForce);
+    else if (key == "walkMaxSpeed")
+        parseFloat(value, characterMovementParams.walkMaxSpeed);
+    else if (key == "runMaxSpeed")
+        parseFloat(value, characterMovementParams.runMaxSpeed);
+    else if (key == "jumpForce")
+        parseFloat(value, characterMovementParams.jumpForce);
+    else if (key == "gravity")
+        parseFloat(value, characterMovementParams.gravity);
+    else if (key == "friction")
+        parseFloat(value, characterMovementParams.friction);
+    else if (key == "rotationSpeed")
+        parseFloat(value, characterMovementParams.rotationSpeed);
+    else if (key == "radius")
+        parseFloat(value, characterMovementParams.radius);
+    else if (key == "height")
+        parseFloat(value, characterMovementParams.height);
 }
 
-void GlobalSettings::parseCharacterAnimationSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseCharacterAnimationSettings(const std::string &key, const std::string &value)
 {
-    if (key == "walkSpeedThreshold") parseFloat(value, characterAnimationParams.walkSpeedThreshold);
-    else if (key == "mediumSpeedThreshold") parseFloat(value, characterAnimationParams.mediumSpeedThreshold);
-    else if (key == "runSpeedThreshold") parseFloat(value, characterAnimationParams.runSpeedThreshold);
-    else if (key == "runMediumSpeedThreshold") parseFloat(value, characterAnimationParams.runMediumSpeedThreshold);
-    else if (key == "animationSpeed") parseFloat(value, characterAnimationParams.animationSpeed);
-    else if (key == "blendRatio") parseFloat(value, characterAnimationParams.blendRatio);
-    else if (key == "placeAnimationSpeed") parseFloat(value, characterAnimationParams.placeAnimationSpeed);
+    if (key == "walkSpeedThreshold")
+        parseFloat(value, characterAnimationParams.walkSpeedThreshold);
+    else if (key == "mediumSpeedThreshold")
+        parseFloat(value, characterAnimationParams.mediumSpeedThreshold);
+    else if (key == "runSpeedThreshold")
+        parseFloat(value, characterAnimationParams.runSpeedThreshold);
+    else if (key == "runMediumSpeedThreshold")
+        parseFloat(value, characterAnimationParams.runMediumSpeedThreshold);
+    else if (key == "animationSpeed")
+        parseFloat(value, characterAnimationParams.animationSpeed);
+    else if (key == "blendRatio")
+        parseFloat(value, characterAnimationParams.blendRatio);
+    else if (key == "placeAnimationSpeed")
+        parseFloat(value, characterAnimationParams.placeAnimationSpeed);
 }
 
-void GlobalSettings::parseCameraMovementSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseCameraMovementSettings(const std::string &key, const std::string &value)
 {
-    if (key == "moveSpeed") parseFloat(value, cameraMovementParams.moveSpeed);
-    else if (key == "cursorMoveSpeed") parseFloat(value, cameraMovementParams.cursorMoveSpeed);
-    else if (key == "fov") parseFloat(value, cameraMovementParams.fov);
-    else if (key == "followSpeed") parseFloat(value, cameraMovementParams.followSpeed);
-    else if (key == "followDistance") parseFloat(value, cameraMovementParams.followDistance);
-    else if (key == "followHeight") parseFloat(value, cameraMovementParams.followHeight);
-    else if (key == "gameplayHeight") parseFloat(value, cameraMovementParams.gameplayHeight);
+    if (key == "moveSpeed")
+        parseFloat(value, cameraMovementParams.moveSpeed);
+    else if (key == "cursorMoveSpeed")
+        parseFloat(value, cameraMovementParams.cursorMoveSpeed);
+    else if (key == "fov")
+        parseFloat(value, cameraMovementParams.fov);
+    else if (key == "followSpeed")
+        parseFloat(value, cameraMovementParams.followSpeed);
+    else if (key == "followDistance")
+        parseFloat(value, cameraMovementParams.followDistance);
+    else if (key == "followHeight")
+        parseFloat(value, cameraMovementParams.followHeight);
+    else if (key == "gameplayHeight")
+        parseFloat(value, cameraMovementParams.gameplayHeight);
 }
 
-void GlobalSettings::parseRenderingSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseRenderingSettings(const std::string &key, const std::string &value)
 {
-    if (key == "maxFpsAllowed") parseFloat(value, renderingParams.maxFpsAllowed);
-    else if (key == "targetFPS") parseFloat(value, renderingParams.targetFPS);
-    else if (key == "dynamicResolution") parseBool(value, renderingParams.dynamicResolution);
-    else if (key == "vsync") parseBool(value, renderingParams.vsync);
-    else if (key == "windowWidth") parseInt(value, renderingParams.windowWidth);
-    else if (key == "windowHeight") parseInt(value, renderingParams.windowHeight);
-    else if (key == "maxRenderWidth") parseInt(value, renderingParams.maxRenderWidth);
-    else if (key == "maxRenderHeight") parseInt(value, renderingParams.maxRenderHeight);
-    else if (key == "minRenderWidth") parseInt(value, renderingParams.minRenderWidth);
-    else if (key == "minRenderHeight") parseInt(value, renderingParams.minRenderHeight);
+    if (key == "maxFpsAllowed")
+        parseFloat(value, renderingParams.maxFpsAllowed);
+    else if (key == "targetFPS")
+        parseFloat(value, renderingParams.targetFPS);
+    else if (key == "dynamicResolution")
+        parseBool(value, renderingParams.dynamicResolution);
+    else if (key == "vsync")
+        parseBool(value, renderingParams.vsync);
+    else if (key == "windowWidth")
+        parseInt(value, renderingParams.windowWidth);
+    else if (key == "windowHeight")
+        parseInt(value, renderingParams.windowHeight);
+    else if (key == "maxRenderWidth")
+        parseInt(value, renderingParams.maxRenderWidth);
+    else if (key == "maxRenderHeight")
+        parseInt(value, renderingParams.maxRenderHeight);
+    else if (key == "minRenderWidth")
+        parseInt(value, renderingParams.minRenderWidth);
+    else if (key == "minRenderHeight")
+        parseInt(value, renderingParams.minRenderHeight);
 }
 
 // Static member definitions for time management
@@ -407,7 +483,7 @@ void GlobalSettings::UpdateTime()
 #else
         currentTime = static_cast<float>(glfwGetTime());
 #endif
-        
+
         if (lastTime < 0.0f)
         {
             deltaTime = 1.0f / 60.0f; // Default for first frame

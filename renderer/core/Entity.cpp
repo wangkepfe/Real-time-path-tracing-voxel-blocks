@@ -13,55 +13,6 @@
 #include <utility>
 #include <iomanip>
 
-// Helper function to calculate AABB for vertices influenced by a specific joint
-std::pair<Float3, Float3> calculateJointAABB(const VertexAttributes *vertices, int numVertices, int jointIndex, float weightThreshold = 0.1f)
-{
-    float maxFloat = std::numeric_limits<float>::max();
-    float minFloat = std::numeric_limits<float>::lowest();
-    Float3 minBounds(maxFloat, maxFloat, maxFloat);
-    Float3 maxBounds(minFloat, minFloat, minFloat);
-    bool foundVertex = false;
-
-    for (int i = 0; i < numVertices; ++i)
-    {
-        const VertexAttributes &vertex = vertices[i];
-
-        // Check if this vertex is influenced by the target joint
-        bool influenced = false;
-        if ((vertex.jointIndices.x == jointIndex && vertex.jointWeights.x >= weightThreshold) ||
-            (vertex.jointIndices.y == jointIndex && vertex.jointWeights.y >= weightThreshold) ||
-            (vertex.jointIndices.z == jointIndex && vertex.jointWeights.z >= weightThreshold) ||
-            (vertex.jointIndices.w == jointIndex && vertex.jointWeights.w >= weightThreshold))
-        {
-            influenced = true;
-        }
-
-        if (influenced)
-        {
-            foundVertex = true;
-            const Float3 &pos = vertex.vertex;
-
-            // Update min bounds
-            minBounds.x = std::min(minBounds.x, pos.x);
-            minBounds.y = std::min(minBounds.y, pos.y);
-            minBounds.z = std::min(minBounds.z, pos.z);
-
-            // Update max bounds
-            maxBounds.x = std::max(maxBounds.x, pos.x);
-            maxBounds.y = std::max(maxBounds.y, pos.y);
-            maxBounds.z = std::max(maxBounds.z, pos.z);
-        }
-    }
-
-    if (!foundVertex)
-    {
-        // Return default bounds if no vertices found
-        return std::pair<Float3, Float3>(Float3(0.0f, 0.0f, 0.0f), Float3(0.0f, 0.0f, 0.0f));
-    }
-
-    return std::pair<Float3, Float3>(minBounds, maxBounds);
-}
-
 void EntityTransform::getTransformMatrix(float matrix[12]) const
 {
     // Create rotation matrices
@@ -115,7 +66,11 @@ Entity::~Entity()
     // Free indices (owned by Entity after conversion from Int3 to unsigned int)
     if (m_d_indices)
     {
-        CUDA_CHECK(cudaFree(m_d_indices));
+        cudaError_t err = cudaFree(m_d_indices);
+        if (err != cudaSuccess && err != cudaErrorInvalidValue)
+        {
+            CUDA_CHECK(err);
+        }
         m_d_indices = nullptr;
     }
 
@@ -126,71 +81,105 @@ Entity::~Entity()
         m_d_originalAttributes = nullptr;
     }
 
+    // Free skinning data for animation (these are owned by Entity)
+    if (m_d_skinningData)
+    {
+        CUDA_CHECK(cudaFree(m_d_skinningData));
+        m_d_skinningData = nullptr;
+    }
+
     m_d_attributes = nullptr;
 }
 
 bool Entity::loadGeometry()
 {
     // Use ModelManager to get geometry for this entity type
-    auto& modelManager = Assets::ModelManager::Get();
-    const Assets::LoadedGeometry* geometry = modelManager.getGeometryForEntity(m_type);
-    
-    if (!geometry) {
+    auto &modelManager = Assets::ModelManager::Get();
+    const Assets::LoadedGeometry *geometry = modelManager.getGeometryForEntity(m_type);
+
+    if (!geometry)
+    {
         std::cerr << "No geometry found for entity type: " << m_type << std::endl;
         return false;
     }
-    
+
     // Copy geometry pointers (ModelManager owns the data)
     m_d_attributes = geometry->d_attributes;
     m_attributeSize = geometry->attributeSize;
-    
+
     // Convert Int3 indices to unsigned int format for Entity interface compatibility
-    m_indicesSize = geometry->indicesSize * 3;  // Int3 count * 3 = unsigned int count
+    m_indicesSize = geometry->indicesSize * 3; // Int3 count * 3 = unsigned int count
     size_t indicesBufferSize = m_indicesSize * sizeof(unsigned int);
-    CUDA_CHECK(cudaMalloc((void**)&m_d_indices, indicesBufferSize));
-    
+    CUDA_CHECK(cudaMalloc((void **)&m_d_indices, indicesBufferSize));
+
     // Convert Int3* to unsigned int* on GPU
     std::vector<unsigned int> tempIndices(m_indicesSize);
     std::vector<Int3> int3Indices(geometry->indicesSize);
-    
+
     // Copy Int3 data from GPU to host
     CUDA_CHECK(cudaMemcpy(int3Indices.data(), geometry->d_indices, geometry->indicesSize * sizeof(Int3), cudaMemcpyDeviceToHost));
-    
+
     // Convert Int3 to flat unsigned int array
-    for (size_t i = 0; i < geometry->indicesSize; ++i) {
+    for (size_t i = 0; i < geometry->indicesSize; ++i)
+    {
         tempIndices[i * 3 + 0] = int3Indices[i].x;
         tempIndices[i * 3 + 1] = int3Indices[i].y;
         tempIndices[i * 3 + 2] = int3Indices[i].z;
     }
-    
+
     // Copy converted indices back to GPU
     CUDA_CHECK(cudaMemcpy(m_d_indices, tempIndices.data(), indicesBufferSize, cudaMemcpyHostToDevice));
-    
+
     // Handle animation if present
-    if (geometry->hasAnimation) {
+    if (geometry->hasAnimation)
+    {
         std::cout << "Setting up animation for entity with " << geometry->animationClips.size() << " animations" << std::endl;
-        
+
         // Copy skeleton and animation clips
         m_skeleton = geometry->skeleton;
         m_animationClips = geometry->animationClips;
-        
+
         // Allocate and copy original vertices for animation skinning
         const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
         CUDA_CHECK(cudaMalloc((void **)&m_d_originalAttributes, vertexBufferSize));
         CUDA_CHECK(cudaMemcpy(m_d_originalAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
+
+        // Copy skinning data from the geometry if available
+        if (geometry->d_skinningData)
+        {
+            const size_t skinningBufferSize = m_attributeSize * sizeof(VertexSkinningData);
+            CUDA_CHECK(cudaMalloc((void **)&m_d_skinningData, skinningBufferSize));
+            CUDA_CHECK(cudaMemcpy(m_d_skinningData, geometry->d_skinningData, skinningBufferSize, cudaMemcpyDeviceToDevice));
+        }
+        else
+        {
+            // Create empty skinning data array for non-animated models
+            const size_t skinningBufferSize = m_attributeSize * sizeof(VertexSkinningData);
+            CUDA_CHECK(cudaMalloc((void **)&m_d_skinningData, skinningBufferSize));
+            
+            // Initialize with default values (no skinning)
+            std::vector<VertexSkinningData> tempSkinningData(m_attributeSize);
+            for (unsigned int i = 0; i < m_attributeSize; ++i)
+            {
+                tempSkinningData[i].jointIndices = Int4(0, 0, 0, 0);
+                tempSkinningData[i].jointWeights = Float4(1.0f, 0.0f, 0.0f, 0.0f);
+            }
+            CUDA_CHECK(cudaMemcpy(m_d_skinningData, tempSkinningData.data(), skinningBufferSize, cudaMemcpyHostToDevice));
+        }
 
         // Create and initialize animation manager
         m_animationManager = std::make_unique<AnimationManager>();
         m_animationManager->setSkeleton(m_skeleton);
 
         // Add all animation clips to the manager
-        for (const auto &clip : m_animationClips) {
+        for (const auto &clip : m_animationClips)
+        {
             m_animationManager->addAnimationClip(clip);
         }
-        
+
         std::cout << "Successfully set up animated entity with " << m_animationClips.size() << " animations" << std::endl;
     }
-    
+
     return true;
 }
 
@@ -233,7 +222,6 @@ void Entity::update(float deltaTime)
 
         // Apply vertex skinning
         applySkinningToVertices(m_d_attributes, m_d_originalAttributes,
-                                m_attributeSize, skinningData);
+                                m_d_skinningData, m_attributeSize, skinningData);
     }
 }
-

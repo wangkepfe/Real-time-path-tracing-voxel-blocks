@@ -37,8 +37,14 @@ class SemanticTexelLabeler:
         self.rect_start = None  # Starting point for rectangle
         self.rect_preview = None  # Canvas item for rectangle preview
 
+        # Region expansion state
+        self.expansion_threshold = 20.0  # Color similarity threshold (0-100)
+        self.pre_expansion_state = None  # Store semantic map state before last expansion
+
         # Visualization modes
         self.show_only_current_label = False
+        self.show_borders = True  # Show borders around labeled texels
+        self.highlight_current = True  # Highlight current label selection
 
         # Background texture
         self.background_texture = None
@@ -130,6 +136,33 @@ class SemanticTexelLabeler:
         ttk.Radiobutton(mode_frame, text="Rectangle", value="rectangle",
                        variable=self.mode_var, command=self.change_draw_mode).pack(anchor=tk.W)
 
+        # Region expansion controls
+        expansion_frame = ttk.LabelFrame(parent, text="Region Expansion")
+        expansion_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(expansion_frame, text="Similarity Threshold:").pack(anchor=tk.W)
+        threshold_frame = ttk.Frame(expansion_frame)
+        threshold_frame.pack(fill=tk.X, pady=2)
+        
+        self.threshold_var = tk.DoubleVar(value=self.expansion_threshold)
+        self.threshold_scale = ttk.Scale(threshold_frame, from_=0, to=100, 
+                                       variable=self.threshold_var, orient=tk.HORIZONTAL)
+        self.threshold_scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.threshold_label = ttk.Label(threshold_frame, text=f"{self.expansion_threshold:.1f}")
+        self.threshold_label.pack(side=tk.RIGHT, padx=(5, 0))
+        self.threshold_scale.configure(command=self.update_threshold_label)
+
+        button_frame = ttk.Frame(expansion_frame)
+        button_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(button_frame, text="Expand Current Label Region", 
+                  command=self.expand_current_label_region).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        self.undo_button = ttk.Button(button_frame, text="Undo Expand", 
+                                     command=self.undo_last_expansion, state=tk.DISABLED)
+        self.undo_button.pack(side=tk.RIGHT)
+
         # Zoom controls
         zoom_frame = ttk.LabelFrame(parent, text="View Controls")
         zoom_frame.pack(fill=tk.X, pady=(0, 10))
@@ -152,6 +185,16 @@ class SemanticTexelLabeler:
         ttk.Checkbutton(viz_frame, text="Show only current label",
                        variable=self.show_current_var,
                        command=self.toggle_label_visibility).pack(anchor=tk.W)
+        
+        self.show_borders_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(viz_frame, text="Show borders on labels",
+                       variable=self.show_borders_var,
+                       command=self.toggle_borders).pack(anchor=tk.W)
+        
+        self.highlight_current_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(viz_frame, text="Highlight current selection",
+                       variable=self.highlight_current_var,
+                       command=self.toggle_highlight).pack(anchor=tk.W)
 
         ttk.Button(viz_frame, text="Validate Unlabeled Texels",
                   command=self.validate_unlabeled_texels).pack(fill=tk.X, pady=2)
@@ -211,6 +254,10 @@ class SemanticTexelLabeler:
                 self.label_name_var.set(label_info['name'])
                 self.label_desc_var.set(label_info.get('description', ''))
                 self.color_button.config(bg=label_info['color'])
+                
+                # Update canvas immediately if "show only current label" is checked
+                if self.show_only_current_label:
+                    self.update_canvas()
 
     def add_label(self):
         """Add a new label"""
@@ -273,6 +320,138 @@ class SemanticTexelLabeler:
             self.rect_preview = None
         self.rect_start = None
 
+    def update_threshold_label(self, value=None):
+        """Update the threshold label when slider changes"""
+        self.expansion_threshold = self.threshold_var.get()
+        self.threshold_label.config(text=f"{self.expansion_threshold:.1f}")
+
+    def color_distance(self, color1, color2):
+        """Calculate Euclidean distance between two RGB colors"""
+        r1, g1, b1 = color1[:3]
+        r2, g2, b2 = color2[:3]
+        return ((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2) ** 0.5
+
+    def expand_current_label_region(self):
+        """Expand the current label region to include similar colored neighboring pixels recursively"""
+        if not self.background_image:
+            messagebox.showwarning("Warning", "Please load a background texture first")
+            return
+
+        if self.current_label == 0:
+            messagebox.showwarning("Warning", "Cannot expand the 'None' label")
+            return
+
+        # Store current state for undo functionality
+        self.pre_expansion_state = self.semantic_map.copy()
+
+        # Get RGB data from background image
+        rgb_array = np.array(self.background_image.convert('RGB'))
+        
+        # Find all pixels currently labeled with the current label
+        current_pixels = np.where(self.semantic_map == self.current_label)
+        
+        if len(current_pixels[0]) == 0:
+            messagebox.showinfo("Info", "No pixels are currently labeled with the selected label")
+            return
+
+        # Convert threshold from 0-100 scale to RGB distance scale with better precision at low values
+        # Use exponential scaling to give more precision at low thresholds
+        if self.expansion_threshold == 0:
+            threshold_distance = 0  # Exact match only
+        else:
+            # Scale from 0-100 to roughly 0-50 RGB distance with exponential curve
+            # This gives much finer control at low values
+            normalized_threshold = self.expansion_threshold / 100.0
+            threshold_distance = (normalized_threshold ** 1.5) * 50
+
+        # Start with border pixels of current label
+        to_check = set()
+        for y, x in zip(current_pixels[0], current_pixels[1]):
+            # Add neighboring pixels to check list
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = y + dy, x + dx
+                    if (0 <= ny < self.texture_size and 0 <= nx < self.texture_size and 
+                        self.semantic_map[ny, nx] == 0):  # Only unlabeled pixels
+                        to_check.add((ny, nx))
+
+        expanded_count = 0
+        processed = set()
+        
+        # Recursive expansion using flood-fill approach
+        while to_check:
+            y, x = to_check.pop()
+            
+            if (y, x) in processed:
+                continue
+            processed.add((y, x))
+            
+            # Skip if already labeled (might have been labeled in this iteration)
+            if self.semantic_map[y, x] != 0:
+                continue
+                
+            # Get current pixel color
+            current_color = rgb_array[y, x]
+            
+            # Check if similar to any adjacent labeled pixel of current label
+            is_similar = False
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = y + dy, x + dx
+                    if (0 <= ny < self.texture_size and 0 <= nx < self.texture_size and 
+                        self.semantic_map[ny, nx] == self.current_label):
+                        labeled_color = rgb_array[ny, nx]
+                        distance = self.color_distance(current_color, labeled_color)
+                        if distance <= threshold_distance:
+                            is_similar = True
+                            break
+                if is_similar:
+                    break
+            
+            if is_similar:
+                # Label this pixel
+                self.semantic_map[y, x] = self.current_label
+                expanded_count += 1
+                
+                # Add its unlabeled neighbors to check list
+                for dy in [-1, 0, 1]:
+                    for dx in [-1, 0, 1]:
+                        if dy == 0 and dx == 0:
+                            continue
+                        ny, nx = y + dy, x + dx
+                        if (0 <= ny < self.texture_size and 0 <= nx < self.texture_size and 
+                            self.semantic_map[ny, nx] == 0 and (ny, nx) not in processed):
+                            to_check.add((ny, nx))
+
+        self.update_canvas()
+        
+        # Enable undo button if expansion happened
+        if expanded_count > 0:
+            self.undo_button.config(state=tk.NORMAL)
+        
+        messagebox.showinfo("Expansion Complete", 
+                          f"Expanded {expanded_count} pixels to {self.labels[self.current_label]['name']} label")
+
+    def undo_last_expansion(self):
+        """Undo the last expansion operation"""
+        if self.pre_expansion_state is None:
+            messagebox.showwarning("Warning", "No expansion to undo")
+            return
+        
+        # Restore the previous state
+        self.semantic_map = self.pre_expansion_state.copy()
+        self.pre_expansion_state = None
+        
+        # Disable undo button and update canvas
+        self.undo_button.config(state=tk.DISABLED)
+        self.update_canvas()
+        
+        messagebox.showinfo("Undo Complete", "Last expansion has been undone")
+
     def zoom_in(self):
         """Increase zoom factor"""
         if self.zoom_factor < 16:
@@ -290,6 +469,16 @@ class SemanticTexelLabeler:
     def toggle_label_visibility(self):
         """Toggle visibility of non-current labels"""
         self.show_only_current_label = self.show_current_var.get()
+        self.update_canvas()
+    
+    def toggle_borders(self):
+        """Toggle border visibility on labels"""
+        self.show_borders = self.show_borders_var.get()
+        self.update_canvas()
+    
+    def toggle_highlight(self):
+        """Toggle highlighting of current label"""
+        self.highlight_current = self.highlight_current_var.get()
         self.update_canvas()
 
     def validate_unlabeled_texels(self):
@@ -353,7 +542,7 @@ class SemanticTexelLabeler:
         overlay = Image.new('RGBA', (display_size, display_size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
-        # Draw semantic labels
+        # Draw semantic labels with borders
         for y in range(self.texture_size):
             for x in range(self.texture_size):
                 label_id = self.semantic_map[y, x]
@@ -369,15 +558,38 @@ class SemanticTexelLabeler:
                     # Make validation-check more visible
                     if self.labels[label_id]['name'] == "validation-check":
                         rgba = rgb + (192,)  # More opaque for validation
+                        border_alpha = 255
                     else:
-                        rgba = rgb + (128,)  # Semi-transparent for normal labels
+                        rgba = rgb + (100,)  # Less transparent for better visibility
+                        border_alpha = 200
 
-                    # Draw rectangle for this pixel
+                    # Calculate pixel boundaries
                     x1 = x * self.zoom_factor
                     y1 = y * self.zoom_factor
                     x2 = x1 + self.zoom_factor
                     y2 = y1 + self.zoom_factor
+                    
+                    # Draw filled rectangle for the label color
                     draw.rectangle([x1, y1, x2-1, y2-1], fill=rgba)
+                    
+                    # Draw border for better visibility (if enabled)
+                    if self.show_borders:
+                        # Use a contrasting color for the border (darker version of label color or black)
+                        border_rgb = tuple(max(0, c - 80) for c in rgb)  # Darker version
+                        border_color = border_rgb + (border_alpha,)
+                        
+                        # Draw thicker border for better visibility
+                        border_width = max(1, self.zoom_factor // 8)
+                        for i in range(border_width):
+                            draw.rectangle([x1+i, y1+i, x2-1-i, y2-1-i], outline=border_color, width=1)
+                    
+                    # Add highlight on current label (if enabled)
+                    if self.highlight_current and label_id == self.current_label:
+                        # Add white highlight border
+                        highlight_color = (255, 255, 255, 200)
+                        # Draw double border for better visibility
+                        draw.rectangle([x1, y1, x2-1, y2-1], outline=highlight_color, width=2)
+                        draw.rectangle([x1+1, y1+1, x2-2, y2-2], outline=highlight_color, width=1)
 
         # Combine base and overlay
         if self.background_image:

@@ -279,8 +279,8 @@ bool AssetRegistry::loadBlocks(const std::string& filepath) {
             if (blockNode["material"]) {
                 block.material_id = blockNode["material"].as<std::string>();
             }
-            if (blockNode["model_id"]) {
-                block.model_id = blockNode["model_id"].as<std::string>();
+            if (blockNode["model"]) {
+                block.model_id = blockNode["model"].as<std::string>();
             }
             
             // Parse boolean properties

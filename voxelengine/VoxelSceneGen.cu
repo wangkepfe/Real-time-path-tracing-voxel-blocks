@@ -58,7 +58,7 @@ __device__ __host__ void ComputeFaceVertices(Float3 basePos, int faceId, Float3 
     }
 }
 
-__global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int width)
+__global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int width, unsigned int globalOffsetX, unsigned int globalOffsetY, unsigned int globalOffsetZ)
 {
     Int3 idx;
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -115,6 +115,48 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
             {
                 val.id = BlockTypeRocks;
             }
+        }
+    }
+
+    // Hardcode 10 shader balls from global (30,7,43) to (39,7,43) with different roughness values from 0.0 to 1.0
+    unsigned int globalX = globalOffsetX + idx.x;
+    unsigned int globalY = globalOffsetY + idx.y;
+    unsigned int globalZ = globalOffsetZ + idx.z;
+    
+    if (globalY == 7 && globalZ == 43 && globalX >= 30 && globalX <= 39)
+    {
+        switch (globalX)
+        {
+        case 30:
+            val.id = BlockTypeShaderBallR0;    // Roughness 0.0
+            break;
+        case 31:
+            val.id = BlockTypeShaderBallR11;   // Roughness 0.11
+            break;
+        case 32:
+            val.id = BlockTypeShaderBallR22;   // Roughness 0.22
+            break;
+        case 33:
+            val.id = BlockTypeShaderBallR33;   // Roughness 0.33
+            break;
+        case 34:
+            val.id = BlockTypeShaderBallR44;   // Roughness 0.44
+            break;
+        case 35:
+            val.id = BlockTypeShaderBallR56;   // Roughness 0.56
+            break;
+        case 36:
+            val.id = BlockTypeShaderBallR67;   // Roughness 0.67
+            break;
+        case 37:
+            val.id = BlockTypeShaderBallR78;   // Roughness 0.78
+            break;
+        case 38:
+            val.id = BlockTypeShaderBallR89;   // Roughness 0.89
+            break;
+        case 39:
+            val.id = BlockTypeShaderBallR100;  // Roughness 1.0
+            break;
         }
     }
 
@@ -336,7 +378,7 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
     cudaMalloc(&d_noise, noiseMapSize * sizeof(float));
     cudaMemcpy(d_noise, noiseMap.data(), noiseMapSize * sizeof(float), cudaMemcpyHostToDevice);
 
-    GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width);
+    GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width, globalOffsetX, 0, globalOffsetZ);
 
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaPeekAtLastError());

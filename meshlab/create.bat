@@ -1,1 +1,2 @@
-python minecraft_character_generator.py pink-smoothie.png character-pink-smoothie.gltf minecraft_character_slim.json 0.06
+@REM python minecraft_character_generator.py pink-smoothie.png character-pink-smoothie.gltf minecraft_character_slim.json 0.06
+python minecraft_character_generator.py data/frozen-roses.png data/character-frozen-roses.gltf minecraft_character_slim.json 0.06

@@ -153,9 +153,6 @@ namespace ObjUtils {
         for (size_t i = 0; i < vertices.size(); ++i) {
             finalVertices[i].vertex = vertices[i];
             finalVertices[i].texcoord = (i < texcoords.size()) ? texcoords[i] : Float2{0, 0};
-            // Set default joint data for non-animated models
-            finalVertices[i].jointIndices = Int4(0, 0, 0, 0);
-            finalVertices[i].jointWeights = Float4(1.0f, 0.0f, 0.0f, 0.0f);
         }
 
         attrSize = static_cast<unsigned int>(finalVertices.size());

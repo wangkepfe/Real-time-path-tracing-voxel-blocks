@@ -838,7 +838,11 @@ void VoxelEngine::update()
 #ifndef OFFLINE_MODE
         int blockId = InputHandler::Get().currentSelectedBlockId;
 #else
-        int blockId = BlockTypeTestLight; // Use light block for debugging
+        // Cycle through shader ball types for testing (BlockTypeShaderBallR0 to BlockTypeShaderBallR100)
+        static int clickCount = 0;
+        int shaderBallTypes[] = {BlockTypeShaderBallR0, BlockTypeShaderBallR11, BlockTypeShaderBallR22, BlockTypeShaderBallR33, BlockTypeShaderBallR44, BlockTypeShaderBallR56, BlockTypeShaderBallR67, BlockTypeShaderBallR78, BlockTypeShaderBallR89, BlockTypeShaderBallR100};
+        int blockId = shaderBallTypes[clickCount % 10];
+        clickCount++;
         auto &debugCamera = RenderCamera::Get().camera;
         std::cout << "CAMERA RAY DEBUG: Camera pos=(" << debugCamera.pos.x << "," << debugCamera.pos.y << "," << debugCamera.pos.z << ")" << std::endl;
         std::cout << "CAMERA RAY DEBUG: Camera dir=(" << debugCamera.dir.x << "," << debugCamera.dir.y << "," << debugCamera.dir.z << ")" << std::endl;

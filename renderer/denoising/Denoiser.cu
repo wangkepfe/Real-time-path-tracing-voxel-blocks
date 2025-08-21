@@ -53,7 +53,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     int finalResultBuffer = 0; // 0 = IlluminationBuffer, 1 = IlluminationPingBuffer, 2 = IlluminationPongBuffer
 
     // Hit distance reconstruction pass (controlled by parameter)
-    if (denoisingParams.enableHitDistanceReconstruction)
+    if (denoisingParams.enableDenoiser && denoisingParams.enableHitDistanceReconstruction)
     {
         HitDistReconstruction<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
@@ -72,7 +72,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         bufferManager.GetBuffer2D(IlluminationOutputBuffer));
 
     // Pre-pass (controlled by parameter)
-    if (denoisingParams.enablePrePass)
+    if (denoisingParams.enableDenoiser && denoisingParams.enablePrePass)
     {
         PrePass KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
@@ -116,7 +116,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     }
 
     // Temporal accumulation pass (controlled by parameter)
-    if (denoisingParams.enableTemporalAccumulation)
+    if (denoisingParams.enableDenoiser && denoisingParams.enableTemporalAccumulation)
     {
         if (frameNum > 0)
         {
@@ -155,7 +155,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             finalResultBuffer = 1; // Temporal accumulation outputs to IlluminationPingBuffer
 
             // Optional buffer copy (controlled by parameter - currently disabled)
-            if (false)  // This was originally if (0), keeping disabled for now
+            if (false) // This was originally if (0), keeping disabled for now
             {
                 BufferCopyFloat4(
                     bufferDim,
@@ -216,7 +216,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     }
 
     // Spatial filtering (A-trous) pass (controlled by parameter)
-    if (denoisingParams.enableSpatialFiltering)
+    if (denoisingParams.enableDenoiser && denoisingParams.enableSpatialFiltering)
     {
         // According to NRD ReLaX implementation, A-trous always takes PrevIlluminationBuffer as input
         // This is because History Clamping writes the temporally denoised result to PrevIlluminationBuffer

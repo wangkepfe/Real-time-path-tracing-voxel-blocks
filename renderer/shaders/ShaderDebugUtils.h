@@ -5,7 +5,7 @@
 
 // Debug control macro - define this to enable shader debug logging
 #ifndef ENABLE_SHADER_DEBUG
-#define ENABLE_SHADER_DEBUG 0
+#define ENABLE_SHADER_DEBUG 1
 #endif
 
 #ifdef __CUDA_ARCH__
@@ -35,14 +35,14 @@
 #endif
 
 // Implementations
-#define OPTIX_DEBUG_PRINT_IMPL(__ARG__, __PRINT_STR__, __PRINT_ARG__)                                                                                                      \
-    INL_DEVICE void OptixDebugPrint(const char *file, int line, const char *valueName, __ARG__)                                                                            \
-    {                                                                                                                                                                      \
-        printf("%s:%d:%s:(%d,%d):" __PRINT_STR__ "\n", file, line, valueName, optixGetLaunchIndex().x, optixGetLaunchIndex().y, __PRINT_ARG__);                            \
-    }                                                                                                                                                                      \
-    INL_DEVICE void CudaDebugPrint(const char *file, int line, const char *valueName, __ARG__)                                                                             \
-    {                                                                                                                                                                      \
-        printf("%s:%d:%s:(%d,%d):" __PRINT_STR__ "\n", file, line, valueName, blockIdx.x *blockDim.x + threadIdx.x, blockIdx.y * blockDim.y + threadIdx.y, __PRINT_ARG__); \
+#define OPTIX_DEBUG_PRINT_IMPL(__ARG__, __PRINT_STR__, __PRINT_ARG__)                                                                                                       \
+    INL_DEVICE void OptixDebugPrint(const char *file, int line, const char *valueName, __ARG__)                                                                             \
+    {                                                                                                                                                                       \
+        printf("%s:%d:%s:(%d,%d):" __PRINT_STR__ "\n", file, line, valueName, optixGetLaunchIndex().x, optixGetLaunchIndex().y, __PRINT_ARG__);                             \
+    }                                                                                                                                                                       \
+    INL_DEVICE void CudaDebugPrint(const char *file, int line, const char *valueName, __ARG__)                                                                              \
+    {                                                                                                                                                                       \
+        printf("%s:%d:%s:(%d,%d):" __PRINT_STR__ "\n", file, line, valueName, blockIdx.x * blockDim.x + threadIdx.x, blockIdx.y * blockDim.y + threadIdx.y, __PRINT_ARG__); \
     }
 
 OPTIX_DEBUG_PRINT_IMPL(float v, "%e", v)

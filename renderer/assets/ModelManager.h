@@ -13,6 +13,7 @@ namespace Assets {
 
 struct LoadedGeometry {
     VertexAttributes* d_attributes = nullptr;
+    VertexSkinningData* d_skinningData = nullptr;  // Joint indices and weights for animation
     Int3* d_indices = nullptr;
     size_t attributeSize = 0;
     size_t indicesSize = 0;

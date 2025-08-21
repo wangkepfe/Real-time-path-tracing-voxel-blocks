@@ -285,22 +285,64 @@ void OptixRenderer::clear()
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
     // Material memory is now managed by MaterialManager, don't free here
-    CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
+    if (m_d_systemParameter)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
+    }
 
     for (size_t i = 0; i < m_geometries.size(); ++i)
     {
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].indices));
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].attributes));
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].gas));
+        if (m_geometries[i].indices)
+        {
+            cudaError_t err = cudaFree((void *)m_geometries[i].indices);
+            if (err != cudaSuccess && err != cudaErrorInvalidValue)
+            {
+                CUDA_CHECK(err);
+            }
+        }
+        if (m_geometries[i].attributes)
+        {
+            cudaError_t err = cudaFree((void *)m_geometries[i].attributes);
+            if (err != cudaSuccess && err != cudaErrorInvalidValue)
+            {
+                CUDA_CHECK(err);
+            }
+        }
+        if (m_geometries[i].gas)
+        {
+            cudaError_t err = cudaFree((void *)m_geometries[i].gas);
+            if (err != cudaSuccess && err != cudaErrorInvalidValue)
+            {
+                CUDA_CHECK(err);
+            }
+        }
     }
-    CUDA_CHECK(cudaFree((void *)m_d_ias[0]));
-    CUDA_CHECK(cudaFree((void *)m_d_ias[1]));
+    if (m_d_ias[0])
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_ias[0]));
+    }
+    if (m_d_ias[1])
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_ias[1]));
+    }
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
+    if (m_d_sbtRecordRaygeneration)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
+    }
+    if (m_d_sbtRecordMiss)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
+    }
+    if (m_d_sbtRecordCallables)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
+    }
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    if (m_d_sbtRecordGeometryInstanceData)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    }
 
     OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));

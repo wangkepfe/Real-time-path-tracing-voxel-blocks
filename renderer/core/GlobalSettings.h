@@ -11,6 +11,7 @@ struct DenoisingParams
     std::vector<std::pair<bool *, std::string>> GetBooleanValueList()
     {
         return {
+            {&enableDenoiser, "Enable Denoiser"},
             {&enableHitDistanceReconstruction, "Enable Hit Distance Reconstruction"},
             {&enablePrePass, "Enable Pre-Pass"},
             {&enableTemporalAccumulation, "Enable Temporal Accumulation"},
@@ -18,7 +19,6 @@ struct DenoisingParams
             {&enableHistoryClamping, "Enable History Clamping"},
             {&enableSpatialFiltering, "Enable Spatial Filtering (A-trous)"},
             {&enableAntiFirefly, "Enable Anti-Firefly"},
-            {&enableRoughnessEdgeStopping, "Enable Roughness Edge Stopping"},
         };
     }
 
@@ -76,6 +76,7 @@ struct DenoisingParams
     }
 
     // Pass control flags (replace hardcoded if statements)
+    bool enableDenoiser = true;
     bool enableHitDistanceReconstruction = false;
     bool enablePrePass = false;
     bool enableTemporalAccumulation = true;
@@ -83,7 +84,6 @@ struct DenoisingParams
     bool enableHistoryClamping = true;
     bool enableSpatialFiltering = true;
     bool enableAntiFirefly = false;
-    bool enableRoughnessEdgeStopping = true;
 
     // Temporal accumulation parameters (based on NRD ReLaX defaults)
     float maxAccumulatedFrameNum = 30.0f;

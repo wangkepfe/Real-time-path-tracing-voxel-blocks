@@ -9,6 +9,7 @@ namespace tinygltf {
 }
 
 struct VertexAttributes;
+struct VertexSkinningData;
 struct Float3;
 struct Float2;
 struct Int4;
@@ -70,6 +71,27 @@ namespace GLTFUtils {
                                Skeleton& skeleton,
                                std::vector<AnimationClip>& animationClips,
                                const std::string& filename);
+
+    /**
+     * \brief Loads animated GLTF model with separate vertex attributes and skinning data
+     * \param d_attr Output pointer to device memory for VertexAttributes
+     * \param d_skinning Output pointer to device memory for VertexSkinningData
+     * \param d_indices Output pointer to device memory for index data
+     * \param attrSize Output size of vertex attributes array
+     * \param indicesSize Output size of indices array
+     * \param skeleton Output skeleton structure with joints and bind poses
+     * \param animationClips Output vector of animation clips
+     * \param filename Path to the GLTF file
+     * \return True if successful, false otherwise
+     */
+    bool loadAnimatedGLTFModelSeparate(VertexAttributes** d_attr,
+                                       VertexSkinningData** d_skinning,
+                                       unsigned int** d_indices,
+                                       unsigned int& attrSize,
+                                       unsigned int& indicesSize,
+                                       Skeleton& skeleton,
+                                       std::vector<AnimationClip>& animationClips,
+                                       const std::string& filename);
 
     /**
      * \brief Extracts complete animated mesh data from a GLTF file
