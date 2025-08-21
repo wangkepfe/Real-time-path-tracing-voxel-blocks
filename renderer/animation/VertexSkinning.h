@@ -18,6 +18,7 @@ struct SkinningData
 __global__ void applyVertexSkinning(
     VertexAttributes* vertices,
     const VertexAttributes* originalVertices,
+    const VertexSkinningData* skinningData,
     const Mat4* jointMatrices,
     int numVertices,
     int numJoints
@@ -28,8 +29,8 @@ void initVertexSkinning();
 void cleanupVertexSkinning();
 void updateSkinningMatrices(const float* hostMatrices, int numJoints);
 void applySkinningToVertices(VertexAttributes* d_vertices, const VertexAttributes* d_originalVertices,
-                           int numVertices, const SkinningData& skinningData);
+                           const VertexSkinningData* d_skinningData, int numVertices, const SkinningData& skinningData);
 
 // Utility functions
-__device__ Float3 blendTransforms(const Float3& vertex, const Int4& joints, const Float4& weights,
+__device__ Float3 blendTransforms(const Float3& vertex, const VertexSkinningData& skinningData,
                                   const Mat4* jointMatrices, int numJoints);

@@ -11,39 +11,36 @@ from PIL import Image, ImageColor
 import json
 import os
 import math
+import argparse
 from typing import Dict, Tuple, Optional
 
 class TextureUpscaler:
-    def __init__(self, upscale_factor=64, texture_size=512):
+    def __init__(self, semantic_file, material_mapping_file, generated_textures_dir, upscale_factor=64, texture_size=512, source_texture_scale=1.0):
         self.upscale_factor = upscale_factor
         self.texture_size = texture_size
-        self.generated_textures_dir = "generated_textures"
+        self.source_texture_scale = source_texture_scale
+        self.generated_textures_dir = generated_textures_dir
 
         # Load semantic mapping
-        with open("pink-smoothie-semantic.json", 'r') as f:
+        with open(semantic_file, 'r') as f:
             self.semantic_data = json.load(f)
 
         self.labels = self.semantic_data['labels']
         self.semantic_map = np.array(self.semantic_data['semantic_map'])
 
-        # Material to texture mapping
-        self.material_mapping = {
-            '0': None,  # None/transparent
-            '1': 'human_skin',      # Skin
-            '2': 'hair',            # Hair
-            '4': 'shiny_silver_metal',  # Metal
-            '5': 'leather',         # Leather
-            '6': 'human_skin',      # Eyes (use skin texture)
-            '7': 'ribbon',          # Ribbon
-            '8': 'shiny_black_leather',  # Shiny-Leather
-            '9': 'pink_terry_cloth',     # Fabric1 (Pink cotton terry cloth)
-            '10': 'white_cotton',        # Fabric2 (Natural cotton plaid)
-            '11': 'white_cotton'         # Fabric3 (White cotton)
-        }
+        # Load material mapping from file
+        self.material_mapping = self._load_material_mapping(material_mapping_file)
 
         # Load texture cache
         self.texture_cache = {}
         self._load_textures()
+
+    def _load_material_mapping(self, mapping_file: str) -> Dict[str, Optional[str]]:
+        """Load material mapping from JSON file"""
+        with open(mapping_file, 'r') as f:
+            mapping_data = json.load(f)
+        print(f"Loaded material mapping from {mapping_file}")
+        return mapping_data
 
     def _load_textures(self):
         """Load all available textures into memory"""
@@ -54,11 +51,21 @@ class TextureUpscaler:
                 for texture_type in ['albedo', 'normal', 'roughness']:
                     texture_path = os.path.join(self.generated_textures_dir, f"{material}_{texture_type}.png")
                     if os.path.exists(texture_path):
-                        self.texture_cache[material][texture_type] = np.array(Image.open(texture_path))
+                        img = Image.open(texture_path)
+                        
+                        # Scale the source texture if needed
+                        if self.source_texture_scale != 1.0:
+                            original_size = img.size
+                            new_size = (int(original_size[0] * self.source_texture_scale), 
+                                      int(original_size[1] * self.source_texture_scale))
+                            img = img.resize(new_size, Image.NEAREST)
+                            print(f"  Scaled {material}_{texture_type} from {original_size} to {new_size}")
+                        
+                        self.texture_cache[material][texture_type] = np.array(img)
                         print(f"  Loaded {material}_{texture_type}")
 
     def _get_texture_crop(self, material: str, texture_type: str, x_offset: int, y_offset: int) -> np.ndarray:
-        """Get a 64x64 crop from a 512x512 texture with given offset for continuity"""
+        """Get a crop from texture with given offset for continuity"""
         if material not in self.texture_cache or texture_type not in self.texture_cache[material]:
             # Return a solid color if texture not found
             color = (128, 128, 128) if texture_type == 'albedo' else (128, 128, 255) if texture_type == 'normal' else (128,)
@@ -66,20 +73,23 @@ class TextureUpscaler:
             return np.full((self.upscale_factor, self.upscale_factor, channels), color, dtype=np.uint8)
 
         texture = self.texture_cache[material][texture_type]
+        
+        # Get actual texture size (may be scaled)
+        actual_texture_size = texture.shape[0] if len(texture.shape) >= 2 else self.texture_size
 
         # Calculate crop coordinates with wrapping for seamless textures
-        start_x = x_offset % self.texture_size
-        start_y = y_offset % self.texture_size
+        start_x = x_offset % actual_texture_size
+        start_y = y_offset % actual_texture_size
 
-                # Handle wrapping around texture boundaries
+        # Handle wrapping around texture boundaries
         # Handle both grayscale and color textures
         if len(texture.shape) == 2:
             # Grayscale texture
             crop = np.zeros((self.upscale_factor, self.upscale_factor), dtype=np.uint8)
             for i in range(self.upscale_factor):
                 for j in range(self.upscale_factor):
-                    src_x = (start_x + j) % self.texture_size
-                    src_y = (start_y + i) % self.texture_size
+                    src_x = (start_x + j) % actual_texture_size
+                    src_y = (start_y + i) % actual_texture_size
                     crop[i, j] = texture[src_y, src_x]
             # Add channel dimension for consistency
             crop = crop[:, :, np.newaxis]
@@ -88,8 +98,8 @@ class TextureUpscaler:
             crop = np.zeros((self.upscale_factor, self.upscale_factor, texture.shape[2]), dtype=np.uint8)
             for i in range(self.upscale_factor):
                 for j in range(self.upscale_factor):
-                    src_x = (start_x + j) % self.texture_size
-                    src_y = (start_y + i) % self.texture_size
+                    src_x = (start_x + j) % actual_texture_size
+                    src_y = (start_y + i) % actual_texture_size
                     crop[i, j] = texture[src_y, src_x]
 
         return crop
@@ -177,16 +187,27 @@ class TextureUpscaler:
 
     def _calculate_texture_offset(self, x: int, y: int, material: str) -> Tuple[int, int]:
         """Calculate texture offset to ensure continuity for adjacent texels with same material"""
+        # Get actual texture size for this material (may be scaled)
+        actual_texture_size = self.texture_size
+        if (material in self.texture_cache and 'albedo' in self.texture_cache[material]):
+            texture = self.texture_cache[material]['albedo']
+            actual_texture_size = texture.shape[0] if len(texture.shape) >= 2 else self.texture_size
+        
         # Use position-based offset for continuity
         # Scale the offset to create seamless transitions
         offset_scale = self.upscale_factor
-        x_offset = (x * offset_scale) % self.texture_size
-        y_offset = (y * offset_scale) % self.texture_size
+        x_offset = (x * offset_scale) % actual_texture_size
+        y_offset = (y * offset_scale) % actual_texture_size
         return x_offset, y_offset
 
-    def upscale_texture(self, input_image_path: str, output_path: str = "high_fidelity_pink_smoothie.png"):
+    def upscale_texture(self, input_image_path: str, output_base_name: str):
         """Main function to upscale the texture"""
         print(f"Loading input image: {input_image_path}")
+
+        # Generate output paths
+        albedo_path = f"{output_base_name}_albedo.png"
+        normal_path = f"{output_base_name}_normal.png"
+        roughness_path = f"{output_base_name}_roughness.png"
 
         # Load the original low-res texture
         original_image = Image.open(input_image_path).convert("RGBA")
@@ -194,10 +215,13 @@ class TextureUpscaler:
 
         original_height, original_width = original_array.shape[:2]
 
-        # Create output image
+        # Create output arrays
         output_width = original_width * self.upscale_factor
         output_height = original_height * self.upscale_factor
-        output_array = np.zeros((output_height, output_width, 4), dtype=np.uint8)
+        
+        albedo_array = np.zeros((output_height, output_width, 4), dtype=np.uint8)
+        normal_array = np.full((output_height, output_width, 3), (128, 128, 255), dtype=np.uint8)
+        roughness_array = np.full((output_height, output_width, 1), 128, dtype=np.uint8)
 
         print(f"Upscaling from {original_width}x{original_height} to {output_width}x{output_height}")
 
@@ -216,7 +240,7 @@ class TextureUpscaler:
 
                 if alpha == 0:
                     # Transparent pixel - keep transparent
-                    output_array[out_y_start:out_y_end, out_x_start:out_x_end, 3] = 0
+                    albedo_array[out_y_start:out_y_end, out_x_start:out_x_end, 3] = 0
                     continue
 
                 # Get semantic label
@@ -231,99 +255,84 @@ class TextureUpscaler:
                 if material is None:
                     # No material mapping, use original color
                     solid_color = original_pixel[:3]
-                    output_array[out_y_start:out_y_end, out_x_start:out_x_end, :3] = solid_color
-                    output_array[out_y_start:out_y_end, out_x_start:out_x_end, 3] = alpha
+                    albedo_array[out_y_start:out_y_end, out_x_start:out_x_end, :3] = solid_color
+                    albedo_array[out_y_start:out_y_end, out_x_start:out_x_end, 3] = alpha
                 else:
                     # Get texture offset for continuity
                     x_offset, y_offset = self._calculate_texture_offset(x, y, material)
 
-                    # Get albedo texture crop
+                    # Get texture crops for all types
                     albedo_crop = self._get_texture_crop(material, 'albedo', x_offset, y_offset)
+                    normal_crop = self._get_texture_crop(material, 'normal', x_offset, y_offset)
+                    roughness_crop = self._get_texture_crop(material, 'roughness', x_offset, y_offset)
 
-                    # Adjust color to match original
+                    # Adjust albedo color to match original
                     target_color = tuple(original_pixel[:3])
-                    adjusted_crop = self._adjust_color(albedo_crop, target_color)
+                    adjusted_albedo = self._adjust_color(albedo_crop, target_color)
 
-                    # Copy to output
-                    output_array[out_y_start:out_y_end, out_x_start:out_x_end, :3] = adjusted_crop[:, :, :3]
-                    output_array[out_y_start:out_y_end, out_x_start:out_x_end, 3] = alpha
+                    # Copy to output arrays
+                    albedo_array[out_y_start:out_y_end, out_x_start:out_x_end, :3] = adjusted_albedo[:, :, :3]
+                    albedo_array[out_y_start:out_y_end, out_x_start:out_x_end, 3] = alpha
+                    
+                    if normal_crop.shape[2] >= 3:
+                        normal_array[out_y_start:out_y_end, out_x_start:out_x_end] = normal_crop[:, :, :3]
+                    if roughness_crop.shape[2] >= 1:
+                        roughness_array[out_y_start:out_y_end, out_x_start:out_x_end] = roughness_crop[:, :, :1]
 
                 # Progress indicator
                 if (y * original_width + x) % (original_width * 4) == 0:
                     progress = ((y * original_width + x) / (original_width * original_height)) * 100
                     print(f"Progress: {progress:.1f}%")
 
-        # Save output
-        output_image = Image.fromarray(output_array, 'RGBA')
-        output_image.save(output_path)
-        print(f"High-fidelity texture saved to: {output_path}")
-
-        # Also save individual texture maps if available
-        self._save_additional_maps(input_image_path, output_path)
-
-    def _save_additional_maps(self, input_image_path: str, output_path: str):
-        """Generate and save normal and roughness maps"""
-        print("Generating normal and roughness maps...")
-
-        # Load the original low-res texture
-        original_image = Image.open(input_image_path).convert("RGBA")
-        original_array = np.array(original_image)
-        original_height, original_width = original_array.shape[:2]
-
-        # Create output arrays for normal and roughness
-        output_width = original_width * self.upscale_factor
-        output_height = original_height * self.upscale_factor
-
-        normal_array = np.full((output_height, output_width, 3), (128, 128, 255), dtype=np.uint8)
-        roughness_array = np.full((output_height, output_width, 1), 128, dtype=np.uint8)
-
-        # Process each texel
-        for y in range(original_height):
-            for x in range(original_width):
-                original_pixel = original_array[y, x]
-                alpha = original_pixel[3]
-
-                if alpha == 0:
-                    continue
-
-                # Calculate output position
-                out_y_start = y * self.upscale_factor
-                out_x_start = x * self.upscale_factor
-                out_y_end = out_y_start + self.upscale_factor
-                out_x_end = out_x_start + self.upscale_factor
-
-                # Get semantic label and material
-                label = str(self.semantic_map[y][x]) if y < len(self.semantic_map) and x < len(self.semantic_map[0]) else '0'
-                material = self.material_mapping.get(label)
-
-                if material is not None:
-                    # Get texture offset for continuity
-                    x_offset, y_offset = self._calculate_texture_offset(x, y, material)
-
-                    # Get normal and roughness crops
-                    normal_crop = self._get_texture_crop(material, 'normal', x_offset, y_offset)
-                    roughness_crop = self._get_texture_crop(material, 'roughness', x_offset, y_offset)
-
-                    # Copy to output arrays
-                    if normal_crop.shape[2] >= 3:
-                        normal_array[out_y_start:out_y_end, out_x_start:out_x_end] = normal_crop[:, :, :3]
-                    if roughness_crop.shape[2] >= 1:
-                        roughness_array[out_y_start:out_y_end, out_x_start:out_x_end] = roughness_crop[:, :, :1]
-
-        # Save additional maps
-        base_name = output_path.rsplit('.', 1)[0]
+        # Save all output images
+        albedo_image = Image.fromarray(albedo_array, 'RGBA')
+        albedo_image.save(albedo_path)
+        print(f"Albedo texture saved to: {albedo_path}")
 
         normal_image = Image.fromarray(normal_array, 'RGB')
-        normal_image.save(f"{base_name}_normal.png")
-        print(f"Normal map saved to: {base_name}_normal.png")
+        normal_image.save(normal_path)
+        print(f"Normal map saved to: {normal_path}")
 
         roughness_image = Image.fromarray(roughness_array.squeeze(), 'L')
-        roughness_image.save(f"{base_name}_roughness.png")
-        print(f"Roughness map saved to: {base_name}_roughness.png")
+        roughness_image.save(roughness_path)
+        print(f"Roughness map saved to: {roughness_path}")
+
 
 def main():
-    upscaler = TextureUpscaler()
-    upscaler.upscale_texture("pink-smoothie.png")
+    parser = argparse.ArgumentParser(description='High-Fidelity Texture Upscaler')
+    parser.add_argument('input', help='Input texture file path')
+    parser.add_argument('semantic', help='Semantic mapping JSON file path')
+    parser.add_argument('material_mapping', help='Material mapping JSON file path')
+    parser.add_argument('generated_textures_dir', help='Directory containing generated texture files')
+    parser.add_argument('-o', '--output', help='Output base name (generates _albedo.png, _normal.png, _roughness.png files)')
+    parser.add_argument('--upscale-factor', type=int, default=64, help='Upscale factor (default: 64)')
+    parser.add_argument('--texture-size', type=int, default=512, help='Source texture size (default: 512)')
+    parser.add_argument('--source-texture-scale', type=float, default=1.0, help='Scale factor for source textures before cropping (default: 1.0)')
+    
+    args = parser.parse_args()
+    
+    # Generate output base name if not provided
+    if args.output is None:
+        input_name, input_ext = os.path.splitext(args.input)
+        args.output = f"{input_name}_upscaled"
+    
+    print(f"Input: {args.input}")
+    print(f"Semantic file: {args.semantic}")
+    print(f"Material mapping: {args.material_mapping}")
+    print(f"Generated textures dir: {args.generated_textures_dir}")
+    print(f"Output: {args.output}")
+    print(f"Upscale factor: {args.upscale_factor}")
+    print(f"Source texture scale: {args.source_texture_scale}")
+    
+    upscaler = TextureUpscaler(
+        semantic_file=args.semantic,
+        material_mapping_file=args.material_mapping,
+        generated_textures_dir=args.generated_textures_dir,
+        upscale_factor=args.upscale_factor, 
+        texture_size=args.texture_size,
+        source_texture_scale=args.source_texture_scale
+    )
+    upscaler.upscale_texture(args.input, args.output)
 
 if __name__ == "__main__":
     main()

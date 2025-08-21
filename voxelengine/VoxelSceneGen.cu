@@ -58,7 +58,7 @@ __device__ __host__ void ComputeFaceVertices(Float3 basePos, int faceId, Float3 
     }
 }
 
-__global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int width)
+__global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int width, unsigned int globalOffsetX, unsigned int globalOffsetY, unsigned int globalOffsetZ)
 {
     Int3 idx;
     idx.x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -115,6 +115,33 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
             {
                 val.id = BlockTypeRocks;
             }
+        }
+    }
+
+    // Hardcode 5 shader balls from global (35,7,43) to (39,7,43) with different roughness values
+    unsigned int globalX = globalOffsetX + idx.x;
+    unsigned int globalY = globalOffsetY + idx.y;
+    unsigned int globalZ = globalOffsetZ + idx.z;
+    
+    if (globalY == 7 && globalZ == 43 && globalX >= 35 && globalX <= 39)
+    {
+        switch (globalX)
+        {
+        case 35:
+            val.id = BlockTypeShaderBallR0;    // Roughness 0.0
+            break;
+        case 36:
+            val.id = BlockTypeShaderBallR25;   // Roughness 0.25
+            break;
+        case 37:
+            val.id = BlockTypeShaderBallR50;   // Roughness 0.5
+            break;
+        case 38:
+            val.id = BlockTypeShaderBallR75;   // Roughness 0.75
+            break;
+        case 39:
+            val.id = BlockTypeShaderBallR100;  // Roughness 1.0
+            break;
         }
     }
 
@@ -336,7 +363,7 @@ void initVoxelsMultiChunk(VoxelChunk &voxelChunk, Voxel **d_data, unsigned int c
     cudaMalloc(&d_noise, noiseMapSize * sizeof(float));
     cudaMemcpy(d_noise, noiseMap.data(), noiseMapSize * sizeof(float), cudaMemcpyHostToDevice);
 
-    GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width);
+    GenerateVoxelChunk KERNEL_ARGS2(gridDim, blockDim)(*d_data, d_noise, voxelChunk.width, globalOffsetX, 0, globalOffsetZ);
 
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaPeekAtLastError());

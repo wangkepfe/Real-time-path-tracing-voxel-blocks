@@ -55,6 +55,15 @@ namespace Assets
                     }
                     geometry.d_attributes = nullptr;
                 }
+                if (geometry.d_skinningData)
+                {
+                    cudaError_t err = cudaFree(geometry.d_skinningData);
+                    if (err != cudaSuccess && err != cudaErrorInvalidValue && err != cudaErrorInvalidDevicePointer)
+                    {
+                        std::cerr << "Warning: Failed to free geometry.d_skinningData: " << cudaGetErrorString(err) << std::endl;
+                    }
+                    geometry.d_skinningData = nullptr;
+                }
                 if (geometry.d_indices)
                 {
                     cudaError_t err = cudaFree(geometry.d_indices);
@@ -105,6 +114,22 @@ namespace Assets
 
             // Store runtime geometry pointer
             modelDef.runtimeGeometry = &m_geometries[geometryIndex];
+        }
+
+        // Also map all blocks to their models (multiple blocks can share the same model)
+        auto &blocks = registry.getAllBlocks();
+        for (const auto &blockDef : blocks)
+        {
+            if (blockDef.model_id.has_value())
+            {
+                const std::string &modelId = blockDef.model_id.value();
+                auto it = m_modelIdToIndex.find(modelId);
+                if (it != m_modelIdToIndex.end())
+                {
+                    // Map this block type to the model's geometry
+                    m_blockTypeToGeometryIndex[blockDef.id] = it->second;
+                }
+            }
         }
 
         return !m_geometries.empty();
@@ -211,7 +236,7 @@ namespace Assets
             unsigned int attrSize = 0;
             unsigned int indicesSize = 0;
 
-            if (GLTFUtils::loadAnimatedGLTFModel(&geometry.d_attributes, &d_tempIndices, attrSize, indicesSize,
+            if (GLTFUtils::loadAnimatedGLTFModelSeparate(&geometry.d_attributes, &geometry.d_skinningData, &d_tempIndices, attrSize, indicesSize,
                                                geometry.skeleton, geometry.animationClips, filepath))
             {
                 // Convert unsigned int indices to Int3 format

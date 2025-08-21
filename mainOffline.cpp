@@ -252,12 +252,12 @@ int main(int argc, char *argv[])
             // End performance tracking and print stats
             perfTracker.endFrame();
 
-            // Add test blocks after first frame is rendered
+            // Add test blocks after first frame is rendered (in addition to hardcoded shader balls)
             if (frameNumber >= 2 && frameNumber <= 6)
             {
-                std::cout << "Simulating mouse click #" << (frameNumber - 1) << " to place light block at camera center..." << std::endl;
+                std::cout << "Simulating mouse click #" << (frameNumber - 1) << " to place shader ball (roughness " << ((frameNumber - 2) * 0.25) << ") at camera center..." << std::endl;
 
-                // Simulate multiple mouse clicks to place light blocks along the ray
+                // Simulate multiple mouse clicks to place shader balls along the ray
                 voxelengine.leftMouseButtonClicked = true;
 
                 std::cout << "Mouse click simulated - VoxelEngine will handle placement on next update." << std::endl;

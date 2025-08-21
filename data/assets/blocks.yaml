@@ -114,3 +114,38 @@ blocks:
     is_instanced: true
     is_emissive: true
     light_base_block: "BlockTypeTestLightBase"
+
+  - id: 17
+    name: "ShaderBallR0"
+    type: BlockTypeShaderBallR0
+    material: shader_ball_r0
+    model: shader_ball
+    is_instanced: true
+
+  - id: 18
+    name: "ShaderBallR25"
+    type: BlockTypeShaderBallR25
+    material: shader_ball_r25
+    model: shader_ball
+    is_instanced: true
+
+  - id: 19
+    name: "ShaderBallR50"
+    type: BlockTypeShaderBallR50
+    material: shader_ball_r50
+    model: shader_ball
+    is_instanced: true
+
+  - id: 20
+    name: "ShaderBallR75"
+    type: BlockTypeShaderBallR75
+    material: shader_ball_r75
+    model: shader_ball
+    is_instanced: true
+
+  - id: 21
+    name: "ShaderBallR100"
+    type: BlockTypeShaderBallR100
+    material: shader_ball_r100
+    model: shader_ball
+    is_instanced: true

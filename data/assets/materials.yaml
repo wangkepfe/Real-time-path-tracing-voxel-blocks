@@ -15,7 +15,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.8
       metallic: 0.0
-      
+
   - id: soil
     name: "Soil Material"
     textures:
@@ -27,7 +27,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.9
       metallic: 0.0
-      
+
   - id: cliff
     name: "Cliff Material"
     textures:
@@ -39,7 +39,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.85
       metallic: 0.0
-      
+
   - id: trunk
     name: "Tree Trunk Material"
     textures:
@@ -51,7 +51,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.9
       metallic: 0.0
-      
+
   - id: unused1
     name: "Unused Material 1"
     textures:
@@ -63,7 +63,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.8
       metallic: 0.0
-      
+
   - id: unused2
     name: "Unused Material 2"
     textures:
@@ -75,7 +75,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.7
       metallic: 0.0
-      
+
   - id: rocks
     name: "Rocks Material"
     textures:
@@ -87,7 +87,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.85
       metallic: 0.0
-      
+
   - id: floor
     name: "Floor Material"
     textures:
@@ -99,7 +99,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.6
       metallic: 0.0
-      
+
   - id: brick
     name: "Brick Material"
     textures:
@@ -111,7 +111,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.7
       metallic: 0.0
-      
+
   - id: wall
     name: "Wall Material"
     textures:
@@ -123,7 +123,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.65
       metallic: 0.0
-      
+
   - id: plank
     name: "Wood Plank Material"
     textures:
@@ -135,7 +135,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.75
       metallic: 0.0
-      
+
   - id: plank2
     name: "Wood Plank Material 2"
     textures:
@@ -147,7 +147,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.75
       metallic: 0.0
-      
+
   # Special materials
   - id: test1
     name: "Test Material"
@@ -156,7 +156,7 @@ materials:
       roughness: 0.0
       metallic: 0.0
       translucency: 0.0
-      
+
   - id: leaves
     name: "Leaves Material"
     textures:
@@ -168,7 +168,7 @@ materials:
       is_thinfilm: true
       roughness: 0.5
       metallic: 0.0
-      
+
   - id: lantern_base
     name: "Lantern Base Material"
     textures:
@@ -180,7 +180,7 @@ materials:
       use_world_grid_uv: true
       roughness: 0.4
       metallic: 0.8
-      
+
   - id: lantern_light
     name: "Lantern Light Material"
     properties:
@@ -191,16 +191,65 @@ materials:
         - 3.737
         - 2.718
         - 1.189
-      
+
   # Entity materials
+
   - id: minecraft_character
     name: "Minecraft Character Material"
     textures:
       albedo: "textures/high_fidelity_pink_smoothie_albedo.png"
       normal: "textures/high_fidelity_pink_smoothie_normal.png"
       roughness: "textures/high_fidelity_pink_smoothie_roughness.png"
+      # albedo: "textures/high_fidelity_frozen_roses_albedo.png"
+      # normal: "textures/high_fidelity_frozen_roses_normal.png"
+      # roughness: "textures/high_fidelity_frozen_roses_roughness.png"
     properties:
       albedo: [1.0, 1.0, 1.0]
+      roughness: 1.0
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r0
+    name: "Shader Ball Roughness 0.0"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.0
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r25
+    name: "Shader Ball Roughness 0.25"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.25
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r50
+    name: "Shader Ball Roughness 0.5"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.5
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r75
+    name: "Shader Ball Roughness 0.75"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.75
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r100
+    name: "Shader Ball Roughness 1.0"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
       roughness: 1.0
       metallic: 0.0
       use_world_grid_uv: false

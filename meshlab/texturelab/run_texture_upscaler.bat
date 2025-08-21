@@ -1,0 +1,1 @@
+python texture_upscaler.py frozen-roses.png frozen-roses-semantic.json material_mapping_frozen_roses.json textures -o high_fidelity_frozen_roses --source-texture-scale 1.0
