@@ -104,12 +104,19 @@ void UI::update()
     {
         DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();
 
+        // Master enable/disable checkbox
+        ImGui::Checkbox("Enable Denoiser", &denoisingParams.enableDenoiser);
+        ImGui::Separator();
+
         // Boolean parameters (pass controls)
         if (ImGui::TreeNode("Pass Controls"))
         {
             for (auto &itempair : denoisingParams.GetBooleanValueList())
             {
-                ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+                if (itempair.first != &denoisingParams.enableDenoiser) // Skip the master enable checkbox
+                {
+                    ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+                }
             }
             ImGui::TreePop();
         }

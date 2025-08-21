@@ -246,6 +246,78 @@ materials:
       use_world_grid_uv: false
       uv_scale: 1.0
 
+  - id: shader_ball_r11
+    name: "Shader Ball Roughness 0.11"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.11
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r22
+    name: "Shader Ball Roughness 0.22"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.22
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r33
+    name: "Shader Ball Roughness 0.33"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.33
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r44
+    name: "Shader Ball Roughness 0.44"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.44
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r56
+    name: "Shader Ball Roughness 0.56"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.56
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r67
+    name: "Shader Ball Roughness 0.67"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.67
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r78
+    name: "Shader Ball Roughness 0.78"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.78
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
+  - id: shader_ball_r89
+    name: "Shader Ball Roughness 0.89"
+    properties:
+      albedo: [0.8, 0.8, 0.8]
+      roughness: 0.89
+      metallic: 0.0
+      use_world_grid_uv: false
+      uv_scale: 1.0
+
   - id: shader_ball_r100
     name: "Shader Ball Roughness 1.0"
     properties:

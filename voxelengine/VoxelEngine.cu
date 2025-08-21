@@ -840,8 +840,8 @@ void VoxelEngine::update()
 #else
         // Cycle through shader ball types for testing (BlockTypeShaderBallR0 to BlockTypeShaderBallR100)
         static int clickCount = 0;
-        int shaderBallTypes[] = {BlockTypeShaderBallR0, BlockTypeShaderBallR25, BlockTypeShaderBallR50, BlockTypeShaderBallR75, BlockTypeShaderBallR100};
-        int blockId = shaderBallTypes[clickCount % 5];
+        int shaderBallTypes[] = {BlockTypeShaderBallR0, BlockTypeShaderBallR11, BlockTypeShaderBallR22, BlockTypeShaderBallR33, BlockTypeShaderBallR44, BlockTypeShaderBallR56, BlockTypeShaderBallR67, BlockTypeShaderBallR78, BlockTypeShaderBallR89, BlockTypeShaderBallR100};
+        int blockId = shaderBallTypes[clickCount % 10];
         clickCount++;
         auto &debugCamera = RenderCamera::Get().camera;
         std::cout << "CAMERA RAY DEBUG: Camera pos=(" << debugCamera.pos.x << "," << debugCamera.pos.y << "," << debugCamera.pos.z << ")" << std::endl;

@@ -83,7 +83,7 @@ set( HEADERS
     renderer/core/UI.h
     renderer/core/InputHandler.h
     renderer/core/CameraController.h
-    renderer/core/FreeCameraController.h  
+    renderer/core/FreeCameraController.h
     renderer/core/CharacterFollowCameraController.h
     renderer/core/GlobalSettings.h
     renderer/core/BufferManager.h
@@ -174,7 +174,6 @@ set( OPTIX_SHADERS
     renderer/shaders/ClosestHit.cu
     renderer/shaders/Miss.cu
     renderer/shaders/RayGen.cu
-    renderer/shaders/Bsdf.cu
     renderer/shaders/AliasTable.cu
 )
 

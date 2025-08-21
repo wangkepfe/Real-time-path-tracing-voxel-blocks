@@ -118,26 +118,41 @@ __global__ void GenerateVoxelChunk(Voxel *voxels, float *noise, unsigned int wid
         }
     }
 
-    // Hardcode 5 shader balls from global (35,7,43) to (39,7,43) with different roughness values
+    // Hardcode 10 shader balls from global (30,7,43) to (39,7,43) with different roughness values from 0.0 to 1.0
     unsigned int globalX = globalOffsetX + idx.x;
     unsigned int globalY = globalOffsetY + idx.y;
     unsigned int globalZ = globalOffsetZ + idx.z;
     
-    if (globalY == 7 && globalZ == 43 && globalX >= 35 && globalX <= 39)
+    if (globalY == 7 && globalZ == 43 && globalX >= 30 && globalX <= 39)
     {
         switch (globalX)
         {
-        case 35:
+        case 30:
             val.id = BlockTypeShaderBallR0;    // Roughness 0.0
             break;
+        case 31:
+            val.id = BlockTypeShaderBallR11;   // Roughness 0.11
+            break;
+        case 32:
+            val.id = BlockTypeShaderBallR22;   // Roughness 0.22
+            break;
+        case 33:
+            val.id = BlockTypeShaderBallR33;   // Roughness 0.33
+            break;
+        case 34:
+            val.id = BlockTypeShaderBallR44;   // Roughness 0.44
+            break;
+        case 35:
+            val.id = BlockTypeShaderBallR56;   // Roughness 0.56
+            break;
         case 36:
-            val.id = BlockTypeShaderBallR25;   // Roughness 0.25
+            val.id = BlockTypeShaderBallR67;   // Roughness 0.67
             break;
         case 37:
-            val.id = BlockTypeShaderBallR50;   // Roughness 0.5
+            val.id = BlockTypeShaderBallR78;   // Roughness 0.78
             break;
         case 38:
-            val.id = BlockTypeShaderBallR75;   // Roughness 0.75
+            val.id = BlockTypeShaderBallR89;   // Roughness 0.89
             break;
         case 39:
             val.id = BlockTypeShaderBallR100;  // Roughness 1.0

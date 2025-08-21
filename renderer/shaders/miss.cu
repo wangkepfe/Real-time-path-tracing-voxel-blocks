@@ -14,7 +14,8 @@ extern "C" __global__ void __miss__radiance()
 
     Float3 emission = Float3(0);
 
-    const bool enableReSTIR = true && rayData->depth == 0;
+    const bool enableRIS = true && rayData->depth == 0;
+    const bool enableReSTIR = true && enableRIS;
     if (enableReSTIR)
     {
         StoreDIReservoir(EmptyDIReservoir(), pixelPosition);

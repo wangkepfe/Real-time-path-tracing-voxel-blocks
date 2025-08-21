@@ -2,6 +2,7 @@
 # Generated automatically
 
 denoising:
+  enableDenoiser: true
   enableHitDistanceReconstruction: false
   enablePrePass: false
   enableTemporalAccumulation: true
@@ -9,7 +10,6 @@ denoising:
   enableHistoryClamping: true
   enableSpatialFiltering: true
   enableAntiFirefly: false
-  enableRoughnessEdgeStopping: true
   maxAccumulatedFrameNum: 30
   maxFastAccumulatedFrameNum: 6
   historyFixFrameNum: 3

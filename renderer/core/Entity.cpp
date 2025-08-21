@@ -66,7 +66,11 @@ Entity::~Entity()
     // Free indices (owned by Entity after conversion from Int3 to unsigned int)
     if (m_d_indices)
     {
-        CUDA_CHECK(cudaFree(m_d_indices));
+        cudaError_t err = cudaFree(m_d_indices);
+        if (err != cudaSuccess && err != cudaErrorInvalidValue)
+        {
+            CUDA_CHECK(err);
+        }
         m_d_indices = nullptr;
     }
 
