@@ -18,7 +18,7 @@ namespace Assets
 
     bool MaterialManager::initialize()
     {
-        std::cout << "Initializing MaterialManager..." << std::endl;
+        // std::cout << "Initializing MaterialManager..." << std::endl;
 
         // Load asset definitions from YAML
         if (!AssetRegistry::Get().loadFromYAML())
@@ -171,7 +171,7 @@ namespace Assets
         if (def.textures.albedo.has_value())
         {
             param.textureAlbedo = textureManager.GetTexture(def.textures.albedo.value());
-            std::cout << "Material " << def.id << " albedo texture: " << param.textureAlbedo << " from " << def.textures.albedo.value() << std::endl;
+            // std::cout << "Material " << def.id << " albedo texture: " << param.textureAlbedo << " from " << def.textures.albedo.value() << std::endl;
         }
         if (def.textures.normal.has_value())
         {
@@ -436,6 +436,16 @@ namespace Assets
         unsigned int materialIndex = getMaterialIndexForBlock(blockType);
 
         return materialIndex;
+    }
+
+    Float3 MaterialManager::getEmissiveRadianceForBlock(int blockId) const
+    {
+        const Assets::MaterialDefinition *materialDef = Assets::AssetRegistry::Get().getMaterialForBlock(blockId);
+        if (materialDef && materialDef->properties.is_emissive)
+        {
+            return materialDef->properties.emissive_radiance;
+        }
+        return Float3(0.0f, 0.0f, 0.0f);
     }
 
 } // namespace Assets

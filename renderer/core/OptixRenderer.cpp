@@ -377,11 +377,14 @@ void OptixRenderer::render()
     m_systemParameter.accumulatedSkyLuminance = skyModel.getAccumulatedSkyLuminance();
     m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
     m_systemParameter.accumulatedLocalLightLuminance = scene.accumulatedLocalLightLuminance;
-
     m_systemParameter.lights = scene.m_lights;
+    m_systemParameter.numLights = scene.m_currentNumLights;
+    m_systemParameter.prevNumLights = scene.m_prevNumLights;
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
-    m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
+    m_systemParameter.prevLightIdToCurrentId = scene.d_prevLightIdToCurrentId;
+    m_systemParameter.lightsStateDirty = scene.m_lightsNeedUpdate;
+    m_systemParameter.instanceLightMappingSize = scene.instanceLightMappingSize;
 
     updateAnimatedEntities(backend.getCudaStream(), GlobalSettings::GetGameTime());
 
@@ -401,6 +404,12 @@ void OptixRenderer::render()
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(MaterialParameterBuffer), bufferManager.GetBuffer2D(MaterialParameterBuffer), bufferManager.GetBuffer2D(PrevMaterialParameterBuffer));
+
+    // Clear the lights dirty flag after rendering one frame with it. This ensures ReSTIR only remaps light IDs for one frame after lights change
+    if (scene.m_lightsNeedUpdate)
+    {
+        scene.m_lightsNeedUpdate = false;
+    }
 }
 
 void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime)

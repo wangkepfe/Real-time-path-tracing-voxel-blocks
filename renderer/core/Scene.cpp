@@ -3,23 +3,28 @@
 
 Scene::Scene()
 {
+    printf("DEBUG: Scene constructor called - this=%p\n", this);
     CUDA_CHECK(cudaMallocManaged(&edgeToHighlight, 4 * sizeof(Float3)));
     CUDA_CHECK(cudaMalloc(&d_lightAliasTable, sizeof(AliasTable)));
-    
+
     // Initialize the alias table to empty state
     AliasTable emptyTable;
     CUDA_CHECK(cudaMemcpy(d_lightAliasTable, &emptyTable, sizeof(AliasTable), cudaMemcpyHostToDevice));
-    
+
     // Pre-allocate light buffer to avoid null pointer issues
-    m_maxLightCapacity = 100;  // Initial capacity
-    CUDA_CHECK(cudaMalloc((void**)&m_lights, m_maxLightCapacity * sizeof(LightInfo)));
-    // Initialize to zero to avoid garbage data
+    m_maxLightCapacity = 100; // Initial capacity
+    CUDA_CHECK(cudaMalloc((void **)&m_lights, m_maxLightCapacity * sizeof(LightInfo)));
     CUDA_CHECK(cudaMemset(m_lights, 0, m_maxLightCapacity * sizeof(LightInfo)));
     m_currentNumLights = 0;
+
+    // Initialize light ID mapping
+    m_prevLightIdToCurrentId.resize(m_maxLightCapacity, -1);
+    printf("DEBUG: Scene constructor complete - d_prevLightIdToCurrentId=%p\n", d_prevLightIdToCurrentId);
 }
 
 Scene::~Scene()
 {
+    printf("DEBUG: Scene destructor called - this=%p\n", this);
     if (edgeToHighlight)
     {
         CUDA_CHECK(cudaFree(edgeToHighlight));
@@ -36,7 +41,16 @@ Scene::~Scene()
 
     if (d_instanceLightMapping)
     {
+        printf("DEBUG: Freeing d_instanceLightMapping=%p\n", d_instanceLightMapping);
         CUDA_CHECK(cudaFree(d_instanceLightMapping));
+        d_instanceLightMapping = nullptr;
+    }
+
+    if (d_prevLightIdToCurrentId)
+    {
+        printf("DEBUG: Freeing d_prevLightIdToCurrentId=%p\n", d_prevLightIdToCurrentId);
+        CUDA_CHECK(cudaFree(d_prevLightIdToCurrentId));
+        d_prevLightIdToCurrentId = nullptr;
     }
 
     // Note: Geometry memory is owned and freed by OptixRenderer::clear()
@@ -69,22 +83,22 @@ void Scene::initInstancedGeometry(unsigned int numInstancedObjects)
     m_instancedGeometryIndicesSize.resize(numInstancedObjects, 0);
 }
 
-VertexAttributes** Scene::getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId)
+VertexAttributes **Scene::getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId)
 {
     return &m_chunkGeometryAttributes[chunkIndex][objectId];
 }
 
-unsigned int** Scene::getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId)
+unsigned int **Scene::getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId)
 {
     return &m_chunkGeometryIndices[chunkIndex][objectId];
 }
 
-unsigned int& Scene::getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId)
+unsigned int &Scene::getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId)
 {
     return m_chunkGeometryAttributeSize[chunkIndex][objectId];
 }
 
-unsigned int& Scene::getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId)
+unsigned int &Scene::getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId)
 {
     return m_chunkGeometryIndicesSize[chunkIndex][objectId];
 }
@@ -174,7 +188,8 @@ OptixTraversableHandle Scene::UpdateGeometry(
     unsigned int indicesSize)
 {
     // Validate inputs
-    if (!d_attributes || !d_indices || attributeSize == 0 || indicesSize == 0 || geometry.gas == 0) {
+    if (!d_attributes || !d_indices || attributeSize == 0 || indicesSize == 0 || geometry.gas == 0)
+    {
         return 0;
     }
 
@@ -207,7 +222,7 @@ OptixTraversableHandle Scene::UpdateGeometry(
     accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
     accelBuildOptions.operation = OPTIX_BUILD_OPERATION_UPDATE;
 
-        OptixAccelBufferSizes accelBufferSizes;
+    OptixAccelBufferSizes accelBufferSizes;
 
     OPTIX_CHECK(api.optixAccelComputeMemoryUsage(context, &accelBuildOptions, &triangleInput, 1, &accelBufferSizes));
 

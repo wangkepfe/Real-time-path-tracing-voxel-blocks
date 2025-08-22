@@ -17,7 +17,37 @@ INL_DEVICE void StoreDIReservoir(const DIReservoir reservoir, Int2 reservoirPosi
 INL_DEVICE DIReservoir LoadDIReservoir(Int2 reservoirPosition)
 {
     unsigned int pointer = (reservoirPosition.x + reservoirPosition.y * sysParam.camera.resolution.x) + ((sysParam.iterationIndex + 1) % 2) * sysParam.camera.resolution.x * sysParam.camera.resolution.y;
-    return sysParam.reservoirBuffer[pointer];
+    DIReservoir reservoir = sysParam.reservoirBuffer[pointer];
+
+    // if (!IsValidDIReservoir(reservoir))
+    //     return reservoir;
+
+    // // Only remap if lights have changed
+    // if (!sysParam.lightsStateDirty)
+    //     return reservoir;
+
+    // unsigned int prevLightIndex = GetDIReservoirLightIndex(reservoir);
+
+    // // Skip remapping for environment lights (they don't change)
+    // if (prevLightIndex >= SunLightIndex)
+    //     return reservoir;
+
+    // // Remap local light index if mapping is available
+    // if (sysParam.prevLightIdToCurrentId != nullptr && prevLightIndex < sysParam.prevNumLights)
+    // {
+    //     int currentLightIndex = sysParam.prevLightIdToCurrentId[prevLightIndex];
+
+    //     // If light no longer exists, invalidate the reservoir
+    //     if (currentLightIndex < 0 || currentLightIndex >= (int)sysParam.numLights)
+    //     {
+    //         return EmptyDIReservoir();
+    //     }
+
+    //     // Update the light index in the reservoir
+    //     reservoir.lightData = (reservoir.lightData & ~DIReservoir_LightIndexMask) | (unsigned int)currentLightIndex;
+    // }
+
+    return reservoir;
 }
 
 INL_DEVICE DIReservoir EmptyDIReservoir()
@@ -158,7 +188,7 @@ INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
     float pdf;
 
     Float3 f;
-    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
+    DisneyBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     return pdf;
 }
@@ -167,7 +197,7 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, int &randIdx, Float3 &wi, 
 {
     Float3 bsdfOverPdf;
 
-    UberBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
+    DisneyBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
 
     return pdf > 0.0f;
 }
@@ -184,7 +214,7 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
     Float3 f;
 
     float pdf;
-    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
+    DisneyBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.state.normal)) / lightSample.solidAnglePdf;
 
@@ -361,11 +391,11 @@ INL_DEVICE bool GetPrevSurface(Surface &surface, Int2 pixelPosition)
     return true;
 }
 
-INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir, const Surface &surface, bool hasLocalLights)
+INL_DEVICE bool GetLightSampleFromReservoir(LightSample &ls, const DIReservoir &reservoir, const Surface &surface, bool hasLocalLights)
 {
-    LightSample ls = {};
     unsigned int lightIndex = GetDIReservoirLightIndex(reservoir);
     Float2 uv = GetDIReservoirSampleUV(reservoir);
+
     if (lightIndex == SkyLightIndex)
     {
         int x = int(uv.x * sysParam.skyRes.x);
@@ -384,11 +414,10 @@ INL_DEVICE LightSample GetLightSampleFromReservoir(const DIReservoir &reservoir,
         int sampledSunIdx = y * sysParam.sunRes.x + x;
         ls = createSunLightSample(sampledSunIdx);
     }
-    else if (hasLocalLights)
+    else if (hasLocalLights && lightIndex < sysParam.numLights)
     {
         LightInfo lightInfo = sysParam.lights[lightIndex];
         TriangleLight triLight = TriangleLight::Create(lightInfo);
         ls = triLight.calcSample(uv, surface.pos);
     }
-    return ls;
 }

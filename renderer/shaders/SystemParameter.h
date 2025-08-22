@@ -68,8 +68,6 @@ struct SystemParameter
     SurfObj UIBuffer;
 
     MaterialParameter *materialParameters;
-    InstanceLightMapping *instanceLightMapping;
-    unsigned int numInstancedLightMesh;
 
     SurfObj skyBuffer;
     SurfObj sunBuffer;
@@ -81,9 +79,16 @@ struct SystemParameter
     Int2 sunRes;
     Float3 sunDir;
 
+    InstanceLightMapping *instanceLightMapping;
+    unsigned int instanceLightMappingSize;
+
     LightInfo *lights;
     AliasTable *lightAliasTable;
     float accumulatedLocalLightLuminance;
+    unsigned int numLights;
+    unsigned int prevNumLights;
+    int *prevLightIdToCurrentId;
+    bool lightsStateDirty;
 
     Float3 *edgeToHighlight;
 
@@ -106,8 +111,8 @@ struct VertexAttributes
 
 struct VertexSkinningData
 {
-    Int4 jointIndices;    // 4 joint indices for skeletal animation
-    Float4 jointWeights;  // 4 joint weights for skeletal animation
+    Int4 jointIndices;   // 4 joint indices for skeletal animation
+    Float4 jointWeights; // 4 joint weights for skeletal animation
 };
 
 // SBT Record data for the hit group.
