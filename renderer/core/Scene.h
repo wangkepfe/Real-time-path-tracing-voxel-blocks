@@ -89,6 +89,7 @@ public:
     unsigned int m_prevNumLights = 0;
     unsigned int m_maxLightCapacity = 0;
     bool m_lightsNeedUpdate = false;
+    bool m_lightsJustUpdated = false; // Flag for renderer to know lights were updated this frame
 
     // Light ID mapping for temporal coherence (ReSTIR)
     // Maps previous frame light array index to current frame light array index

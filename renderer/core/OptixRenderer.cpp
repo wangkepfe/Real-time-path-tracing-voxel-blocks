@@ -383,8 +383,14 @@ void OptixRenderer::render()
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
     m_systemParameter.prevLightIdToCurrentId = scene.d_prevLightIdToCurrentId;
-    m_systemParameter.lightsStateDirty = scene.m_lightsNeedUpdate;
+    m_systemParameter.lightsStateDirty = scene.m_lightsJustUpdated;
     m_systemParameter.instanceLightMappingSize = scene.instanceLightMappingSize;
+    
+    // Reset the flag after reading it
+    if (scene.m_lightsJustUpdated)
+    {
+        scene.m_lightsJustUpdated = false;
+    }
 
     updateAnimatedEntities(backend.getCudaStream(), GlobalSettings::GetGameTime());
 

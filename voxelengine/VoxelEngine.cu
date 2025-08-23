@@ -372,14 +372,40 @@ unsigned int VoxelEngine::countLightTriangles()
 void VoxelEngine::generateInstanceLights(unsigned int totalNumTriLights)
 {
     auto &scene = Scene::Get();
+
+    // Early return if no lights to generate
+    if (totalNumTriLights == 0)
+    {
+        scene.instanceLightMapping.clear();
+        return;
+    }
+
     auto &sceneGeometryAttributes = scene.m_instancedGeometryAttributes;
     auto &sceneGeometryIndices = scene.m_instancedGeometryIndices;
     auto &sceneGeometryIndicesSize = scene.m_instancedGeometryIndicesSize;
     auto &geometryInstanceIdMap = scene.geometryInstanceIdMap;
     auto &instanceTransformMatrices = scene.instanceTransformMatrices;
 
-    // Allocate light info
-    cudaMalloc((void **)&scene.m_lights, totalNumTriLights * sizeof(LightInfo));
+    // Dynamic resize if needed
+    if (totalNumTriLights > scene.m_maxLightCapacity)
+    {
+        // Free old buffer if it exists
+        if (scene.m_lights != nullptr)
+        {
+            cudaFree(scene.m_lights);
+            scene.m_lights = nullptr;
+        }
+
+        // Allocate new buffer with extra capacity
+        scene.m_maxLightCapacity = totalNumTriLights + 100; // Add some headroom
+        cudaMalloc((void **)&scene.m_lights, scene.m_maxLightCapacity * sizeof(LightInfo));
+    }
+    else if (scene.m_lights == nullptr && totalNumTriLights > 0)
+    {
+        // First time allocation
+        scene.m_maxLightCapacity = totalNumTriLights + 100;
+        cudaMalloc((void **)&scene.m_lights, scene.m_maxLightCapacity * sizeof(LightInfo));
+    }
 
     // Generate light info
     unsigned int currentGlobalOffset = 0;
@@ -426,21 +452,36 @@ void VoxelEngine::uploadInstanceLightMapping()
 
     // Upload instance light mapping
     scene.instanceLightMappingSize = scene.instanceLightMapping.size();
-    size_t mappingSizeInBytes = scene.instanceLightMappingSize * sizeof(InstanceLightMapping);
-    cudaMalloc((void **)&scene.d_instanceLightMapping, mappingSizeInBytes);
-    cudaMemcpy(scene.d_instanceLightMapping, scene.instanceLightMapping.data(), mappingSizeInBytes, cudaMemcpyHostToDevice);
+
+    // Only allocate and copy if we have mappings
+    if (scene.instanceLightMappingSize > 0)
+    {
+        size_t mappingSizeInBytes = scene.instanceLightMappingSize * sizeof(InstanceLightMapping);
+        cudaMalloc((void **)&scene.d_instanceLightMapping, mappingSizeInBytes);
+        cudaMemcpy(scene.d_instanceLightMapping, scene.instanceLightMapping.data(), mappingSizeInBytes, cudaMemcpyHostToDevice);
+    }
 }
 
 void VoxelEngine::buildLightAliasTable(unsigned int totalNumTriLights)
 {
     auto &scene = Scene::Get();
 
-    // Build alias table. If we have an existing table and the size is different
-    if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights)
+    if (totalNumTriLights > 0)
     {
-        scene.lightAliasTable = AliasTable(); // trigger the destructor and constructor
+        // Build alias table. If we have an existing table and the size is different
+        if (scene.lightAliasTable.initialized() && scene.lightAliasTable.size() != totalNumTriLights)
+        {
+            scene.lightAliasTable = AliasTable(); // trigger the destructor and constructor
+        }
+        buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
     }
-    buildAliasTable(scene.m_lights, totalNumTriLights, scene.lightAliasTable, scene.accumulatedLocalLightLuminance);
+    else
+    {
+        // No lights - reset alias table
+        scene.lightAliasTable = AliasTable();
+        scene.accumulatedLocalLightLuminance = 0.0f;
+    }
+
     cudaMemcpy(scene.d_lightAliasTable, &scene.lightAliasTable, sizeof(AliasTable), cudaMemcpyHostToDevice);
 }
 
@@ -453,26 +494,15 @@ void VoxelEngine::updateLight()
         return;
     }
 
-    // ensure all existing GPU data is properly cleared
+    // Save previous light count for ReSTIR
+    scene.m_prevNumLights = scene.m_currentNumLights;
+
+    // Clear any existing light mapping data
+    if (scene.d_instanceLightMapping != nullptr)
     {
-        // Clear any existing light mapping data
-        if (scene.d_instanceLightMapping != nullptr)
-        {
-            cudaFree(scene.d_instanceLightMapping);
-            scene.d_instanceLightMapping = nullptr;
-        }
-
-        // Clear any existing lights
-        if (scene.m_lights != nullptr)
-        {
-            cudaFree(scene.m_lights);
-            scene.m_lights = nullptr;
-        }
-
-        // Reset light counts for ReSTIR
-        scene.m_prevNumLights = scene.m_currentNumLights;
-        scene.m_currentNumLights = 0;
-        scene.m_lightsNeedUpdate = true;
+        cudaFree(scene.d_instanceLightMapping);
+        scene.d_instanceLightMapping = nullptr;
+        scene.instanceLightMappingSize = 0;
     }
 
     // Count total light triangles
@@ -480,17 +510,20 @@ void VoxelEngine::updateLight()
 
     scene.accumulatedLocalLightLuminance = 0.0f;
 
-    if (totalNumTriLights > 0)
-    {
-        // Generate instance lights
-        generateInstanceLights(totalNumTriLights);
+    // Generate instance lights (handles dynamic resizing internally)
+    generateInstanceLights(totalNumTriLights);
 
-        // Upload light mapping
-        uploadInstanceLightMapping();
+    // Upload light mapping
+    uploadInstanceLightMapping();
 
-        // Build light alias table
-        buildLightAliasTable(totalNumTriLights);
-    }
+    // Build light alias table
+    buildLightAliasTable(totalNumTriLights);
+
+    // Update current light count
+    scene.m_currentNumLights = totalNumTriLights;
+
+    scene.m_lightsJustUpdated = true;
+    scene.m_lightsNeedUpdate = false;
 
     cudaDeviceSynchronize();
 }
