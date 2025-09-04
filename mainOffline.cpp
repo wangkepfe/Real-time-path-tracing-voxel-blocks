@@ -231,8 +231,7 @@ int main(int argc, char *argv[])
             // Begin performance tracking for this frame
             perfTracker.beginFrame(frameNumber, width, height, frameComment);
 
-            // Update unified time management for this frame
-            GlobalSettings::UpdateTime();
+            // Time management is now handled by OfflineBackend's Timer internally
 
             if (shouldSave)
             {

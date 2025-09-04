@@ -4,7 +4,6 @@
 #include <iostream>
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #ifndef OFFLINE_MODE
 #include <GLFW/glfw3.h>
 #endif
@@ -109,7 +108,8 @@ bool GlobalSettings::LoadFromYAML(const std::string &filepath)
         }
         else if (currentSection == "postprocess")
         {
-            parsePostProcessSettings(key, value);
+            parseToneMappingSettings(key, value);
+            parsePostProcessingPipelineSettings(key, value);
         }
         else if (currentSection == "sky")
         {
@@ -189,9 +189,54 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
 
     // Save Post Processing Parameters
     file << "postprocess:\n";
-    file << "  postGain: " << postProcessParams.postGain << "\n";
-    file << "  gain: " << postProcessParams.gain << "\n";
-    file << "  maxWhite: " << postProcessParams.maxWhite << "\n\n";
+    // Tone mapping parameters
+    file << "  manualExposure: " << toneMappingParams.manualExposure << "\n";
+    file << "  toneMappingCurve: " << static_cast<int>(toneMappingParams.curve) << "\n";
+    file << "  highlightDesaturation: " << toneMappingParams.highlightDesaturation << "\n";
+    file << "  whitePoint: " << toneMappingParams.whitePoint << "\n";
+    file << "  contrast: " << toneMappingParams.contrast << "\n";
+    file << "  saturation: " << toneMappingParams.saturation << "\n";
+    file << "  gain: " << toneMappingParams.gain << "\n";
+    file << "  lift: " << toneMappingParams.lift << "\n";
+    file << "  enableChromaticAdaptation: " << (toneMappingParams.enableChromaticAdaptation ? "true" : "false") << "\n";
+    
+    // Post processing pipeline parameters
+    // Bloom parameters
+    file << "  enableBloom: " << (postProcessingPipelineParams.enableBloom ? "true" : "false") << "\n";
+    file << "  bloomThreshold: " << postProcessingPipelineParams.bloomThreshold << "\n";
+    file << "  bloomIntensity: " << postProcessingPipelineParams.bloomIntensity << "\n";
+    file << "  bloomRadius: " << postProcessingPipelineParams.bloomRadius << "\n";
+    file << "  bloomDownsampleLevels: " << postProcessingPipelineParams.bloomDownsampleLevels << "\n";
+    
+    // Auto-exposure parameters
+    file << "  enableAutoExposure: " << (postProcessingPipelineParams.enableAutoExposure ? "true" : "false") << "\n";
+    file << "  exposureSpeed: " << postProcessingPipelineParams.exposureSpeed << "\n";
+    file << "  exposureMin: " << postProcessingPipelineParams.exposureMin << "\n";
+    file << "  exposureMax: " << postProcessingPipelineParams.exposureMax << "\n";
+    file << "  exposureCompensation: " << postProcessingPipelineParams.exposureCompensation << "\n";
+    file << "  histogramMinPercent: " << postProcessingPipelineParams.histogramMinPercent << "\n";
+    file << "  histogramMaxPercent: " << postProcessingPipelineParams.histogramMaxPercent << "\n";
+    file << "  luminanceMipLevels: " << postProcessingPipelineParams.luminanceMipLevels << "\n";
+    file << "  targetLuminance: " << postProcessingPipelineParams.targetLuminance << "\n";
+    
+    // Vignette parameters
+    file << "  enableVignette: " << (postProcessingPipelineParams.enableVignette ? "true" : "false") << "\n";
+    file << "  vignetteStrength: " << postProcessingPipelineParams.vignetteStrength << "\n";
+    file << "  vignetteRadius: " << postProcessingPipelineParams.vignetteRadius << "\n";
+    file << "  vignetteSmoothness: " << postProcessingPipelineParams.vignetteSmoothness << "\n";
+    
+    // Lens Flare parameters
+    file << "  enableLensFlare: " << (postProcessingPipelineParams.enableLensFlare ? "true" : "false") << "\n";
+    file << "  lensFlareIntensity: " << postProcessingPipelineParams.lensFlareIntensity << "\n";
+    file << "  lensFlareThreshold: " << postProcessingPipelineParams.lensFlareThreshold << "\n";
+    file << "  lensFlareGhostSpacing: " << postProcessingPipelineParams.lensFlareGhostSpacing << "\n";
+    file << "  lensFlareGhostCount: " << postProcessingPipelineParams.lensFlareGhostCount << "\n";
+    file << "  lensFlareHaloRadius: " << postProcessingPipelineParams.lensFlareHaloRadius << "\n";
+    file << "  lensFlareSunSize: " << postProcessingPipelineParams.lensFlareSunSize << "\n";
+    file << "  lensFlareDistortion: " << postProcessingPipelineParams.lensFlareDistortion << "\n";
+    file << "  lensFlareHalfRes: " << (postProcessingPipelineParams.lensFlareHalfRes ? "true" : "false") << "\n";
+    file << "  lensFlareNeighborFilter: " << (postProcessingPipelineParams.lensFlareNeighborFilter ? "true" : "false") << "\n";
+    file << "  lensFlareMaxSpots: " << postProcessingPipelineParams.lensFlareMaxSpots << "\n\n";
 
     // Save Sky Parameters
     file << "sky:\n";
@@ -324,14 +369,99 @@ void GlobalSettings::parseDenosingSettings(const std::string &key, const std::st
         parseFloat(value, denoisingParams.denoisingRange);
 }
 
-void GlobalSettings::parsePostProcessSettings(const std::string &key, const std::string &value)
+void GlobalSettings::parseToneMappingSettings(const std::string &key, const std::string &value)
 {
-    if (key == "postGain")
-        parseFloat(value, postProcessParams.postGain);
+    if (key == "manualExposure")
+        parseFloat(value, toneMappingParams.manualExposure);
+    else if (key == "toneMappingCurve")
+    {
+        int curveValue;
+        if (parseInt(value, curveValue))
+            toneMappingParams.curve = static_cast<ToneMappingParams::ToneMappingCurve>(curveValue);
+    }
+    else if (key == "highlightDesaturation")
+        parseFloat(value, toneMappingParams.highlightDesaturation);
+    else if (key == "whitePoint")
+        parseFloat(value, toneMappingParams.whitePoint);
+    else if (key == "contrast")
+        parseFloat(value, toneMappingParams.contrast);
+    else if (key == "saturation")
+        parseFloat(value, toneMappingParams.saturation);
     else if (key == "gain")
-        parseFloat(value, postProcessParams.gain);
-    else if (key == "maxWhite")
-        parseFloat(value, postProcessParams.maxWhite);
+        parseFloat(value, toneMappingParams.gain);
+    else if (key == "lift")
+        parseFloat(value, toneMappingParams.lift);
+    else if (key == "enableChromaticAdaptation")
+        toneMappingParams.enableChromaticAdaptation = (value == "true");
+}
+
+void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key, const std::string &value)
+{
+    // Bloom parameters
+    if (key == "enableBloom")
+        postProcessingPipelineParams.enableBloom = (value == "true");
+    else if (key == "bloomThreshold")
+        parseFloat(value, postProcessingPipelineParams.bloomThreshold);
+    else if (key == "bloomIntensity")
+        parseFloat(value, postProcessingPipelineParams.bloomIntensity);
+    else if (key == "bloomRadius")
+        parseFloat(value, postProcessingPipelineParams.bloomRadius);
+    else if (key == "bloomDownsampleLevels")
+        parseInt(value, postProcessingPipelineParams.bloomDownsampleLevels);
+    
+    // Auto-exposure parameters
+    else if (key == "enableAutoExposure")
+        postProcessingPipelineParams.enableAutoExposure = (value == "true");
+    else if (key == "exposureSpeed")
+        parseFloat(value, postProcessingPipelineParams.exposureSpeed);
+    else if (key == "exposureMin")
+        parseFloat(value, postProcessingPipelineParams.exposureMin);
+    else if (key == "exposureMax")
+        parseFloat(value, postProcessingPipelineParams.exposureMax);
+    else if (key == "exposureCompensation")
+        parseFloat(value, postProcessingPipelineParams.exposureCompensation);
+    else if (key == "histogramMinPercent")
+        parseFloat(value, postProcessingPipelineParams.histogramMinPercent);
+    else if (key == "histogramMaxPercent")
+        parseFloat(value, postProcessingPipelineParams.histogramMaxPercent);
+    else if (key == "luminanceMipLevels")
+        parseInt(value, postProcessingPipelineParams.luminanceMipLevels);
+    else if (key == "targetLuminance")
+        parseFloat(value, postProcessingPipelineParams.targetLuminance);
+    
+    // Vignette parameters
+    else if (key == "enableVignette")
+        postProcessingPipelineParams.enableVignette = (value == "true");
+    else if (key == "vignetteStrength")
+        parseFloat(value, postProcessingPipelineParams.vignetteStrength);
+    else if (key == "vignetteRadius")
+        parseFloat(value, postProcessingPipelineParams.vignetteRadius);
+    else if (key == "vignetteSmoothness")
+        parseFloat(value, postProcessingPipelineParams.vignetteSmoothness);
+    
+    // Lens Flare parameters
+    else if (key == "enableLensFlare")
+        postProcessingPipelineParams.enableLensFlare = (value == "true");
+    else if (key == "lensFlareIntensity")
+        parseFloat(value, postProcessingPipelineParams.lensFlareIntensity);
+    else if (key == "lensFlareThreshold")
+        parseFloat(value, postProcessingPipelineParams.lensFlareThreshold);
+    else if (key == "lensFlareGhostSpacing")
+        parseFloat(value, postProcessingPipelineParams.lensFlareGhostSpacing);
+    else if (key == "lensFlareGhostCount")
+        parseInt(value, postProcessingPipelineParams.lensFlareGhostCount);
+    else if (key == "lensFlareHaloRadius")
+        parseFloat(value, postProcessingPipelineParams.lensFlareHaloRadius);
+    else if (key == "lensFlareSunSize")
+        parseFloat(value, postProcessingPipelineParams.lensFlareSunSize);
+    else if (key == "lensFlareDistortion")
+        parseFloat(value, postProcessingPipelineParams.lensFlareDistortion);
+    else if (key == "lensFlareHalfRes")
+        postProcessingPipelineParams.lensFlareHalfRes = (value == "true");
+    else if (key == "lensFlareNeighborFilter")
+        postProcessingPipelineParams.lensFlareNeighborFilter = (value == "true");
+    else if (key == "lensFlareMaxSpots")
+        parseInt(value, postProcessingPipelineParams.lensFlareMaxSpots);
 }
 
 void GlobalSettings::parseSkySettings(const std::string &key, const std::string &value)
@@ -430,68 +560,4 @@ void GlobalSettings::parseRenderingSettings(const std::string &key, const std::s
         parseInt(value, renderingParams.minRenderHeight);
 }
 
-// Static member definitions for time management
-float GlobalSettings::currentTime = 0.0f;
-float GlobalSettings::lastTime = -1.0f;
-float GlobalSettings::deltaTime = 0.0f;
-int GlobalSettings::frameCounter = 0;
-
-// Unified time management implementation
-float GlobalSettings::GetGameTime()
-{
-    if (IsOfflineMode())
-    {
-        const float targetFPS = 30.0f;
-        return frameCounter * (1.0f / targetFPS);
-    }
-    else
-    {
-#ifdef OFFLINE_MODE
-        // For offline builds, use std::chrono instead of GLFW
-        static auto startTime = std::chrono::high_resolution_clock::now();
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<float>(currentTime - startTime);
-        return elapsed.count();
-#else
-        return static_cast<float>(glfwGetTime());
-#endif
-    }
-}
-
-float GlobalSettings::GetDeltaTime()
-{
-    return deltaTime;
-}
-
-void GlobalSettings::UpdateTime()
-{
-    if (IsOfflineMode())
-    {
-        frameCounter++;
-        const float targetFPS = 30.0f;
-        deltaTime = 1.0f / targetFPS;
-        currentTime = frameCounter * deltaTime;
-    }
-    else
-    {
-#ifdef OFFLINE_MODE
-        // For offline builds, use std::chrono instead of GLFW
-        static auto startTime = std::chrono::high_resolution_clock::now();
-        auto currentTimePoint = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<float>(currentTimePoint - startTime);
-        currentTime = elapsed.count();
-#else
-        currentTime = static_cast<float>(glfwGetTime());
-#endif
-
-        if (lastTime < 0.0f)
-        {
-            deltaTime = 1.0f / 60.0f; // Default for first frame
-        }
-        else
-        {
-            deltaTime = currentTime - lastTime;
-        }
-        lastTime = currentTime;
-    }
-}
+// Time management is now handled by Backend's Timer.h

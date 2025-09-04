@@ -33,6 +33,17 @@ enum Buffer2DName
     SunBuffer,
     DebugBuffer,
     UIBuffer,
+    
+    // Post-processing pipeline buffers
+    BloomExtractBuffer,
+    BloomTempBuffer,
+    LuminanceMip0Buffer,
+    LuminanceMip1Buffer,
+    LuminanceMip2Buffer,
+    LuminanceMip3Buffer,
+    LuminanceMip4Buffer,
+    LuminanceMip5Buffer,
+    
     Buffer2DCount,
 };
 

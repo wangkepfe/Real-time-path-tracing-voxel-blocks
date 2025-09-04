@@ -15,6 +15,7 @@
 #include <cstring>
 #include <iomanip>
 
+
 static void errorCallback(int error, const char *description)
 {
     std::cerr << "Error: " << error << ": " << description << '\n';
@@ -44,7 +45,7 @@ void Backend::init()
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-
+    
     m_window = glfwCreateWindow(m_width, m_height, "JazzFusion Renderer", NULL, NULL);
     if (!m_window)
     {
@@ -105,8 +106,7 @@ void Backend::mainloop()
         float minFrameTimeAllowed = 1000.0f / m_maxFpsAllowed;
         m_timer.updateWithLimiter(minFrameTimeAllowed);
 
-        // Update unified time management
-        GlobalSettings::UpdateTime();
+        // Time management is now handled by Backend's Timer
 
         dynamicResolution();
 
@@ -142,14 +142,14 @@ void Backend::mainloop()
         }
         */
 
-        voxelengine.update();
+        voxelengine.update(m_timer.getDeltaTime());
 
         renderer.render();
 
         denoiser.run(renderer.getWidth(), renderer.getHeight(), m_historyRenderWidth, m_historyRenderHeight);
 
         mapInteropBuffer();
-        postProcessor.run(m_interopBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height);
+        postProcessor.run(m_interopBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height, m_timer.getDeltaTime());
         unmapInteropBuffer();
 
         ui.update();

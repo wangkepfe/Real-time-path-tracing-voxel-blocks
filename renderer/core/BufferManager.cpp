@@ -176,6 +176,16 @@ void BufferManager::init()
             {SunBuffer, {cudaCreateChannelDesc<float4>(), sunSize, cudaArraySurfaceLoadStore, NoTexture}},
             {DebugBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {UIBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            
+            // Post-processing pipeline buffers
+            {BloomExtractBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {BloomTempBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {LuminanceMip0Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/2, bufferSize.y/2), cudaArraySurfaceLoadStore, NoTexture}},
+            {LuminanceMip1Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/4, bufferSize.y/4), cudaArraySurfaceLoadStore, NoTexture}},
+            {LuminanceMip2Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/8, bufferSize.y/8), cudaArraySurfaceLoadStore, NoTexture}},
+            {LuminanceMip3Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/16, bufferSize.y/16), cudaArraySurfaceLoadStore, NoTexture}},
+            {LuminanceMip4Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/32, bufferSize.y/32), cudaArraySurfaceLoadStore, NoTexture}},
+            {LuminanceMip5Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/64, bufferSize.y/64), cudaArraySurfaceLoadStore, NoTexture}},
         };
 
     assert(map.size() == Buffer2DCount);
@@ -184,7 +194,7 @@ void BufferManager::init()
     for (int i = 0; i < Buffer2DCount; ++i)
     {
         const Buffer2DDesc &desc = map[static_cast<Buffer2DName>(i)];
-        m_buffers[i].init(static_cast<Buffer2DName>(i), &desc.format, desc.dim, desc.usageFlag);
+        m_buffers[i].init(desc.textureMode, &desc.format, desc.dim, desc.usageFlag);
     }
 
     {

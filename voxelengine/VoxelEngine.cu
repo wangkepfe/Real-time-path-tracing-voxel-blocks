@@ -2,6 +2,8 @@
 #include "VoxelMath.h"
 #include "voxelengine/BlockType.h"
 
+#include <climits> // For UINT_MAX
+
 #include "core/Scene.h"
 #ifndef OFFLINE_MODE
 #include "core/InputHandler.h"
@@ -462,6 +464,138 @@ void VoxelEngine::uploadInstanceLightMapping()
     }
 }
 
+void VoxelEngine::buildLightIdMapping(unsigned int totalNumTriLights, LightInfo *prevLights, unsigned int prevNumLights)
+{
+    auto &scene = Scene::Get();
+
+    // Build mapping from previous frame light IDs to current frame light IDs
+    scene.m_prevLightIdToCurrentId.clear();
+    scene.m_prevLightIdToCurrentId.resize(prevNumLights, -1);
+
+    if (prevNumLights == 0)
+    {
+        // No previous lights, nothing to map
+        return;
+    }
+
+    if (scene.m_lightUpdateType == Scene::LightUpdateType::INCREMENTAL)
+    {
+        // Incremental update: use smart instance-based mapping
+        buildIncrementalLightMapping(totalNumTriLights, prevNumLights);
+    }
+
+    scene.m_changedInstances.clear();
+    scene.m_removedInstances.clear();
+
+    // Upload mapping to GPU
+    if (scene.d_prevLightIdToCurrentId)
+    {
+        cudaFree(scene.d_prevLightIdToCurrentId);
+        scene.d_prevLightIdToCurrentId = nullptr;
+    }
+
+    if (prevNumLights > 0)
+    {
+        cudaMalloc((void **)&scene.d_prevLightIdToCurrentId, prevNumLights * sizeof(int));
+        cudaMemcpy(scene.d_prevLightIdToCurrentId, scene.m_prevLightIdToCurrentId.data(),
+                   prevNumLights * sizeof(int), cudaMemcpyHostToDevice);
+    }
+}
+
+void VoxelEngine::buildIncrementalLightMapping(unsigned int totalNumTriLights, unsigned int prevNumLights)
+{
+    auto &scene = Scene::Get();
+
+    // First, we need to save the previous instanceLightMapping before it gets rebuilt
+    // For a proper implementation, we should save this before generating new lights
+    // For now, we'll build a reverse mapping from the saved m_instanceToLightRange
+
+    // Build mapping from light index to instance ID for previous frame
+    std::vector<unsigned int> prevLightToInstance(prevNumLights, UINT_MAX);
+    for (const auto &[instanceId, lightRange] : scene.m_instanceToLightRange)
+    {
+        unsigned int lightOffset = lightRange.first;
+        unsigned int lightCount = lightRange.second;
+        for (unsigned int i = 0; i < lightCount; i++)
+        {
+            if (lightOffset + i < prevNumLights)
+            {
+                prevLightToInstance[lightOffset + i] = instanceId;
+            }
+        }
+    }
+
+    // Build mapping from instance ID to light range for current frame
+    std::unordered_map<unsigned int, std::pair<unsigned int, unsigned int>> currentInstanceToLightRange;
+    for (const auto &mapping : scene.instanceLightMapping)
+    {
+        currentInstanceToLightRange[mapping.instanceId] = {mapping.lightOffset, mapping.lightCount};
+    }
+
+    // Now build the light ID mapping
+    for (unsigned int prevIdx = 0; prevIdx < prevNumLights; prevIdx++)
+    {
+        // Default to no mapping (light removed)
+        scene.m_prevLightIdToCurrentId[prevIdx] = -1;
+
+        // Find which instance this previous light belonged to
+        unsigned int prevInstanceId = prevLightToInstance[prevIdx];
+
+        if (prevInstanceId == UINT_MAX)
+        {
+            // Unknown instance - this shouldn't happen in normal operation
+            continue;
+        }
+
+        // Check if this instance was removed
+        if (scene.m_removedInstances.find(prevInstanceId) != scene.m_removedInstances.end())
+        {
+            // Instance was removed, light no longer exists
+            continue;
+        }
+
+        // Check if this instance was changed (shouldn't happen for lights, but handle it)
+        if (scene.m_changedInstances.find(prevInstanceId) != scene.m_changedInstances.end())
+        {
+            // Instance was changed - for now treat as removed
+            // In a more sophisticated system, we might try to match lights within the instance
+            continue;
+        }
+
+        // Instance is unchanged - find its current light range
+        auto currentRangeIt = currentInstanceToLightRange.find(prevInstanceId);
+        if (currentRangeIt != currentInstanceToLightRange.end())
+        {
+            // Calculate the relative position of this light within its instance
+            auto prevRangeIt = scene.m_instanceToLightRange.find(prevInstanceId);
+            if (prevRangeIt != scene.m_instanceToLightRange.end())
+            {
+                unsigned int prevOffset = prevRangeIt->second.first;
+                unsigned int prevCount = prevRangeIt->second.second;
+                unsigned int currentOffset = currentRangeIt->second.first;
+                unsigned int currentCount = currentRangeIt->second.second;
+
+                // Calculate relative position within the instance
+                unsigned int relativePos = prevIdx - prevOffset;
+
+                // Verify the relative position is valid
+                if (relativePos < prevCount && relativePos < currentCount)
+                {
+                    // Map to the same relative position in the current frame
+                    unsigned int currentIdx = currentOffset + relativePos;
+                    if (currentIdx < totalNumTriLights)
+                    {
+                        scene.m_prevLightIdToCurrentId[prevIdx] = currentIdx;
+                    }
+                }
+            }
+        }
+    }
+
+    // Update the instance to light range mapping for next frame
+    scene.m_instanceToLightRange = currentInstanceToLightRange;
+}
+
 void VoxelEngine::buildLightAliasTable(unsigned int totalNumTriLights)
 {
     auto &scene = Scene::Get();
@@ -494,6 +628,16 @@ void VoxelEngine::updateLight()
         return;
     }
 
+    // Save previous lights for temporal coherence mapping
+    unsigned int prevNumLights = scene.m_currentNumLights;
+    LightInfo *prevLights = nullptr;
+    if (prevNumLights > 0 && scene.m_lights)
+    {
+        size_t prevLightsSize = prevNumLights * sizeof(LightInfo);
+        prevLights = (LightInfo *)malloc(prevLightsSize);
+        cudaMemcpy(prevLights, scene.m_lights, prevLightsSize, cudaMemcpyDeviceToHost);
+    }
+
     // Save previous light count for ReSTIR
     scene.m_prevNumLights = scene.m_currentNumLights;
 
@@ -516,6 +660,9 @@ void VoxelEngine::updateLight()
     // Upload light mapping
     uploadInstanceLightMapping();
 
+    // Build light ID mapping for temporal coherence
+    buildLightIdMapping(totalNumTriLights, prevLights, prevNumLights);
+
     // Build light alias table
     buildLightAliasTable(totalNumTriLights);
 
@@ -525,7 +672,11 @@ void VoxelEngine::updateLight()
     scene.m_lightsJustUpdated = true;
     scene.m_lightsNeedUpdate = false;
 
-    cudaDeviceSynchronize();
+    // Clean up previous lights
+    if (prevLights)
+    {
+        free(prevLights);
+    }
 }
 
 // Multi-chunk version with chunk-specific face tracking
@@ -623,6 +774,8 @@ void VoxelEngine::init()
     initInstanceGeometry();
     collectInstanceTransforms();
 
+    // Full rebuild for scene init
+    scene.m_lightUpdateType = Scene::LightUpdateType::FULL_REBUILD;
     scene.m_lightsNeedUpdate = true;
     updateLight();
 
@@ -654,6 +807,8 @@ void VoxelEngine::reload()
 
     collectInstanceTransforms();
 
+    // Full rebuild for scene reload
+    scene.m_lightUpdateType = Scene::LightUpdateType::FULL_REBUILD;
     scene.m_lightsNeedUpdate = true;
     updateLight();
 
@@ -661,7 +816,7 @@ void VoxelEngine::reload()
     scene.needSceneReloadUpdate = true;
 }
 
-void VoxelEngine::update()
+void VoxelEngine::update(float deltaTime)
 {
     // Reset center block info
     centerBlockInfo.hasValidBlock = false;
@@ -669,8 +824,7 @@ void VoxelEngine::update()
     centerBlockInfo.blockName = "Empty";
     centerBlockInfo.position = Int3(-1, -1, -1);
 
-    // Use unified time management from GlobalSettings
-    float deltaTime = GlobalSettings::GetDeltaTime();
+    // Delta time is now passed as parameter from Backend's Timer
 
     // Update entities
     auto &scene = Scene::Get();
@@ -985,6 +1139,9 @@ void VoxelEngine::deleteInstancedBlock(const Int3 &pos, int blockId)
 
     if (Assets::BlockManager::Get().isEmissive(blockId))
     {
+        // Mark for incremental light update
+        scene.m_lightUpdateType = Scene::LightUpdateType::INCREMENTAL;
+        scene.m_removedInstances.insert(instanceId);
         scene.m_lightsNeedUpdate = true;
     }
 
@@ -1054,6 +1211,9 @@ void VoxelEngine::addInstancedBlock(const Int3 &pos, int blockId)
 
     if (Assets::BlockManager::Get().isEmissive(blockId))
     {
+        // Mark for incremental light update
+        scene.m_lightUpdateType = Scene::LightUpdateType::INCREMENTAL;
+        scene.m_changedInstances.insert(instanceId);
         scene.m_lightsNeedUpdate = true;
     }
 

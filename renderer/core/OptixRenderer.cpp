@@ -370,7 +370,7 @@ void OptixRenderer::render()
     m_systemParameter.camera = currentCameraForShader;
     m_systemParameter.prevCamera = historyCameraForShader;
 
-    m_systemParameter.timeInSecond = GlobalSettings::GetGameTime();
+    m_systemParameter.timeInSecond = backend.getTimer().getTime() / 1000.0f; // Convert ms to seconds
 
     const auto &skyModel = SkyModel::Get();
     m_systemParameter.sunDir = skyModel.getSunDir();
@@ -392,7 +392,7 @@ void OptixRenderer::render()
         scene.m_lightsJustUpdated = false;
     }
 
-    updateAnimatedEntities(backend.getCudaStream(), GlobalSettings::GetGameTime());
+    updateAnimatedEntities(backend.getCudaStream(), backend.getTimer().getTime() / 1000.0f, backend.getTimer().getDeltaTime());
 
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
@@ -418,12 +418,11 @@ void OptixRenderer::render()
     }
 }
 
-void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime)
+void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime, float deltaTime)
 {
     auto &scene = Scene::Get();
 
-    // Use unified delta time from GlobalSettings
-    float deltaTime = GlobalSettings::GetDeltaTime();
+    // Delta time is now passed as parameter from Backend's Timer
 
     // Update each animated entity
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)

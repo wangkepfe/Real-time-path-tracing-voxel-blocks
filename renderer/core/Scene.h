@@ -97,6 +97,21 @@ public:
     std::vector<int> m_prevLightIdToCurrentId;
     int *d_prevLightIdToCurrentId = nullptr;
 
+    // Smart light update tracking
+    enum class LightUpdateType {
+        FULL_REBUILD,    // Scene init/reload - need full rebuild
+        INCREMENTAL      // Add/remove block - can do incremental update
+    };
+    LightUpdateType m_lightUpdateType = LightUpdateType::FULL_REBUILD;
+    
+    // For incremental updates: instanceID to light range mapping
+    // Maps instanceID -> {lightOffset, lightCount} in the global light array
+    std::unordered_map<unsigned int, std::pair<unsigned int, unsigned int>> m_instanceToLightRange;
+    
+    // Track changed instances for incremental updates
+    std::set<unsigned int> m_changedInstances;  // instanceIDs that changed
+    std::set<unsigned int> m_removedInstances;  // instanceIDs that were removed
+
     // Entity management
     std::vector<std::unique_ptr<Entity>> m_entities;
 

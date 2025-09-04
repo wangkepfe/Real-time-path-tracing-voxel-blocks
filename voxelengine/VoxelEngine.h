@@ -22,7 +22,7 @@ public:
     ~VoxelEngine();
 
     void init();
-    void update();
+    void update(float deltaTime);
     void generateVoxels();
     void reload();
     void initEntities();
@@ -102,6 +102,8 @@ private:
     unsigned int countLightTriangles();
     void generateInstanceLights(unsigned int totalNumTriLights);
     void uploadInstanceLightMapping();
+    void buildLightIdMapping(unsigned int totalNumTriLights, LightInfo *prevLights, unsigned int prevNumLights);
+    void buildIncrementalLightMapping(unsigned int totalNumTriLights, unsigned int prevNumLights);
     void buildLightAliasTable(unsigned int totalNumTriLights);
 
     VoxelEngine()

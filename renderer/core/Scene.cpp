@@ -19,12 +19,10 @@ Scene::Scene()
 
     // Initialize light ID mapping
     m_prevLightIdToCurrentId.resize(m_maxLightCapacity, -1);
-    printf("DEBUG: Scene constructor complete - d_prevLightIdToCurrentId=%p\n", d_prevLightIdToCurrentId);
 }
 
 Scene::~Scene()
 {
-    printf("DEBUG: Scene destructor called - this=%p\n", this);
     if (edgeToHighlight)
     {
         CUDA_CHECK(cudaFree(edgeToHighlight));
@@ -41,14 +39,12 @@ Scene::~Scene()
 
     if (d_instanceLightMapping)
     {
-        printf("DEBUG: Freeing d_instanceLightMapping=%p\n", d_instanceLightMapping);
         CUDA_CHECK(cudaFree(d_instanceLightMapping));
         d_instanceLightMapping = nullptr;
     }
 
     if (d_prevLightIdToCurrentId)
     {
-        printf("DEBUG: Freeing d_prevLightIdToCurrentId=%p\n", d_prevLightIdToCurrentId);
         CUDA_CHECK(cudaFree(d_prevLightIdToCurrentId));
         d_prevLightIdToCurrentId = nullptr;
     }

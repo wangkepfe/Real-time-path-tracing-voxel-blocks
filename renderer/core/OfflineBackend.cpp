@@ -61,7 +61,7 @@ void OfflineBackend::renderFrame(const std::string &outputPath)
     // Renderer update timing
     perfTracker.startTiming("rendererUpdate");
     renderer.update();
-    voxelengine.update();
+    voxelengine.update(m_timer.getDeltaTime());
     perfTracker.setRendererUpdateTime(perfTracker.endTiming("rendererUpdate"));
 
     // Path tracing timing
@@ -76,7 +76,7 @@ void OfflineBackend::renderFrame(const std::string &outputPath)
 
     // Post processing timing
     perfTracker.startTiming("postProcessing");
-    postProcessor.run(m_frameBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height);
+    postProcessor.run(m_frameBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height, m_timer.getDeltaTime());
     perfTracker.setPostProcessingTime(perfTracker.endTiming("postProcessing"));
 
     // Only store frame in batch if outputPath is provided (not empty)
