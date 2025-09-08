@@ -39,9 +39,44 @@ denoising:
   denoisingRange: 500000
 
 postprocess:
-  postGain: 1
+  manualExposure: 0.8
+  toneMappingCurve: 0
+  highlightDesaturation: 0.8
+  whitePoint: 10
+  contrast: 1
+  saturation: 1
   gain: 16
-  maxWhite: 1
+  lift: 0
+  enableChromaticAdaptation: true
+  enableBloom: true
+  bloomThreshold: 1
+  bloomIntensity: 0.15
+  bloomRadius: 2
+  bloomDownsampleLevels: 5
+  enableAutoExposure: true
+  exposureSpeed: 1
+  exposureMin: -8
+  exposureMax: 8
+  exposureCompensation: -2
+  histogramMinPercent: 40
+  histogramMaxPercent: 80
+  luminanceMipLevels: 6
+  targetLuminance: 0.18
+  enableVignette: false
+  vignetteStrength: 0.5
+  vignetteRadius: 0.8
+  vignetteSmoothness: 0.5
+  enableLensFlare: false
+  lensFlareIntensity: 0.01
+  lensFlareThreshold: 4
+  lensFlareGhostSpacing: 0.08
+  lensFlareGhostCount: 4
+  lensFlareHaloRadius: 0.1
+  lensFlareSunSize: 0.006
+  lensFlareDistortion: 0.0015
+  lensFlareHalfRes: true
+  lensFlareNeighborFilter: true
+  lensFlareMaxSpots: 16
 
 sky:
   timeOfDay: 0.25
@@ -63,7 +98,7 @@ character_movement:
 
 character_animation:
   walkSpeedThreshold: 0.1
-  mediumSpeedThreshold: 1.0
+  mediumSpeedThreshold: 1
   runSpeedThreshold: 0.1
   runMediumSpeedThreshold: 1.5
   animationSpeed: 1
