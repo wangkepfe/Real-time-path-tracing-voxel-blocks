@@ -820,6 +820,7 @@ extern "C" __global__ void __closesthit__radiance()
     // Shading
     DIReservoir shadingReservoir = enableReSTIR ? restirReservoir : risReservoir;
 
+    float currLuminance = 0.0f;
     if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(shadingReservoir))
     {
         if (isLightVisible)
@@ -837,7 +838,17 @@ extern "C" __global__ void __closesthit__radiance()
             Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
 
             rayData->radiance += shadowRayRadiance;
+
+            // Calculate luminance for gradient computation (similar to RTXDI)
+            currLuminance = luminance(bsdf * state.albedo);
         }
+    }
+
+    // Store the sampled lighting luminance for the gradient pass.
+    // Since we are not reusing visibility, we always store the luminance.
+    if (enableReSTIR)
+    {
+        Store2DFloat1(currLuminance, sysParam.restirLuminanceBuffer, pixelPosition);
     }
 
     // Store the reservoir

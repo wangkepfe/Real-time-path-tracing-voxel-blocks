@@ -2,6 +2,7 @@
 
 #include "shaders/LinearMath.h"
 #include "shaders/Camera.h"
+#include "shaders/Sampler.h"
 
 __device__ float LinearStep(float a, float b, float x)
 {
@@ -510,4 +511,29 @@ __device__ Float4 RngHashGetFloat4(unsigned int &rngHashState)
 {
     UInt4 x = RngHashGetUint4(rngHashState);
     return UintToFloat01(x);
+}
+
+// Bilinear sampling for Float4 from surface object
+__device__ Float4 BilinearSample2DFloat4(SurfObj surfObj, Float2 pixelPos)
+{
+    // Get integer and fractional parts
+    int x0 = (int)floor(pixelPos.x);
+    int y0 = (int)floor(pixelPos.y);
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+    
+    float fx = pixelPos.x - x0;
+    float fy = pixelPos.y - y0;
+    
+    // Sample four corners
+    Float4 c00 = Load2DFloat4(surfObj, Int2(x0, y0));
+    Float4 c10 = Load2DFloat4(surfObj, Int2(x1, y0));
+    Float4 c01 = Load2DFloat4(surfObj, Int2(x0, y1));
+    Float4 c11 = Load2DFloat4(surfObj, Int2(x1, y1));
+    
+    // Bilinear interpolation
+    Float4 c0 = c00 * (1.0f - fx) + c10 * fx;
+    Float4 c1 = c01 * (1.0f - fx) + c11 * fx;
+    
+    return c0 * (1.0f - fy) + c1 * fy;
 }

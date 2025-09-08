@@ -416,5 +416,9 @@ INL_DEVICE bool GetLightSampleFromReservoir(LightSample &ls, const DIReservoir &
         LightInfo lightInfo = sysParam.lights[lightIndex];
         TriangleLight triLight = TriangleLight::Create(lightInfo);
         ls = triLight.calcSample(uv, surface.pos);
+        return true;
     }
+    
+    return lightIndex < InvalidLightIndex;
 }
+

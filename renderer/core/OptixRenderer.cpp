@@ -852,6 +852,16 @@ void OptixRenderer::init()
 
         m_systemParameter.motionVectorBuffer = bufferManager.GetBuffer2D(MotionVectorBuffer);
 
+        // Confidence computation buffers
+        m_systemParameter.diffuseGradientBuffer = bufferManager.GetBuffer2D(DiffuseGradientBuffer);
+        m_systemParameter.filteredDiffuseGradientBuffer = bufferManager.GetBuffer2D(FilteredDiffuseGradientBuffer);
+        m_systemParameter.diffuseConfidenceBuffer = bufferManager.GetBuffer2D(DiffuseConfidenceBuffer);
+        m_systemParameter.prevDiffuseConfidenceBuffer = bufferManager.GetBuffer2D(PrevDiffuseConfidenceBuffer);
+        
+        // ReSTIR luminance buffers
+        m_systemParameter.restirLuminanceBuffer = bufferManager.GetBuffer2D(RestirLuminanceBuffer);
+        m_systemParameter.prevRestirLuminanceBuffer = bufferManager.GetBuffer2D(PrevRestirLuminanceBuffer);
+
         m_systemParameter.UIBuffer = bufferManager.GetBuffer2D(UIBuffer);
 
         m_systemParameter.randGen = d_randGen;

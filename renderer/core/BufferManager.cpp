@@ -186,6 +186,16 @@ void BufferManager::init()
             {LuminanceMip3Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/16, bufferSize.y/16), cudaArraySurfaceLoadStore, NoTexture}},
             {LuminanceMip4Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/32, bufferSize.y/32), cudaArraySurfaceLoadStore, NoTexture}},
             {LuminanceMip5Buffer, {cudaCreateChannelDesc<float4>(), Int2(bufferSize.x/64, bufferSize.y/64), cudaArraySurfaceLoadStore, NoTexture}},
+            
+            // Confidence computation buffers
+            {DiffuseGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {FilteredDiffuseGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {DiffuseConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevDiffuseConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            
+            // ReSTIR luminance buffers
+            {RestirLuminanceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevRestirLuminanceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
         };
 
     assert(map.size() == Buffer2DCount);

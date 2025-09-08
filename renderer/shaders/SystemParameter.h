@@ -65,6 +65,16 @@ struct SystemParameter
 
     SurfObj motionVectorBuffer;
 
+    // Confidence computation buffers
+    SurfObj diffuseGradientBuffer;
+    SurfObj filteredDiffuseGradientBuffer;
+    SurfObj diffuseConfidenceBuffer;
+    SurfObj prevDiffuseConfidenceBuffer;
+    
+    // ReSTIR luminance buffers
+    SurfObj restirLuminanceBuffer;
+    SurfObj prevRestirLuminanceBuffer;
+
     SurfObj UIBuffer;
 
     MaterialParameter *materialParameters;

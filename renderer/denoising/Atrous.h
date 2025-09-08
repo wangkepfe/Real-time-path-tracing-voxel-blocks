@@ -15,6 +15,9 @@ __global__ void Atrous(
     SurfObj historyLengthBuffer,
 
     SurfObj illuminationOutputBuffer,
+    
+    // Confidence buffers
+    SurfObj diffuseConfidenceBuffer,
 
     Camera camera,
     unsigned int frameIndex,
@@ -24,7 +27,12 @@ __global__ void Atrous(
     float phiLuminance,
     float depthThreshold,
     float roughnessFraction,
-    float lobeAngleFraction)
+    float lobeAngleFraction,
+    
+    // Confidence parameters  
+    bool useConfidenceAdaptation,
+    float confidenceDrivenRelaxationMultiplier,
+    float confidenceDrivenLuminanceEdgeStoppingRelaxation)
 {
     Int2 threadPos;
     threadPos.x = threadIdx.x;
@@ -63,11 +71,18 @@ __global__ void Atrous(
     float centerDiffuseVar = centerDiffuseIlluminationAndVariance.w;
     float diffusePhiLIlluminationInv = 1.0f / max(1.0e-4f, phiLuminance * sqrt(centerDiffuseVar));
 
-    //float diffuseLuminanceWeightRelaxation = 1.0f;
+    // Confidence-driven luminance weight relaxation
+    float diffuseLuminanceWeightRelaxation = 1.0f;
+    if (useConfidenceAdaptation)
+    {
+        float confidence = Load2DFloat1(diffuseConfidenceBuffer, pixelPos);
+        float confidenceDrivenRelaxation = saturate(confidenceDrivenRelaxationMultiplier * (1.0f - confidence));
+        diffuseLuminanceWeightRelaxation = 1.0f - saturate(confidenceDrivenRelaxation * confidenceDrivenLuminanceEdgeStoppingRelaxation);
+    }
     float diffuseNormalWeightParam = GetNormalWeightParam2(1.0f, diffuseLobeAngleFraction);
 
     float sumWDiffuse = 0.44198f * 0.44198f;
-    Float4 sumDiffuseIlluminationAndVariance = centerDiffuseIlluminationAndVariance * Float4(Float3(sumWDiffuse), sumWDiffuse * sumWDiffuse);
+    Float4 sumDiffuseIlluminationAndVariance = centerDiffuseIlluminationAndVariance * Float4(sumWDiffuse, sumWDiffuse, sumWDiffuse, sumWDiffuse * sumWDiffuse);
 
     const float kernelWeightGaussian3x3[2] = {0.44198f, 0.27901f};
 
@@ -79,7 +94,7 @@ __global__ void Atrous(
     if (stepSize > 4)
     {
         RngHashInitialize(rngHashState, UInt2(pixelPos.x, pixelPos.y), frameIndex);
-        Float2 offsetF = Float2(stepSize) * 0.5f * (RngHashGetFloat2(rngHashState) - 0.5f);
+        Float2 offsetF = Float2(stepSize, stepSize) * 0.5f * (RngHashGetFloat2(rngHashState) - 0.5f);
         offset = Int2(offsetF.x, offsetF.y);
     }
 
@@ -124,29 +139,31 @@ __global__ void Atrous(
             float normalWDiffuse = ComputeNonExponentialWeight(angled, diffuseNormalWeightParam, 0.0f);
 
             // Summing up diffuse
-            float weight = geometryW * normalWDiffuse;
-            weight *= (sampleMaterialID == centerMaterialID);
-            if (weight > 1e-4f)
+            float wDiffuse = geometryW * normalWDiffuse;
+            wDiffuse *= (sampleMaterialID == centerMaterialID);
+            if (wDiffuse > 1e-4f)
             {
                 Float4 sampleDiffuseIlluminationAndVariance = Load2DFloat4(illuminationInputBuffer, p);
                 float sampleDiffuseLuminance = luminance(sampleDiffuseIlluminationAndVariance.xyz);
 
                 float diffuseLuminanceW = abs(centerDiffuseLuminance - sampleDiffuseLuminance) * diffusePhiLIlluminationInv;
                 diffuseLuminanceW = min(maxDiffuseLuminanceRelativeDifference, diffuseLuminanceW);
-                weight *= exp(-diffuseLuminanceW);
+                diffuseLuminanceW *= diffuseLuminanceWeightRelaxation;
 
-                sumWDiffuse += weight;
-                sumDiffuseIlluminationAndVariance += Float4(Float3(weight), weight * weight) * sampleDiffuseIlluminationAndVariance;
+                wDiffuse *= exp(-diffuseLuminanceW);
+
+                sumWDiffuse += wDiffuse;
+                sumDiffuseIlluminationAndVariance += Float4(wDiffuse, wDiffuse, wDiffuse, wDiffuse * wDiffuse) * sampleDiffuseIlluminationAndVariance;
 
                 // if (CUDA_PIXEL(0.5f, 0.5f))
                 // {
-                //     DEBUG_PRINT(Float4(weight, geometryW, normalWDiffuse, sampleIndexDebug));
+                //     DEBUG_PRINT(Float4(wDiffuse, geometryW, normalWDiffuse, sampleIndexDebug));
                 //     DEBUG_PRINT(Float4(sampleDiffuseIlluminationAndVariance.xyz, sampleIndexDebug));
                 // }
             }
         }
     }
-    Float4 filteredDiffuseIlluminationAndVariance = Float4(sumDiffuseIlluminationAndVariance / Float4(Float3(sumWDiffuse), sumWDiffuse * sumWDiffuse));
+    Float4 filteredDiffuseIlluminationAndVariance = Float4(sumDiffuseIlluminationAndVariance.xyz / sumWDiffuse, sumDiffuseIlluminationAndVariance.w / (sumWDiffuse * sumWDiffuse));
 
     // if (CUDA_PIXEL(0.5f, 0.5f))
     // {

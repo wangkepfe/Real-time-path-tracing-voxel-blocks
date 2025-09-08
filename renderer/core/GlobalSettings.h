@@ -113,6 +113,8 @@ struct DenoisingParams
             {&enableHistoryClamping, "Enable History Clamping"},
             {&enableSpatialFiltering, "Enable Spatial Filtering (A-trous)"},
             {&enableAntiFirefly, "Enable Anti-Firefly"},
+            {&enableConfidenceComputation, "Enable Confidence Computation"},
+            {&enableTemporalFiltering, "Enable Temporal Filtering"},
         };
     }
 
@@ -157,6 +159,11 @@ struct DenoisingParams
             {&confidenceDrivenRelaxationMultiplier, "Confidence Driven Relaxation Multiplier"},
             {&confidenceDrivenLuminanceEdgeStoppingRelaxation, "Confidence Driven Luminance Edge Stopping Relaxation"},
             {&confidenceDrivenNormalEdgeStoppingRelaxation, "Confidence Driven Normal Edge Stopping Relaxation"},
+
+            // Confidence computation parameters
+            {&gradientScale, "Gradient Scale"},
+            {&temporalWeight, "Temporal Filtering Weight"},
+            {&restirConfidenceWeight, "ReSTIR Confidence Weight"},
         };
     }
 
@@ -166,6 +173,8 @@ struct DenoisingParams
             {&atrousIterationNum, "A-trous Iteration Number"},
             {&historyFixBasePixelStride, "History Fix Base Pixel Stride"},
             {&spatialVarianceEstimationHistoryThreshold, "Spatial Variance Estimation History Threshold"},
+            {&gradientFilterRadius, "Gradient Filter Radius"},
+            {&gradientFilterStepSize, "Gradient Filter Step Size"},
         };
     }
 
@@ -225,6 +234,15 @@ struct DenoisingParams
     float confidenceDrivenRelaxationMultiplier = 0.0f;
     float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
     float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
+
+    // Confidence computation parameters (RTXDI-based)
+    bool enableConfidenceComputation = true;
+    float gradientScale = 1.0f;
+    bool enableTemporalFiltering = true;
+    float temporalWeight = 0.1f;
+    float restirConfidenceWeight = 0.5f;
+    int gradientFilterRadius = 1;
+    int gradientFilterStepSize = 1;
 
     // Denoising range
     float denoisingRange = 500000.0f;

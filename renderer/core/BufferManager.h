@@ -44,6 +44,17 @@ enum Buffer2DName
     LuminanceMip4Buffer,
     LuminanceMip5Buffer,
     
+    // Confidence computation buffers  
+    DiffuseGradientBuffer,
+    FilteredDiffuseGradientBuffer,
+    DiffuseConfidenceBuffer,
+    PrevDiffuseConfidenceBuffer,
+    
+    // ReSTIR luminance buffers
+    RestirLuminanceBuffer,
+    PrevRestirLuminanceBuffer,
+    
+    
     Buffer2DCount,
 };
 
