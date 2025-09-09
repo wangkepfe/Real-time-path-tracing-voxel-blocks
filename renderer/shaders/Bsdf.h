@@ -590,3 +590,80 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
 
     pdf = diffusePdf * (1.0f - specularProb) + specularPdf * specularProb;
 }
+
+// Disney BSDF Evaluate function with separate diffuse and specular outputs (for NRD ReLaX)
+INL_DEVICE void DisneyBSDFEvaluateSeparated(Float3 n, Float3 ng, Float3 wi, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &diffuse, Float3 &specular, float &pdf)
+{
+    diffuse = Float3(0.0f);
+    specular = Float3(0.0f);
+    
+    if (roughness < roughnessThreshold)
+    {
+        pdf = 0.0f;
+        return;
+    }
+
+    if (dot(wo, n) <= 0 || dot(wi, n) <= 0 || dot(wo, ng) <= 0 || dot(wi, ng) <= 0)
+    {
+        pdf = 0.0f;
+        return;
+    }
+
+    // Disney parameters
+    const float specular_param = 0.5f;
+    const float metalness = metallic ? 1.0f : 0.0f;
+
+    // Roughness remapping
+    float alpha = roughness * roughness;
+
+    // Calculate angles
+    float cosThetaWo = dot(wo, n);
+    float cosThetaWi = dot(wi, n);
+
+    // Half vector
+    Float3 wh = normalize(wi + wo);
+    float cosThetaWh = dot(wh, n);
+    float cosThetaWoWh = dot(wo, wh);
+
+    // Luminance and tint
+    float luminance = 0.299f * albedo.x + 0.587f * albedo.y + 0.114f * albedo.z;
+    Float3 tint = luminance > 0.0f ? albedo / luminance : Float3(1.0f);
+    Float3 specularColor = lerp3f(Float3(1.0f), tint, 0.0f);
+    Float3 C0 = lerp3f(0.08f * specular_param * specularColor, albedo, metalness);
+
+    // Fresnel
+    Float3 F = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWoWh);
+
+    // Diffuse component (Disney diffuse) - zero for metals
+    if (!metallic)
+    {
+        float fl = DisneyDiffuseFresnel(cosThetaWo, cosThetaWi, roughness);
+        diffuse = albedo * (1.0f - metalness) * fl / M_PI;
+    }
+
+    // Specular component (GTR2/GGX)
+    float sinThetaWh = sqrtf(1.0f - cosThetaWh * cosThetaWh);
+    float D = GTR2Aniso(cosThetaWh, sinThetaWh, 0.0f, 1.0f, alpha, alpha);
+    float G = SmithGGGX(cosThetaWo, alpha) * SmithGGGX(cosThetaWi, alpha);
+    specular = F * D * G / (4.0f * cosThetaWo * cosThetaWi);
+
+    // PDF calculation
+    float avgF = (F.x + F.y + F.z) / 3.0f;
+    float specularWeight = avgF;
+    float diffuseWeight = (1.0f - metalness) * (1.0f - avgF);
+    float totalWeight = specularWeight + diffuseWeight;
+
+    if (totalWeight < SAFE_COSINE_EPSI)
+    {
+        pdf = 0.0f;
+        return;
+    }
+
+    float specularProb = specularWeight / totalWeight;
+
+    // Combined PDF
+    float diffusePdf = cosThetaWi / M_PI;
+    float specularPdf = D * cosThetaWh / (4.0f * cosThetaWoWh);
+
+    pdf = diffusePdf * (1.0f - specularProb) + specularPdf * specularProb;
+}

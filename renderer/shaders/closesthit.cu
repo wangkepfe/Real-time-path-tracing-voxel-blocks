@@ -817,10 +817,14 @@ extern "C" __global__ void __closesthit__radiance()
         }
     }
 
-    // Shading
+    // Shading with separated diffuse+specular for NRD ReLaX
     DIReservoir shadingReservoir = enableReSTIR ? restirReservoir : risReservoir;
 
-    float currLuminance = 0.0f;
+    float currLuminanceSum = 0.0f; // For backward compatibility
+    Float3 diffuseRadiance = Float3(0.0f);
+    Float3 specularRadiance = Float3(0.0f);
+    float hitDistance = rayData->distance; // Distance from camera to this surface
+    
     if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(shadingReservoir))
     {
         if (isLightVisible)
@@ -828,27 +832,38 @@ extern "C" __global__ void __closesthit__radiance()
             Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
 
             const Float3 albedo = skipAlbedoInShadowRayContribution ? Float3(1.0f) : state.albedo;
-            Float3 bsdf;
+            
+            // Separate diffuse and specular BSDF evaluation
+            Float3 diffuseBsdf, specularBsdf;
             float pdf;
-
-            DisneyBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, bsdf, pdf);
+            DisneyBSDFEvaluateSeparated(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, diffuseBsdf, specularBsdf, pdf);
 
             float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
+            
+            // Calculate separate radiance contributions
+            Float3 lightContribution = cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
+            
+            diffuseRadiance = diffuseBsdf * lightContribution;
+            specularRadiance = specularBsdf * lightContribution;
 
-            Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
+            // Total radiance for path tracing
+            Float3 totalShadowRayRadiance = diffuseRadiance + specularRadiance;
+            rayData->radiance += totalShadowRayRadiance;
 
-            rayData->radiance += shadowRayRadiance;
-
-            // Calculate luminance for gradient computation (similar to RTXDI)
-            currLuminance = luminance(bsdf * state.albedo);
+            // Calculate diffuse and specular luminance separately (RTXDI pattern)
+            float diffuseLuminance = luminance(diffuseRadiance);
+            float specularLuminance = luminance(specularRadiance);
+            currLuminanceSum = diffuseLuminance + specularLuminance; // For backward compatibility
         }
     }
 
-    // Store the sampled lighting luminance for the gradient pass.
-    // Since we are not reusing visibility, we always store the luminance.
+    // Store ReSTIR luminance as float2 (diffuse + specular) following RTXDI pattern
     if (enableReSTIR)
     {
-        Store2DFloat1(currLuminance, sysParam.restirLuminanceBuffer, pixelPosition);
+        float diffuseLuminance = luminance(diffuseRadiance);
+        float specularLuminance = luminance(specularRadiance);
+        Float2 currLuminance = Float2(diffuseLuminance, specularLuminance);
+        Store2DFloat2(currLuminance, sysParam.restirLuminanceBuffer, pixelPosition);
     }
 
     // Store the reservoir

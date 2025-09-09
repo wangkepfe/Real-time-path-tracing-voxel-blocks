@@ -68,8 +68,6 @@ struct SystemParameter
     // Confidence computation buffers
     SurfObj diffuseGradientBuffer;
     SurfObj filteredDiffuseGradientBuffer;
-    SurfObj diffuseConfidenceBuffer;
-    SurfObj prevDiffuseConfidenceBuffer;
     
     // ReSTIR luminance buffers
     SurfObj restirLuminanceBuffer;

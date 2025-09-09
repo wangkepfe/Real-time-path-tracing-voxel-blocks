@@ -47,13 +47,10 @@ enum Buffer2DName
     // Confidence computation buffers  
     DiffuseGradientBuffer,
     FilteredDiffuseGradientBuffer,
-    DiffuseConfidenceBuffer,
-    PrevDiffuseConfidenceBuffer,
     
     // ReSTIR luminance buffers
     RestirLuminanceBuffer,
     PrevRestirLuminanceBuffer,
-    
     
     Buffer2DCount,
 };

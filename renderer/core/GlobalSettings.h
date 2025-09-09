@@ -115,6 +115,7 @@ struct DenoisingParams
             {&enableAntiFirefly, "Enable Anti-Firefly"},
             {&enableConfidenceComputation, "Enable Confidence Computation"},
             {&enableTemporalFiltering, "Enable Temporal Filtering"},
+            {&enableNRDReLaX, "Enable NRD ReLaX"},
         };
     }
 
@@ -164,6 +165,14 @@ struct DenoisingParams
             {&gradientScale, "Gradient Scale"},
             {&temporalWeight, "Temporal Filtering Weight"},
             {&restirConfidenceWeight, "ReSTIR Confidence Weight"},
+            
+            // NRD ReLaX parameters
+            {&maxAccumFrames, "Max Accumulation Frames"},
+            {&roughnessAccumSpeedDecreasePercent, "Roughness Accumulation Speed Decrease %"},
+            {&maxLuminanceRelativeDiff, "Max Luminance Relative Difference"},
+            {&phiNormal, "Phi Normal"},
+            {&phiDepth, "Phi Depth"}, 
+            {&phiRoughness, "Phi Roughness"},
         };
     }
 
@@ -175,6 +184,9 @@ struct DenoisingParams
             {&spatialVarianceEstimationHistoryThreshold, "Spatial Variance Estimation History Threshold"},
             {&gradientFilterRadius, "Gradient Filter Radius"},
             {&gradientFilterStepSize, "Gradient Filter Step Size"},
+            
+            // NRD ReLaX integer parameters
+            {&atrousIterations, "A-trous Iterations (ReLaX)"},
         };
     }
 
@@ -246,6 +258,16 @@ struct DenoisingParams
 
     // Denoising range
     float denoisingRange = 500000.0f;
+    
+    // NRD ReLaX parameters
+    bool enableNRDReLaX = false; // Default to disabled for backward compatibility
+    float maxAccumFrames = 30.0f;
+    float roughnessAccumSpeedDecreasePercent = 0.25f;
+    float maxLuminanceRelativeDiff = 0.3f;
+    float phiNormal = 16.0f;
+    float phiDepth = 1.0f;
+    float phiRoughness = 1.0f;
+    int atrousIterations = 5;
 };
 
 // Tone Mapping Parameters Structure

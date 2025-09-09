@@ -48,7 +48,8 @@ __global__ void ComputeGradients(
             if (candidatePixel.x >= screenResolution.x || candidatePixel.y >= screenResolution.y)
                 continue;
                 
-            float currentLuminance = Load2DFloat1(restirLuminanceBuffer, candidatePixel);
+            Float2 currentLuminanceVec = Load2DFloat2(restirLuminanceBuffer, candidatePixel);
+            float currentLuminance = currentLuminanceVec.x + currentLuminanceVec.y; // Total luminance (diffuse + specular)
             
             if (currentLuminance > maxLuminance)
             {
@@ -58,8 +59,9 @@ __global__ void ComputeGradients(
         }
     }
 
-    // Load current frame ReSTIR luminance
-    float currentLuminance = Load2DFloat1(restirLuminanceBuffer, selectedPixel);
+    // Load current frame ReSTIR luminance (float2 for diffuse+specular)
+    Float2 currentLuminanceVec = Load2DFloat2(restirLuminanceBuffer, selectedPixel);
+    float currentLuminance = currentLuminanceVec.x + currentLuminanceVec.y; // Total luminance
     
     // Use motion vector to find corresponding previous pixel
     Float2 motionVector = Load2DFloat2(motionVectorBuffer, selectedPixel);
@@ -69,7 +71,8 @@ __global__ void ComputeGradients(
     if (prevPixel.x >= 0 && prevPixel.y >= 0 && 
         prevPixel.x < screenResolution.x && prevPixel.y < screenResolution.y)
     {
-        prevLuminance = Load2DFloat1(prevRestirLuminanceBuffer, prevPixel);
+        Float2 prevLuminanceVec = Load2DFloat2(prevRestirLuminanceBuffer, prevPixel);
+        prevLuminance = prevLuminanceVec.x + prevLuminanceVec.y; // Total luminance
     }
     
     // Calculate gradient as absolute difference

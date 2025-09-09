@@ -190,12 +190,10 @@ void BufferManager::init()
             // Confidence computation buffers
             {DiffuseGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {FilteredDiffuseGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
-            {DiffuseConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
-            {PrevDiffuseConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
             
-            // ReSTIR luminance buffers
-            {RestirLuminanceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
-            {PrevRestirLuminanceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            // ReSTIR luminance buffers (float2 for diffuse+specular)
+            {RestirLuminanceBuffer, {cudaCreateChannelDesc<float2>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevRestirLuminanceBuffer, {cudaCreateChannelDesc<float2>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
         };
 
     assert(map.size() == Buffer2DCount);
