@@ -47,6 +47,12 @@ enum Buffer2DName
     // Confidence computation buffers  
     DiffuseGradientBuffer,
     FilteredDiffuseGradientBuffer,
+    DiffuseConfidenceBuffer,
+    PrevDiffuseConfidenceBuffer,
+    SpecularGradientBuffer,
+    FilteredSpecularGradientBuffer,
+    SpecularConfidenceBuffer,
+    PrevSpecularConfidenceBuffer,
     
     // ReSTIR luminance buffers
     RestirLuminanceBuffer,

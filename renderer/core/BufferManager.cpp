@@ -190,6 +190,12 @@ void BufferManager::init()
             // Confidence computation buffers
             {DiffuseGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {FilteredDiffuseGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {DiffuseConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevDiffuseConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {SpecularGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {FilteredSpecularGradientBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {SpecularConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevSpecularConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
             
             // ReSTIR luminance buffers (float2 for diffuse+specular)
             {RestirLuminanceBuffer, {cudaCreateChannelDesc<float2>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},

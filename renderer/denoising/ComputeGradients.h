@@ -16,8 +16,9 @@ __global__ void ComputeGradients(
     // Previous frame ReSTIR luminance data  
     SurfObj prevRestirLuminanceBuffer,
 
-    // Output gradient buffer
+    // Output gradient buffers
     SurfObj diffuseGradientBuffer,
+    SurfObj specularGradientBuffer,
 
     // Camera data 
     Camera camera,
@@ -61,30 +62,37 @@ __global__ void ComputeGradients(
 
     // Load current frame ReSTIR luminance (float2 for diffuse+specular)
     Float2 currentLuminanceVec = Load2DFloat2(restirLuminanceBuffer, selectedPixel);
-    float currentLuminance = currentLuminanceVec.x + currentLuminanceVec.y; // Total luminance
+    float currentDiffuseLuminance = currentLuminanceVec.x;
+    float currentSpecularLuminance = currentLuminanceVec.y;
     
     // Use motion vector to find corresponding previous pixel
     Float2 motionVector = Load2DFloat2(motionVectorBuffer, selectedPixel);
     Int2 prevPixel = Int2(Float2(selectedPixel.x, selectedPixel.y) + motionVector);
     
-    float prevLuminance = 0.0f;
+    float prevDiffuseLuminance = 0.0f;
+    float prevSpecularLuminance = 0.0f;
     if (prevPixel.x >= 0 && prevPixel.y >= 0 && 
         prevPixel.x < screenResolution.x && prevPixel.y < screenResolution.y)
     {
         Float2 prevLuminanceVec = Load2DFloat2(prevRestirLuminanceBuffer, prevPixel);
-        prevLuminance = prevLuminanceVec.x + prevLuminanceVec.y; // Total luminance
+        prevDiffuseLuminance = prevLuminanceVec.x;
+        prevSpecularLuminance = prevLuminanceVec.y;
     }
     
-    // Calculate gradient as absolute difference
-    float gradient = abs(currentLuminance - prevLuminance);
+    // Calculate gradients as absolute differences for diffuse and specular separately
+    float diffuseGradient = abs(currentDiffuseLuminance - prevDiffuseLuminance);
+    float specularGradient = abs(currentSpecularLuminance - prevSpecularLuminance);
     
-    // Scale and clamp the gradient
+    // Scale and clamp the gradients
     const float gradientScale = 1.0f;
     const float maxGradient = 10.0f;
-    gradient *= gradientScale;
-    gradient = min(gradient, maxGradient);
+    diffuseGradient *= gradientScale;
+    specularGradient *= gradientScale;
+    diffuseGradient = min(diffuseGradient, maxGradient);
+    specularGradient = min(specularGradient, maxGradient);
     
-    // Store gradient and current luminance for confidence computation
-    // Following RTXDI format: (gradient, 0, currentLuminance, 0)
-    Store2DFloat4(Float4(gradient, 0.0f, currentLuminance, 0.0f), diffuseGradientBuffer, pixelPos);
+    // Store gradients and current luminance for confidence computation
+    // Format: (gradient, 0, currentLuminance, 0)
+    Store2DFloat4(Float4(diffuseGradient, 0.0f, currentDiffuseLuminance, 0.0f), diffuseGradientBuffer, pixelPos);
+    Store2DFloat4(Float4(specularGradient, 0.0f, currentSpecularLuminance, 0.0f), specularGradientBuffer, pixelPos);
 }

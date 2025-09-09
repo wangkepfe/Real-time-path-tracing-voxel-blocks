@@ -17,7 +17,8 @@ __global__ void Atrous(
     SurfObj illuminationOutputBuffer,
     
     // Confidence buffers
-    SurfObj confidenceBuffer, // Renamed for clarity
+    SurfObj diffuseConfidenceBuffer,
+    SurfObj specularConfidenceBuffer,
 
     Camera camera,
     unsigned int frameIndex,
@@ -73,10 +74,10 @@ __global__ void Atrous(
 
     // Confidence-driven luminance weight relaxation
     float diffuseLuminanceWeightRelaxation = 1.0f;
-    if (useConfidenceAdaptation && confidenceBuffer != 0)
+    if (useConfidenceAdaptation && diffuseConfidenceBuffer != 0)
     {
-        float confidence = Load2DFloat1(confidenceBuffer, pixelPos);
-        float confidenceDrivenRelaxation = saturate(confidenceDrivenRelaxationMultiplier * (1.0f - confidence));
+        float diffuseConfidence = Load2DFloat1(diffuseConfidenceBuffer, pixelPos);
+        float confidenceDrivenRelaxation = saturate(confidenceDrivenRelaxationMultiplier * (1.0f - diffuseConfidence));
         diffuseLuminanceWeightRelaxation = 1.0f - saturate(confidenceDrivenRelaxation * confidenceDrivenLuminanceEdgeStoppingRelaxation);
     }
     float diffuseNormalWeightParam = GetNormalWeightParam2(1.0f, diffuseLobeAngleFraction);

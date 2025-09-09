@@ -855,6 +855,12 @@ void OptixRenderer::init()
         // Confidence computation buffers
         m_systemParameter.diffuseGradientBuffer = bufferManager.GetBuffer2D(DiffuseGradientBuffer);
         m_systemParameter.filteredDiffuseGradientBuffer = bufferManager.GetBuffer2D(FilteredDiffuseGradientBuffer);
+        m_systemParameter.diffuseConfidenceBuffer = bufferManager.GetBuffer2D(DiffuseConfidenceBuffer);
+        m_systemParameter.prevDiffuseConfidenceBuffer = bufferManager.GetBuffer2D(PrevDiffuseConfidenceBuffer);
+        m_systemParameter.specularGradientBuffer = bufferManager.GetBuffer2D(SpecularGradientBuffer);
+        m_systemParameter.filteredSpecularGradientBuffer = bufferManager.GetBuffer2D(FilteredSpecularGradientBuffer);
+        m_systemParameter.specularConfidenceBuffer = bufferManager.GetBuffer2D(SpecularConfidenceBuffer);
+        m_systemParameter.prevSpecularConfidenceBuffer = bufferManager.GetBuffer2D(PrevSpecularConfidenceBuffer);
         
         // ReSTIR luminance buffers
         m_systemParameter.restirLuminanceBuffer = bufferManager.GetBuffer2D(RestirLuminanceBuffer);

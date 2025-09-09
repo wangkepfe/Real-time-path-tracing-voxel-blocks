@@ -11,6 +11,7 @@
 #include "denoising/Atrous.h"
 #include "denoising/ComputeGradients.h"
 #include "denoising/FilterGradients.h"
+#include "denoising/GenerateConfidence.h"
 
 #include "core/GlobalSettings.h"
 #include "core/BufferManager.h"
@@ -174,15 +175,16 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     // Previous frame ReSTIR luminance data
                     bufferManager.GetBuffer2D(PrevRestirLuminanceBuffer),
 
-                    // Output gradient buffer
+                    // Output gradient buffers
                     bufferManager.GetBuffer2D(DiffuseGradientBuffer),
+                    bufferManager.GetBuffer2D(SpecularGradientBuffer),
 
                     // Camera data
                     camera,
                     historyCamera,
                     iterationIndex);
 
-                // 2. Spatial gradient filtering (A-trous)
+                // 2. Spatial gradient filtering (A-trous) for diffuse
                 FilterGradients KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
                     bufferDim,
                     invBufferDim,
@@ -193,6 +195,39 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     denoisingParams.gradientFilterRadius,
                     denoisingParams.gradientFilterStepSize);
 
+                // 3. Spatial gradient filtering (A-trous) for specular
+                FilterGradients KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
+
+                    bufferManager.GetBuffer2D(SpecularGradientBuffer),
+                    bufferManager.GetBuffer2D(FilteredSpecularGradientBuffer),
+
+                    denoisingParams.gradientFilterRadius,
+                    denoisingParams.gradientFilterStepSize);
+
+                // 4. Generate confidence from filtered gradients
+                GenerateConfidence KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
+
+                    bufferManager.GetBuffer2D(FilteredDiffuseGradientBuffer),
+                    bufferManager.GetBuffer2D(FilteredSpecularGradientBuffer),
+                    bufferManager.GetBuffer2D(PrevDiffuseConfidenceBuffer),
+                    bufferManager.GetBuffer2D(PrevSpecularConfidenceBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+                    bufferManager.GetBuffer2D(MaterialBuffer),
+
+                    bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
+                    bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
+
+                    camera,
+                    historyCamera,
+
+                    denoisingParams.gradientScale,
+                    denoisingParams.enableTemporalFiltering,
+                    denoisingParams.temporalWeight,
+                    iterationIndex);
             }
 
             // Optional buffer copy (controlled by parameter - currently disabled)
@@ -307,7 +342,8 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferManager.GetBuffer2D(IlluminationPongBuffer),
                     
                     // Confidence buffers
-                    SurfObj(), // Removed confidence buffer
+                    bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
+                    bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
 
                     camera,
                     iterationIndex,
@@ -342,7 +378,8 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferManager.GetBuffer2D(IlluminationPingBuffer),
                     
                     // Confidence buffers
-                    SurfObj(), // Removed confidence buffer
+                    bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
+                    bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
 
                     camera,
                     iterationIndex,
@@ -378,7 +415,8 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(IlluminationPongBuffer),
                 
                 // Confidence buffers
-                SurfObj(), // Removed confidence buffer
+                bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
+                bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
 
                 camera,
                 iterationIndex,
@@ -444,9 +482,19 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         bufferManager.GetBuffer2D(MaterialBuffer),
         bufferManager.GetBuffer2D(PrevMaterialBuffer));
 
-    // Copy ReSTIR luminance for temporal consistency (if confidence computation is enabled)
+    // Copy confidence and ReSTIR luminance for next frame (if confidence computation is enabled)
     if (denoisingParams.enableConfidenceComputation)
     {
+        BufferCopyFloat1(
+            bufferDim,
+            bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
+            bufferManager.GetBuffer2D(PrevDiffuseConfidenceBuffer));
+            
+        BufferCopyFloat1(
+            bufferDim,
+            bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
+            bufferManager.GetBuffer2D(PrevSpecularConfidenceBuffer));
+            
         BufferCopyFloat2(
             bufferDim,
             bufferManager.GetBuffer2D(RestirLuminanceBuffer),
