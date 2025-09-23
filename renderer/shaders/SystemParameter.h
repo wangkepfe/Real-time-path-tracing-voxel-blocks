@@ -46,6 +46,8 @@ struct SystemParameter
     OptixTraversableHandle prevTopObject;
 
     SurfObj illuminationBuffer;
+    SurfObj diffuseIlluminationBuffer;
+    SurfObj specularIlluminationBuffer;
 
     // G buffers
     SurfObj normalRoughnessBuffer;

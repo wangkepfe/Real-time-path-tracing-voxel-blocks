@@ -1,6 +1,7 @@
 #include "core/OfflineBackend.h"
 #include "util/DebugUtils.h"
 #include "core/OptixRenderer.h"
+#include "core/BufferManager.h"
 #include "postprocessing/PostProcessor.h"
 #include "denoising/Denoiser.h"
 #include "sky/Sky.h"
@@ -127,6 +128,31 @@ void OfflineBackend::storeFrameInBatch(const std::string &outputPath)
     frame.hostBuffer = std::move(hostBuffer);
     frame.outputPath = outputPath;
 
+    // If diffuse/specular dumping is enabled, also copy those buffers
+    if (m_dumpDiffuseSpecular)
+    {
+        auto &bufferManager = BufferManager::Get();
+        
+        frame.diffuseHostBuffer.resize(m_width * m_height);
+        frame.specularHostBuffer.resize(m_width * m_height);
+        
+        // Copy diffuse illumination buffer to host
+        CUDA_CHECK(cudaMemcpy2DFromArray(
+            frame.diffuseHostBuffer.data(), m_width * sizeof(Float4),
+            bufferManager.GetBufferArray(DiffuseIlluminationBuffer), 0, 0,
+            m_width * sizeof(Float4), m_height,
+            cudaMemcpyDeviceToHost));
+        
+        // Copy specular illumination buffer to host
+        CUDA_CHECK(cudaMemcpy2DFromArray(
+            frame.specularHostBuffer.data(), m_width * sizeof(Float4),
+            bufferManager.GetBufferArray(SpecularIlluminationBuffer), 0, 0,
+            m_width * sizeof(Float4), m_height,
+            cudaMemcpyDeviceToHost));
+            
+        frame.hasDiffuseSpecular = true;
+    }
+
     m_batchedFrames.push_back(std::move(frame));
 }
 
@@ -145,7 +171,7 @@ void OfflineBackend::writeAllBatchedFrames()
         // Try to use C++17 parallel algorithms first
         std::for_each(std::execution::par, m_batchedFrames.begin(), m_batchedFrames.end(),
             [this, &completedFrames](const BatchedFrame &frame) {
-                writeFrameBufferToPNG(frame.hostBuffer, frame.outputPath);
+                writeCompleteFrame(frame);
                 completedFrames.fetch_add(1);
             });
     }
@@ -168,7 +194,7 @@ void OfflineBackend::writeAllBatchedFrames()
             futures.emplace_back(std::async(std::launch::async, [this, startIdx, endIdx, &completedFrames]() {
                 for (size_t i = startIdx; i < endIdx; ++i) {
                     const auto &frame = m_batchedFrames[i];
-                    writeFrameBufferToPNG(frame.hostBuffer, frame.outputPath);
+                    writeCompleteFrame(frame);
                     completedFrames.fetch_add(1);
                 }
             }));
@@ -181,6 +207,34 @@ void OfflineBackend::writeAllBatchedFrames()
     }
 
     std::cout << "Successfully written all " << m_batchedFrames.size() << " frames in parallel" << std::endl;
+}
+
+void OfflineBackend::writeCompleteFrame(const BatchedFrame &frame)
+{
+    // Write main frame
+    writeFrameBufferToPNG(frame.hostBuffer, frame.outputPath);
+    
+    // Write diffuse and specular frames if available
+    if (frame.hasDiffuseSpecular)
+    {
+        // Extract base name and extension from output path
+        std::string baseName = frame.outputPath;
+        std::string extension = ".png";
+        
+        size_t lastDot = frame.outputPath.find_last_of(".");
+        if (lastDot != std::string::npos)
+        {
+            baseName = frame.outputPath.substr(0, lastDot);
+            extension = frame.outputPath.substr(lastDot);
+        }
+        
+        // Write diffuse and specular buffers
+        std::string diffusePath = baseName + "_diffuse" + extension;
+        std::string specularPath = baseName + "_specular" + extension;
+        
+        writeFrameBufferToPNG(frame.diffuseHostBuffer, diffusePath);
+        writeFrameBufferToPNG(frame.specularHostBuffer, specularPath);
+    }
 }
 
 void OfflineBackend::clearBatchedFrames()
@@ -259,4 +313,48 @@ void OfflineBackend::dumpSystemInformation()
         std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled << '\n';
         std::cout << "  TCC Driver = " << properties.tccDriver << '\n';
     }
+}
+
+void OfflineBackend::dumpDiffuseSpecularBuffers(const std::string &baseOutputPath)
+{
+#ifdef OFFLINE_MODE
+    auto &bufferManager = BufferManager::Get();
+    
+    // Extract base name and extension
+    std::string baseName = baseOutputPath;
+    std::string extension = ".png";
+    
+    size_t lastDot = baseOutputPath.find_last_of(".");
+    if (lastDot != std::string::npos)
+    {
+        baseName = baseOutputPath.substr(0, lastDot);
+        extension = baseOutputPath.substr(lastDot);
+    }
+    
+    // Copy diffuse illumination buffer to host
+    std::vector<Float4> diffuseHostBuffer(m_width * m_height);
+    CUDA_CHECK(cudaMemcpy2DFromArray(
+        diffuseHostBuffer.data(), m_width * sizeof(Float4),
+        bufferManager.GetBufferArray(DiffuseIlluminationBuffer), 0, 0,
+        m_width * sizeof(Float4), m_height,
+        cudaMemcpyDeviceToHost));
+    
+    // Copy specular illumination buffer to host
+    std::vector<Float4> specularHostBuffer(m_width * m_height);
+    CUDA_CHECK(cudaMemcpy2DFromArray(
+        specularHostBuffer.data(), m_width * sizeof(Float4),
+        bufferManager.GetBufferArray(SpecularIlluminationBuffer), 0, 0,
+        m_width * sizeof(Float4), m_height,
+        cudaMemcpyDeviceToHost));
+    
+    // Write diffuse buffer to PNG
+    std::string diffusePath = baseName + "_diffuse" + extension;
+    writeFrameBufferToPNG(diffuseHostBuffer, diffusePath);
+    std::cout << "Saved diffuse illumination buffer to: " << diffusePath << std::endl;
+    
+    // Write specular buffer to PNG
+    std::string specularPath = baseName + "_specular" + extension;
+    writeFrameBufferToPNG(specularHostBuffer, specularPath);
+    std::cout << "Saved specular illumination buffer to: " << specularPath << std::endl;
+#endif
 }

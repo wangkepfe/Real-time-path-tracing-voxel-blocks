@@ -88,6 +88,9 @@ extern "C" __global__ void __closesthit__radiance()
         if (!rayData->hitFirstDiffuseSurface)
         {
             rayData->radiance = parameters.albedo;
+            // Emissive materials are typically diffuse emitters
+            rayData->diffuseRadiance = parameters.albedo;
+            rayData->specularRadiance = Float3(0.0f);
 
             Store2DFloat4(Float4(1.0f), sysParam.albedoBuffer, pixelPosition);
             Store2DFloat1((float)(0xFFFF), sysParam.materialBuffer, pixelPosition);
@@ -247,7 +250,11 @@ extern "C" __global__ void __closesthit__radiance()
 
     rayData->transmissionEvent = false;
 
-    DisneyBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent);
+    bool isSpecularSample = false;
+    DisneyBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent, isSpecularSample);
+    
+    // Store the sample type for the next bounce
+    rayData->isCurrentSampleSpecular = isSpecularSample;
 
     if (bsdfSamplePdf <= 0.0f)
     {
@@ -836,7 +843,7 @@ extern "C" __global__ void __closesthit__radiance()
             // Separate diffuse and specular BSDF evaluation
             Float3 diffuseBsdf, specularBsdf;
             float pdf;
-            DisneyBSDFEvaluateSeparated(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, diffuseBsdf, specularBsdf, pdf);
+            DisneyBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, diffuseBsdf, specularBsdf, pdf);
 
             float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
             
@@ -849,6 +856,10 @@ extern "C" __global__ void __closesthit__radiance()
             // Total radiance for path tracing
             Float3 totalShadowRayRadiance = diffuseRadiance + specularRadiance;
             rayData->radiance += totalShadowRayRadiance;
+            
+            // Accumulate diffuse and specular separately
+            rayData->diffuseRadiance += diffuseRadiance;
+            rayData->specularRadiance += specularRadiance;
 
             // Calculate diffuse and specular luminance separately (RTXDI pattern)
             float diffuseLuminance = luminance(diffuseRadiance);

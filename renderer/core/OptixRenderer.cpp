@@ -833,6 +833,8 @@ void OptixRenderer::init()
         const auto &skyModel = SkyModel::Get();
 
         m_systemParameter.illuminationBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
+        m_systemParameter.diffuseIlluminationBuffer = bufferManager.GetBuffer2D(DiffuseIlluminationBuffer);
+        m_systemParameter.specularIlluminationBuffer = bufferManager.GetBuffer2D(SpecularIlluminationBuffer);
 
         // Gbuffers
         m_systemParameter.normalRoughnessBuffer = bufferManager.GetBuffer2D(NormalRoughnessBuffer);

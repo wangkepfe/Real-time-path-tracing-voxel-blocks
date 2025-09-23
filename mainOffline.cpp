@@ -37,6 +37,7 @@ int main(int argc, char *argv[])
     std::string sceneFile = "data/scene/scene_export.yaml";
     bool testCanonical = false;
     bool updateCanonical = false;
+    bool dumpDiffuseSpecular = false;
     std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
     std::string runComment = "default run";
 
@@ -72,6 +73,10 @@ int main(int argc, char *argv[])
         {
             updateCanonical = true;
         }
+        else if (arg == "--dump-diffuse-specular")
+        {
+            dumpDiffuseSpecular = true;
+        }
         else if (arg == "--canonical-image" && i + 1 < argc)
         {
             canonicalImagePath = argv[++i];
@@ -102,6 +107,7 @@ int main(int argc, char *argv[])
             std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
             std::cout << "  --comment <text>     Comment for performance report (default: default run)\n";
             std::cout << "  --frames <int>       Number of frames to render (default: 64, use 1 for single frame)\n";
+            std::cout << "  --dump-diffuse-specular  Dump separate diffuse and specular illumination buffers\n";
             std::cout << "  --help, -h           Show this help message\n";
             return 0;
         }
@@ -141,6 +147,9 @@ int main(int argc, char *argv[])
 
         std::cout << "Initializing offline backend..." << std::endl;
         offlineBackend.init(width, height);
+        
+        // Set diffuse/specular dumping flag
+        offlineBackend.setDumpDiffuseSpecular(dumpDiffuseSpecular);
 
         std::cout << "Initializing buffer manager..." << std::endl;
         bufferManager.init();

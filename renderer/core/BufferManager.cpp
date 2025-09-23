@@ -153,6 +153,14 @@ void BufferManager::init()
             {IlluminationOutputBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {IlluminationPingBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {IlluminationPongBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {DiffuseIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {SpecularIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            
+            // Separate diffuse/specular ping-pong buffers for temporal accumulation
+            {DiffuseIlluminationPingBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {DiffuseIlluminationPongBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {SpecularIlluminationPingBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {SpecularIlluminationPongBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {NormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {DepthBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {MaterialBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
@@ -166,7 +174,25 @@ void BufferManager::init()
             {PrevFastIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
             {PrevHistoryLengthBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {PrevNormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
-            {PrevNormalRoughnessBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            
+            // Separate previous frame buffers for diffuse/specular
+            {PrevDiffuseIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {PrevDiffuseFastIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {PrevSpecularIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {PrevSpecularFastIlluminationBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            
+            // Specular-specific buffers
+            {SpecularHitDistBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevSpecularHitDistBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {SpecularReprojectionConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            
+            // History confidence buffers
+            {DiffuseHistoryConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevDiffuseHistoryConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {SpecularHistoryConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            {PrevSpecularHistoryConfidenceBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, LinearFilteredTexture}},
+            {DisocclusionThresholdMixBuffer, {cudaCreateChannelDesc<float>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
+            
             {GeoNormalThinfilmBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {MaterialParameterBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},
             {PrevMaterialParameterBuffer, {cudaCreateChannelDesc<float4>(), bufferSize, cudaArraySurfaceLoadStore, NoTexture}},

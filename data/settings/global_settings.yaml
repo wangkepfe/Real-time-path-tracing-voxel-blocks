@@ -61,7 +61,7 @@ postprocess:
   histogramMinPercent: 40
   histogramMaxPercent: 80
   luminanceMipLevels: 6
-  targetLuminance: 0.18
+  targetLuminance: 0.1
   enableVignette: false
   vignetteStrength: 0.5
   vignetteRadius: 0.8

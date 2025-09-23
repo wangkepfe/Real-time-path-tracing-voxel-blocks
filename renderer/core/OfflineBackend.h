@@ -14,6 +14,11 @@ struct BatchedFrame
 {
     std::vector<Float4> hostBuffer;
     std::string outputPath;
+    
+    // Optional diffuse and specular buffers for --dump-diffuse-specular
+    std::vector<Float4> diffuseHostBuffer;
+    std::vector<Float4> specularHostBuffer;
+    bool hasDiffuseSpecular = false;
 };
 
 class OfflineBackend
@@ -32,6 +37,8 @@ public:
     void renderFrame(const std::string &outputPath = "output.png");
     void writeAllBatchedFrames();
     void clearBatchedFrames();
+    void dumpDiffuseSpecularBuffers(const std::string &baseOutputPath);
+    void setDumpDiffuseSpecular(bool enabled) { m_dumpDiffuseSpecular = enabled; }
 
     CUstream getCudaStream() const { return m_cudaStream; }
     CUcontext getCudaContext() const { return m_cudaContext; }
@@ -55,6 +62,7 @@ private:
     void initFrameBuffer();
     void storeFrameInBatch(const std::string &outputPath);
     void writeFrameBufferToPNG(const std::vector<Float4> &hostBuffer, const std::string &outputPath);
+    void writeCompleteFrame(const BatchedFrame &frame);
 
     int m_width;
     int m_height;
@@ -75,4 +83,7 @@ private:
 
     // Batched frame storage
     std::vector<BatchedFrame> m_batchedFrames;
+    
+    // Diffuse/specular dumping flag
+    bool m_dumpDiffuseSpecular = false;
 };

@@ -12,6 +12,7 @@
 #include "denoising/ComputeGradients.h"
 #include "denoising/FilterGradients.h"
 #include "denoising/GenerateConfidence.h"
+#include "denoising/AntiFirefly.h"
 
 #include "core/GlobalSettings.h"
 #include "core/BufferManager.h"
@@ -22,6 +23,31 @@
 #include "util/KernelHelper.h"
 #include "util/BufferUtils.h"
 #include <cassert>
+
+// Simple kernel to combine separate diffuse and specular results
+__global__ void CombineDiffuseSpecular(
+    Int2 screenResolution,
+    SurfObj diffuseBuffer,
+    SurfObj specularBuffer,
+    SurfObj combinedOutputBuffer)
+{
+    Int2 pixelPos;
+    pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
+    pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (pixelPos.x >= screenResolution.x || pixelPos.y >= screenResolution.y)
+        return;
+
+    // Load diffuse and specular contributions
+    Float4 diffuse = Load2DFloat4(diffuseBuffer, pixelPos);
+    Float4 specular = Load2DFloat4(specularBuffer, pixelPos);
+
+    // Combine by adding diffuse and specular (standard lighting model)
+    Float4 combined = Float4(diffuse.xyz + specular.xyz, diffuse.w + specular.w);
+
+    // Store combined result
+    Store2DFloat4(specular, combinedOutputBuffer, pixelPos);
+}
 
 void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 {
@@ -123,25 +149,53 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     {
         if (frameNum > 0)
         {
+            // Create RELAX denoising parameters structure
+            RELAXDenoisingParams relaxParams = {};
+            relaxParams.resetHistory = (frameNum == 0);
+            relaxParams.frameIndex = frameNum;
+            relaxParams.framerateScale = 1.0f; // Default framerate scale
+            relaxParams.roughnessFraction = denoisingParams.roughnessFraction;
+            relaxParams.strandMaterialID = 255; // No strand material by default
+            relaxParams.strandThickness = 1.0f;
+            relaxParams.cameraAttachedReflectionMaterialID = 254; // No camera attached reflections by default
+            relaxParams.specVarianceBoost = 1.0f;                 // Default variance boost
+            relaxParams.hasHistoryConfidence = false;             // Disable for now until confidence buffers are properly integrated
+            relaxParams.hasDisocclusionThresholdMix = false;      // Disable for now
+
             TemporalAccumulation<8, 1> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
                 bufferDim,
                 invBufferDim,
 
                 bufferManager.GetBuffer2D(PrevDepthBuffer),
                 bufferManager.GetBuffer2D(PrevMaterialBuffer),
-                bufferManager.GetBuffer2D(PrevIlluminationBuffer),
-                bufferManager.GetBuffer2D(PrevFastIlluminationBuffer),
+                bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer),
+                bufferManager.GetBuffer2D(PrevDiffuseFastIlluminationBuffer),
+                bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer),
+                bufferManager.GetBuffer2D(PrevSpecularFastIlluminationBuffer),
+                bufferManager.GetBuffer2D(PrevSpecularHitDistBuffer),
                 bufferManager.GetBuffer2D(PrevHistoryLengthBuffer),
                 bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer),
 
-                bufferManager.GetBuffer2D(IlluminationBuffer),
+                bufferManager.GetBuffer2D(DiffuseIlluminationBuffer),
+                bufferManager.GetBuffer2D(SpecularIlluminationBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),
                 bufferManager.GetBuffer2D(NormalRoughnessBuffer),
                 bufferManager.GetBuffer2D(MaterialBuffer),
 
-                bufferManager.GetBuffer2D(IlluminationPingBuffer),
-                bufferManager.GetBuffer2D(IlluminationPongBuffer),
+                bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),
+                bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),
+                bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer),
+                bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer),
+                bufferManager.GetBuffer2D(SpecularHitDistBuffer),
+                bufferManager.GetBuffer2D(SpecularReprojectionConfidenceBuffer),
                 bufferManager.GetBuffer2D(HistoryLengthBuffer),
+
+                // History confidence buffers
+                bufferManager.GetBuffer2D(DiffuseHistoryConfidenceBuffer),
+                bufferManager.GetBuffer2D(PrevDiffuseHistoryConfidenceBuffer),
+                bufferManager.GetBuffer2D(SpecularHistoryConfidenceBuffer),
+                bufferManager.GetBuffer2D(PrevSpecularHistoryConfidenceBuffer),
+                bufferManager.GetBuffer2D(DepthBuffer), // disocclusionThresholdMixBuffer (placeholder)
 
                 bufferManager.GetBuffer2D(DebugBuffer),
 
@@ -152,11 +206,39 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 denoisingParams.denoisingRange,
                 denoisingParams.disocclusionThreshold,
                 denoisingParams.disocclusionThresholdAlternate,
-                denoisingParams.maxAccumulatedFrameNum,
-                denoisingParams.maxFastAccumulatedFrameNum);
+                denoisingParams.maxAccumulatedFrameNum,     // diffuse max
+                denoisingParams.maxFastAccumulatedFrameNum, // diffuse fast max
+                denoisingParams.maxAccumulatedFrameNum,     // specular max (same for now)
+                denoisingParams.maxFastAccumulatedFrameNum, // specular fast max (same for now)
+                1.0f,                                       // specular variance boost
+                denoisingParams.roughnessFraction,
+                relaxParams);
 
             finalResultBuffer = 1; // Temporal accumulation outputs to IlluminationPingBuffer
 
+            // Anti-firefly pass (controlled by parameter)
+            if (denoisingParams.enableAntiFirefly)
+            {
+                AntiFirefly KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+                    bufferDim,
+                    invBufferDim,
+
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),  // diffuse input
+                    bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer), // specular input (same for now)
+
+                    bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+                    bufferManager.GetBuffer2D(MaterialBuffer),
+                    bufferManager.GetBuffer2D(DepthBuffer),
+
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),  // diffuse output
+                    bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer), // specular output (same for now)
+
+                    camera,
+
+                    denoisingParams.denoisingRange,
+                    15);               // maxSamples
+                finalResultBuffer = 2; // Anti-firefly outputs to IlluminationPongBuffer
+            }
 
             // Confidence computation pipeline (RTXDI-based)
             if (denoisingParams.enableConfidenceComputation)
@@ -249,7 +331,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
             }
 
-            // History fix pass (controlled by parameter)
+            // History fix pass
             if (denoisingParams.enableHistoryFix)
             {
                 HistoryFix KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
@@ -260,15 +342,25 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferManager.GetBuffer2D(MaterialBuffer),
                     bufferManager.GetBuffer2D(NormalRoughnessBuffer),
                     bufferManager.GetBuffer2D(HistoryLengthBuffer),
-                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
 
-                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
+                    // Separate diffuse buffers
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),
 
-                    camera);
-                finalResultBuffer = 2; // History fix outputs to IlluminationPongBuffer
+                    // Separate specular buffers
+                    bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer),
+                    bufferManager.GetBuffer2D(SpecularHitDistBuffer),
+
+                    camera,
+
+                    // RELAX parameters
+                    8.0f,                                              // historyFixEdgeStoppingNormalPower (reasonable default)
+                    (float)denoisingParams.historyFixBasePixelStride); // convert stride parameter
+                finalResultBuffer = 2;
             }
 
-            // History clamping pass (controlled by parameter)
+            // History clamping pass
             if (denoisingParams.enableHistoryClamping)
             {
                 HistoryClamping<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
@@ -276,55 +368,84 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     invBufferDim,
 
                     bufferManager.GetBuffer2D(DepthBuffer),
-
-                    bufferManager.GetBuffer2D(IlluminationBuffer),
-                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
-                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
                     bufferManager.GetBuffer2D(HistoryLengthBuffer),
 
-                    bufferManager.GetBuffer2D(PrevIlluminationBuffer),
-                    bufferManager.GetBuffer2D(PrevFastIlluminationBuffer),
-                    bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
-                // History clamping outputs the current frame data to PrevIlluminationBuffer
-                finalResultBuffer = 3; // 3 = PrevIlluminationBuffer (after history clamping)
+                    // Separate diffuse buffers
+                    bufferManager.GetBuffer2D(DiffuseIlluminationBuffer),
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),
+                    bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer),
+                    bufferManager.GetBuffer2D(PrevDiffuseFastIlluminationBuffer),
+
+                    // Separate specular buffers
+                    bufferManager.GetBuffer2D(SpecularIlluminationBuffer),
+                    bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer),
+                    bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer),
+                    bufferManager.GetBuffer2D(PrevSpecularFastIlluminationBuffer),
+                    bufferManager.GetBuffer2D(SpecularHitDistBuffer),
+                    bufferManager.GetBuffer2D(PrevSpecularHitDistBuffer),
+
+                    bufferManager.GetBuffer2D(PrevHistoryLengthBuffer),
+
+                    // RELAX clamping parameters
+                    denoisingParams.historyClampingColorBoxSigmaScale,
+                    denoisingParams.antilagAccelerationAmount,
+                    denoisingParams.antilagResetAmount);
+                finalResultBuffer = 3;
             }
         }
     }
+    else if (denoisingParams.enableDenoiser)
+    {
+        // Temporal accumulation is disabled - copy original buffers to Ping buffers for downstream passes
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(DiffuseIlluminationBuffer),
+            bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer));
+            
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(SpecularIlluminationBuffer),
+            bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer));
+            
+        finalResultBuffer = 1; // Data is now in Ping buffers
+    }
 
-    // Spatial filtering (A-trous) pass (controlled by parameter)
+    // Spatial filtering (A-trous) pass using shared memory optimization
     if (denoisingParams.enableDenoiser && denoisingParams.enableSpatialFiltering)
     {
-        // According to NRD ReLaX implementation, A-trous always takes PrevIlluminationBuffer as input
-        // This is because History Clamping writes the temporally denoised result to PrevIlluminationBuffer
         AtrousSmem<8, 2> KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
             bufferDim,
             invBufferDim,
 
-            bufferManager.GetBuffer2D(PrevIlluminationBuffer),
+            bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),
+            bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer),
 
             bufferManager.GetBuffer2D(NormalRoughnessBuffer),
             bufferManager.GetBuffer2D(MaterialBuffer),
             bufferManager.GetBuffer2D(DepthBuffer),
             bufferManager.GetBuffer2D(HistoryLengthBuffer),
 
-            bufferManager.GetBuffer2D(IlluminationPingBuffer),
+            bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),
+            bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer),
 
             camera,
 
-            // Pass denoising parameters to kernel
             denoisingParams.phiLuminance,
+            denoisingParams.phiLuminance, // specular phi luminance
             denoisingParams.depthThreshold,
             denoisingParams.roughnessFraction,
-            denoisingParams.lobeAngleFraction);
+            denoisingParams.lobeAngleFraction,
+            denoisingParams.lobeAngleFraction); // specular lobe angle fraction
 
-        finalResultBuffer = 1; // AtrousSmem outputs to IlluminationPingBuffer
+        finalResultBuffer = 1;
 
-        // A-trous iterations (controlled by parameter)
         if (denoisingParams.atrousIterationNum > 0)
         {
             int atrousIndex = 1;
             int atrousStep = 1 << atrousIndex;
-            int maxIterations = denoisingParams.atrousIterationNum * 2; // Each iteration does two passes
+            int maxIterations = denoisingParams.atrousIterationNum * 2;
 
             while (atrousIndex < maxIterations)
             {
@@ -332,18 +453,21 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferDim,
                     invBufferDim,
 
-                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),  // diffuse input
+                    bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer), // specular input
 
                     bufferManager.GetBuffer2D(NormalRoughnessBuffer),
                     bufferManager.GetBuffer2D(MaterialBuffer),
                     bufferManager.GetBuffer2D(DepthBuffer),
                     bufferManager.GetBuffer2D(HistoryLengthBuffer),
 
-                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
-                    
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),  // diffuse output
+                    bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer), // specular output
+
                     // Confidence buffers
                     bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
                     bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
+                    bufferManager.GetBuffer2D(SpecularReprojectionConfidenceBuffer), // specular reprojection confidence
 
                     camera,
                     iterationIndex,
@@ -351,14 +475,18 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
                     // Pass denoising parameters to kernel
                     denoisingParams.phiLuminance,
+                    denoisingParams.phiLuminance, // specular phi luminance
                     denoisingParams.depthThreshold,
                     denoisingParams.roughnessFraction,
-                    denoisingParams.lobeAngleFraction,
-                    
+                    denoisingParams.lobeAngleFraction, // diffuse lobe angle
+                    denoisingParams.lobeAngleFraction, // specular lobe angle
+                    0.1f,                              // specular lobe angle slack
+
                     // Confidence parameters
                     denoisingParams.enableConfidenceComputation,
                     denoisingParams.confidenceDrivenRelaxationMultiplier,
-                    denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
+                    denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation,
+                    0.9f); // normal edge stopping relaxation
 
                 finalResultBuffer = 2; // First A-trous outputs to IlluminationPongBuffer
                 ++atrousIndex;
@@ -368,18 +496,21 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     bufferDim,
                     invBufferDim,
 
-                    bufferManager.GetBuffer2D(IlluminationPongBuffer),
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),  // diffuse input
+                    bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer), // specular input
 
                     bufferManager.GetBuffer2D(NormalRoughnessBuffer),
                     bufferManager.GetBuffer2D(MaterialBuffer),
                     bufferManager.GetBuffer2D(DepthBuffer),
                     bufferManager.GetBuffer2D(HistoryLengthBuffer),
 
-                    bufferManager.GetBuffer2D(IlluminationPingBuffer),
-                    
+                    bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),  // diffuse output
+                    bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer), // specular output
+
                     // Confidence buffers
                     bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
                     bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
+                    bufferManager.GetBuffer2D(SpecularReprojectionConfidenceBuffer), // specular reprojection confidence
 
                     camera,
                     iterationIndex,
@@ -387,14 +518,18 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
                     // Pass denoising parameters to kernel
                     denoisingParams.phiLuminance,
+                    denoisingParams.phiLuminance, // specular phi luminance
                     denoisingParams.depthThreshold,
                     denoisingParams.roughnessFraction,
-                    denoisingParams.lobeAngleFraction,
-                    
+                    denoisingParams.lobeAngleFraction, // diffuse lobe angle
+                    denoisingParams.lobeAngleFraction, // specular lobe angle
+                    0.1f,                              // specular lobe angle slack
+
                     // Confidence parameters
                     denoisingParams.enableConfidenceComputation,
                     denoisingParams.confidenceDrivenRelaxationMultiplier,
-                    denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
+                    denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation,
+                    0.9f); // normal edge stopping relaxation
 
                 finalResultBuffer = 1; // Second A-trous outputs back to IlluminationPingBuffer
                 ++atrousIndex;
@@ -405,18 +540,21 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferDim,
                 invBufferDim,
 
-                bufferManager.GetBuffer2D(IlluminationPingBuffer),
+                bufferManager.GetBuffer2D(IlluminationPingBuffer), // diffuse input
+                bufferManager.GetBuffer2D(IlluminationPingBuffer), // specular input
 
                 bufferManager.GetBuffer2D(NormalRoughnessBuffer),
                 bufferManager.GetBuffer2D(MaterialBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),
                 bufferManager.GetBuffer2D(HistoryLengthBuffer),
 
-                bufferManager.GetBuffer2D(IlluminationPongBuffer),
-                
+                bufferManager.GetBuffer2D(IlluminationPongBuffer), // diffuse output
+                bufferManager.GetBuffer2D(IlluminationPongBuffer), // specular output
+
                 // Confidence buffers
                 bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
                 bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
+                bufferManager.GetBuffer2D(SpecularConfidenceBuffer), // specular reprojection confidence
 
                 camera,
                 iterationIndex,
@@ -424,44 +562,62 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
                 // Pass denoising parameters to kernel
                 denoisingParams.phiLuminance,
+                denoisingParams.phiLuminance, // specular phi luminance
                 denoisingParams.depthThreshold,
                 denoisingParams.roughnessFraction,
-                denoisingParams.lobeAngleFraction,
-                
+                denoisingParams.lobeAngleFraction, // diffuse lobe angle
+                denoisingParams.lobeAngleFraction, // specular lobe angle
+                0.1f,                              // specular lobe angle slack
+
                 // Confidence parameters
                 denoisingParams.enableConfidenceComputation,
                 denoisingParams.confidenceDrivenRelaxationMultiplier,
-                denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
+                denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation,
+                0.9f); // normal edge stopping relaxation
 
-            finalResultBuffer = 2; // Final A-trous outputs to IlluminationPongBuffer
+            finalResultBuffer = 2;
         }
     }
+    // If spatial filtering is disabled but denoiser is enabled, data remains in Ping buffers
+    else if (denoisingParams.enableDenoiser && finalResultBuffer == 0)
+    {
+        // This shouldn't happen with our temporal accumulation fix, but safety check
+        finalResultBuffer = 1;
+    }
 
-    // Use the correct final result buffer based on which passes were enabled
-    SurfObj finalOutputBuffer;
-    if (finalResultBuffer == 1)
-        finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationPingBuffer);
-    else if (finalResultBuffer == 2)
-        finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationPongBuffer);
+    // Combine separate diffuse and specular results back into IlluminationPingBuffer
+    SurfObj diffuseSource, specularSource;
+    if (finalResultBuffer == 2)
+    {
+        // Results are in Pong buffers (from anti-firefly or A-trous passes)
+        diffuseSource = bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer);
+        specularSource = bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer);
+    }
     else if (finalResultBuffer == 3)
-        finalOutputBuffer = bufferManager.GetBuffer2D(PrevIlluminationBuffer);
+    {
+        // Results are in Prev buffers (from history clamping)
+        diffuseSource = bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer);
+        specularSource = bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer);
+    }
     else
-        finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
+    {
+        // Results are in Ping buffers (from temporal accumulation or default)
+        diffuseSource = bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer);
+        specularSource = bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer);
+    }
+
+    CombineDiffuseSpecular KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+        bufferDim,
+        diffuseSource,
+        specularSource,
+        bufferManager.GetBuffer2D(IlluminationPingBuffer)); // Combined output
+
+    // Final output is always IlluminationPingBuffer since we just combined results there
+    SurfObj finalOutputBuffer = bufferManager.GetBuffer2D(IlluminationPingBuffer);
 
     BufferCopyNonSky KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
         bufferDim,
-
         finalOutputBuffer,
-
-        // bufferManager.GetBuffer2D(PrevIlluminationBuffer),
-        // bufferManager.GetBuffer2D(IlluminationBuffer),
-        // bufferManager.GetBuffer2D(IlluminationPingBuffer),
-
-        // bufferManager.GetBuffer2D(AlbedoBuffer),
-        // bufferManager.GetBuffer2D(DepthBuffer),
-        // bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer),
-        // bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer),
-
         bufferManager.GetBuffer2D(DepthBuffer),
         bufferManager.GetBuffer2D(AlbedoBuffer),
         bufferManager.GetBuffer2D(UIBuffer),
@@ -489,12 +645,12 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferDim,
             bufferManager.GetBuffer2D(DiffuseConfidenceBuffer),
             bufferManager.GetBuffer2D(PrevDiffuseConfidenceBuffer));
-            
+
         BufferCopyFloat1(
             bufferDim,
             bufferManager.GetBuffer2D(SpecularConfidenceBuffer),
             bufferManager.GetBuffer2D(PrevSpecularConfidenceBuffer));
-            
+
         BufferCopyFloat2(
             bufferDim,
             bufferManager.GetBuffer2D(RestirLuminanceBuffer),
