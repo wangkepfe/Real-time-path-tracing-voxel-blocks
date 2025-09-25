@@ -1,4 +1,5 @@
 #include "SystemParameter.h"
+#include "Common.h"
 #include "OptixShaderCommon.h"
 #include "ShaderDebugUtils.h"
 #include "Sampler.h"
@@ -32,6 +33,7 @@ __device__ __inline__ bool TraceNextPath(
     rayData->hitFrontFace = false;
     rayData->transmissionEvent = false;
     rayData->isInsideVolume = false;
+    rayData->lastMissWasEnvironment = false;
 
     // Float3 extinction;
     // if (volumnIdx > 0)
@@ -177,6 +179,8 @@ extern "C" __global__ void __raygen__pathtracer()
     rayData->isCurrentBounceDiffuse = false;
     rayData->isLastBounceDiffuse = false;
     rayData->isCurrentSampleSpecular = false; // Primary ray starts as camera ray
+    rayData->firstToSecondHitDistance = 0.0f;
+    bool secondHitCaptured = false;
 
     bool pathTerminated = false;
 
@@ -214,9 +218,39 @@ extern "C" __global__ void __raygen__pathtracer()
         if (rayData->depth == 0)
         {
             primaryRayHitDist = rayData->distance;
+
+            if (!secondHitCaptured && rayData->lastMissWasEnvironment)
+            {
+                rayData->firstToSecondHitDistance = 0.0f;
+                secondHitCaptured = true;
+            }
+        }
+        else if (!secondHitCaptured && rayData->depth == 1)
+        {
+            if (rayData->lastMissWasEnvironment)
+            {
+                rayData->firstToSecondHitDistance = RayMax;
+            }
+            else
+            {
+                rayData->firstToSecondHitDistance = rayData->distance;
+            }
+            secondHitCaptured = true;
         }
 
         ++rayData->depth;
+    }
+
+    if (!secondHitCaptured)
+    {
+        if (rayData->lastMissWasEnvironment)
+        {
+            rayData->firstToSecondHitDistance = 0.0f;
+        }
+        else
+        {
+            rayData->firstToSecondHitDistance = RayMax;
+        }
     }
 
     if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
@@ -239,5 +273,7 @@ extern "C" __global__ void __raygen__pathtracer()
     
     // Store separated diffuse and specular radiance from path tracing
     Store2DFloat4(Float4(diffuseRadiance, primaryRayHitDist), sysParam.diffuseIlluminationBuffer, idx);
-    Store2DFloat4(Float4(specularRadiance, primaryRayHitDist), sysParam.specularIlluminationBuffer, idx);
+    Store2DFloat4(Float4(specularRadiance, rayData->firstToSecondHitDistance), sysParam.specularIlluminationBuffer, idx);
 }
+
+

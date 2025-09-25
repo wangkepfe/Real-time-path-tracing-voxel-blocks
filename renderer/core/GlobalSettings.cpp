@@ -159,6 +159,8 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  enableHistoryClamping: " << (denoisingParams.enableHistoryClamping ? "true" : "false") << "\n";
     file << "  enableSpatialFiltering: " << (denoisingParams.enableSpatialFiltering ? "true" : "false") << "\n";
     file << "  enableAntiFirefly: " << (denoisingParams.enableAntiFirefly ? "true" : "false") << "\n";
+    file << "  enableConfidenceComputation: " << (denoisingParams.enableConfidenceComputation ? "true" : "false") << "\n";
+    file << "  enableTemporalConfidenceFiltering: " << (denoisingParams.enableTemporalConfidenceFiltering ? "true" : "false") << "\n";
     file << "  maxAccumulatedFrameNum: " << denoisingParams.maxAccumulatedFrameNum << "\n";
     file << "  maxFastAccumulatedFrameNum: " << denoisingParams.maxFastAccumulatedFrameNum << "\n";
     file << "  historyFixFrameNum: " << denoisingParams.historyFixFrameNum << "\n";
@@ -185,6 +187,11 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  confidenceDrivenRelaxationMultiplier: " << denoisingParams.confidenceDrivenRelaxationMultiplier << "\n";
     file << "  confidenceDrivenLuminanceEdgeStoppingRelaxation: " << denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation << "\n";
     file << "  confidenceDrivenNormalEdgeStoppingRelaxation: " << denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation << "\n";
+    file << "  gradientScale: " << denoisingParams.gradientScale << "\n";
+    file << "  temporalWeight: " << denoisingParams.temporalWeight << "\n";
+    file << "  restirConfidenceWeight: " << denoisingParams.restirConfidenceWeight << "\n";
+    file << "  gradientFilterRadius: " << denoisingParams.gradientFilterRadius << "\n";
+    file << "  gradientFilterStepSize: " << denoisingParams.gradientFilterStepSize << "\n";
     file << "  denoisingRange: " << denoisingParams.denoisingRange << "\n\n";
 
     // Save Post Processing Parameters
@@ -313,6 +320,10 @@ void GlobalSettings::parseDenosingSettings(const std::string &key, const std::st
         parseBool(value, denoisingParams.enableSpatialFiltering);
     else if (key == "enableAntiFirefly")
         parseBool(value, denoisingParams.enableAntiFirefly);
+    else if (key == "enableConfidenceComputation")
+        parseBool(value, denoisingParams.enableConfidenceComputation);
+    else if (key == "enableTemporalConfidenceFiltering")
+        parseBool(value, denoisingParams.enableTemporalConfidenceFiltering);
     else if (key == "maxAccumulatedFrameNum")
         parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
     else if (key == "maxFastAccumulatedFrameNum")
@@ -365,6 +376,16 @@ void GlobalSettings::parseDenosingSettings(const std::string &key, const std::st
         parseFloat(value, denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
     else if (key == "confidenceDrivenNormalEdgeStoppingRelaxation")
         parseFloat(value, denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation);
+    else if (key == "gradientScale")
+        parseFloat(value, denoisingParams.gradientScale);
+    else if (key == "temporalWeight")
+        parseFloat(value, denoisingParams.temporalWeight);
+    else if (key == "restirConfidenceWeight")
+        parseFloat(value, denoisingParams.restirConfidenceWeight);
+    else if (key == "gradientFilterRadius")
+        parseInt(value, denoisingParams.gradientFilterRadius);
+    else if (key == "gradientFilterStepSize")
+        parseInt(value, denoisingParams.gradientFilterStepSize);
     else if (key == "denoisingRange")
         parseFloat(value, denoisingParams.denoisingRange);
 }

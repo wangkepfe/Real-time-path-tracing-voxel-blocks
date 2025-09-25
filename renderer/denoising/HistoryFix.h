@@ -39,18 +39,18 @@ __global__ void HistoryFix(
     SurfObj materialBuffer,
     SurfObj normalRoughnessBuffer,
     SurfObj historyLengthBuffer,
-    
+
     // Separate diffuse buffers
     SurfObj diffuseIlluminationPingBuffer,
     SurfObj diffuseIlluminationPongBuffer,
-    
+
     // Separate specular buffers
     SurfObj specularIlluminationPingBuffer,
     SurfObj specularIlluminationPongBuffer,
     SurfObj specularHitDistBuffer,
 
     Camera camera,
-    
+
     // RELAX parameters
     float historyFixEdgeStoppingNormalPower,
     float historyFixStrideBetweenSamples)
@@ -63,23 +63,35 @@ __global__ void HistoryFix(
     pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
     pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    //unsigned int threadIndex = threadIdx.z * (blockDim.x * blockDim.y) +
-    //                           threadIdx.y * blockDim.x +
-    //                           threadIdx.x;
-
     if (pixelPos.x >= screenResolution.x || pixelPos.y >= screenResolution.y)
     {
         return;
     }
 
     // Early out if linearZ is beyond denoising range
-    // Early out if no disocclusion detected
     float centerViewZ = Load2DFloat1(depthBuffer, pixelPos);
+    const float denoisingRange = 500000.0f;
+    if (centerViewZ > denoisingRange)
+        return;
+
     float historyLength = Load2DFloat1(historyLengthBuffer, pixelPos);
     constexpr float historyFixFrameNum = 4.0f;
-    const float denoisingRange = 500000.0f;
-    if ((centerViewZ > denoisingRange) || (historyLength > historyFixFrameNum))
+
+    // If no disocclusion detected, just copy Ping to Pong
+    if (historyLength > historyFixFrameNum)
+    {
+        // Copy diffuse data from Ping to Pong
+        Float4 diffuseData = Load2DFloat4(diffuseIlluminationPingBuffer, pixelPos);
+        Store2DFloat4(diffuseData, diffuseIlluminationPongBuffer, pixelPos);
+
+        // Copy specular data from Ping to Pong
+        Float4 specularData = Load2DFloat4(specularIlluminationPingBuffer, pixelPos);
+        Store2DFloat4(specularData, specularIlluminationPongBuffer, pixelPos);
+
+        // Note: specularHitDistBuffer is shared between passes, no copy needed
+
         return;
+    }
 
     // Loading center data
     float centerMaterialID = Load2DUshort1(materialBuffer, pixelPos);
@@ -94,7 +106,7 @@ __global__ void HistoryFix(
     Float4 diffuseIlluminationAnd2ndMomentSum = Load2DFloat4(diffuseIlluminationPingBuffer, pixelPos);
     Float4 specularIlluminationAnd2ndMomentSum = Load2DFloat4(specularIlluminationPingBuffer, pixelPos);
     float specularHitDistSum = Load2DFloat1(specularHitDistBuffer, pixelPos);
-    
+
     float diffuseWSum = 1.0f;
     float specularWSum = 1.0f;
 
@@ -129,7 +141,7 @@ __global__ void HistoryFix(
             // Common weights
             float materialWeight = (sampleMaterialID == centerMaterialID) ? 1.0f : 0.0f;
             float insideWeight = isInside ? 1.0f : 0.0f;
-            
+
             // Summing up diffuse result
             float diffuseW = geometryWeight;
             diffuseW *= getDiffuseNormalWeight(centerNormal, sampleNormal);
@@ -141,7 +153,7 @@ __global__ void HistoryFix(
                 diffuseIlluminationAnd2ndMomentSum += sampleDiffuseIlluminationAnd2ndMoment * diffuseW;
                 diffuseWSum += diffuseW;
             }
-            
+
             // Summing up specular result
             float specularW = geometryWeight;
             specularW *= getSpecularNormalWeight(centerNormal, sampleNormal, centerRoughness);
@@ -152,7 +164,7 @@ __global__ void HistoryFix(
             {
                 Float4 sampleSpecularIlluminationAnd2ndMoment = Load2DFloat4(specularIlluminationPingBuffer, samplePosInt);
                 float sampleSpecularHitDist = Load2DFloat1(specularHitDistBuffer, samplePosInt);
-                
+
                 specularIlluminationAnd2ndMomentSum += sampleSpecularIlluminationAnd2ndMoment * specularW;
                 specularHitDistSum += sampleSpecularHitDist * specularW;
                 specularWSum += specularW;
@@ -166,7 +178,7 @@ __global__ void HistoryFix(
     Float4 outDiffuseIlluminationAnd2ndMoment = diffuseIlluminationAnd2ndMomentSum / diffuseWSum;
     Float4 outSpecularIlluminationAnd2ndMoment = specularIlluminationAnd2ndMomentSum / specularWSum;
     float outSpecularHitDist = specularHitDistSum / specularWSum;
-    
+
     Store2DFloat4(outDiffuseIlluminationAnd2ndMoment, diffuseIlluminationPongBuffer, pixelPos);
     Store2DFloat4(outSpecularIlluminationAnd2ndMoment, specularIlluminationPongBuffer, pixelPos);
     Store2DFloat1(outSpecularHitDist, specularHitDistBuffer, pixelPos);

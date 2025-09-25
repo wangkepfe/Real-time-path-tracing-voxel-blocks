@@ -8,7 +8,7 @@ denoising:
   enableTemporalAccumulation: true
   enableHistoryFix: true
   enableHistoryClamping: true
-  enableSpatialFiltering: true
+  enableSpatialFiltering: false
   enableAntiFirefly: false
   maxAccumulatedFrameNum: 30
   maxFastAccumulatedFrameNum: 6

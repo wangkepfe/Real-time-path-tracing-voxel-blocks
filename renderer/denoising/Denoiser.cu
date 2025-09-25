@@ -45,7 +45,7 @@ __global__ void CombineDiffuseSpecular(
     // Combine by adding diffuse and specular (standard lighting model)
     Float4 combined = Float4(diffuse.xyz + specular.xyz, diffuse.w + specular.w);
 
-    // Store combined result
+    // DO NOT CHANGE THIS: I'm testing the specular contribution now!!
     Store2DFloat4(specular, combinedOutputBuffer, pixelPos);
 }
 
@@ -118,7 +118,6 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
             camera,
             iterationIndex);
-        // Pre-pass typically doesn't change the final result buffer
     }
 
     if (frameNum == 0)
@@ -132,6 +131,26 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferDim,
             bufferManager.GetBuffer2D(IlluminationBuffer),
             bufferManager.GetBuffer2D(PrevFastIlluminationBuffer));
+
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(DiffuseIlluminationBuffer),
+            bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer));
+
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(DiffuseIlluminationBuffer),
+            bufferManager.GetBuffer2D(PrevDiffuseFastIlluminationBuffer));
+
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(SpecularIlluminationBuffer),
+            bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer));
+
+        BufferCopyFloat4(
+            bufferDim,
+            bufferManager.GetBuffer2D(SpecularIlluminationBuffer),
+            bufferManager.GetBuffer2D(PrevSpecularFastIlluminationBuffer));
 
         BufferSetFloat1(
             bufferDim,
@@ -307,7 +326,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                     historyCamera,
 
                     denoisingParams.gradientScale,
-                    denoisingParams.enableTemporalFiltering,
+                    denoisingParams.enableTemporalConfidenceFiltering,
                     denoisingParams.temporalWeight,
                     iterationIndex);
             }
@@ -360,6 +379,58 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 finalResultBuffer = 2;
             }
 
+            // If history clamping is disabled, we still need to copy the buffers to Prev for next frame
+            if (!denoisingParams.enableHistoryClamping)
+            {
+                // Copy the denoised specular buffers to prev buffers for next frame's temporal accumulation
+                // The source depends on which pass was last (stored in finalResultBuffer)
+                if (finalResultBuffer == 1)
+                {
+                    // From Ping buffers
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),
+                        bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer));
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer),
+                        bufferManager.GetBuffer2D(PrevDiffuseFastIlluminationBuffer));
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer),
+                        bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer));
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer),
+                        bufferManager.GetBuffer2D(PrevSpecularFastIlluminationBuffer));
+                }
+                else if (finalResultBuffer == 2)
+                {
+                    // From Pong buffers
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),
+                        bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer));
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer),
+                        bufferManager.GetBuffer2D(PrevDiffuseFastIlluminationBuffer));
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer),
+                        bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer));
+                    BufferCopyFloat4(
+                        bufferDim,
+                        bufferManager.GetBuffer2D(SpecularIlluminationPongBuffer),
+                        bufferManager.GetBuffer2D(PrevSpecularFastIlluminationBuffer));
+                }
+
+                BufferCopyFloat1(
+                    bufferDim,
+                    bufferManager.GetBuffer2D(HistoryLengthBuffer),
+                    bufferManager.GetBuffer2D(PrevHistoryLengthBuffer));
+            }
+
             // History clamping pass
             if (denoisingParams.enableHistoryClamping)
             {
@@ -403,12 +474,12 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             bufferDim,
             bufferManager.GetBuffer2D(DiffuseIlluminationBuffer),
             bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer));
-            
+
         BufferCopyFloat4(
             bufferDim,
             bufferManager.GetBuffer2D(SpecularIlluminationBuffer),
             bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer));
-            
+
         finalResultBuffer = 1; // Data is now in Ping buffers
     }
 
@@ -587,7 +658,18 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
 
     // Combine separate diffuse and specular results back into IlluminationPingBuffer
     SurfObj diffuseSource, specularSource;
-    if (finalResultBuffer == 2)
+    if (finalResultBuffer == 0)
+    {
+        diffuseSource = bufferManager.GetBuffer2D(DiffuseIlluminationBuffer);
+        specularSource = bufferManager.GetBuffer2D(SpecularIlluminationBuffer);
+    }
+    else if (finalResultBuffer == 1)
+    {
+        // Results are in Ping buffers (from temporal accumulation or default)
+        diffuseSource = bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer);
+        specularSource = bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer);
+    }
+    else if (finalResultBuffer == 2)
     {
         // Results are in Pong buffers (from anti-firefly or A-trous passes)
         diffuseSource = bufferManager.GetBuffer2D(DiffuseIlluminationPongBuffer);
@@ -598,12 +680,6 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         // Results are in Prev buffers (from history clamping)
         diffuseSource = bufferManager.GetBuffer2D(PrevDiffuseIlluminationBuffer);
         specularSource = bufferManager.GetBuffer2D(PrevSpecularIlluminationBuffer);
-    }
-    else
-    {
-        // Results are in Ping buffers (from temporal accumulation or default)
-        diffuseSource = bufferManager.GetBuffer2D(DiffuseIlluminationPingBuffer);
-        specularSource = bufferManager.GetBuffer2D(SpecularIlluminationPingBuffer);
     }
 
     CombineDiffuseSpecular KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
@@ -637,6 +713,12 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
         bufferDim,
         bufferManager.GetBuffer2D(MaterialBuffer),
         bufferManager.GetBuffer2D(PrevMaterialBuffer));
+
+    // Copy specular hit distance buffer for next frame - CRITICAL for temporal accumulation!
+    BufferCopyFloat1(
+        bufferDim,
+        bufferManager.GetBuffer2D(SpecularHitDistBuffer),
+        bufferManager.GetBuffer2D(PrevSpecularHitDistBuffer));
 
     // Copy confidence and ReSTIR luminance for next frame (if confidence computation is enabled)
     if (denoisingParams.enableConfidenceComputation)

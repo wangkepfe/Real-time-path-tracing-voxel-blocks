@@ -30,6 +30,8 @@ extern "C" __global__ void __miss__radiance()
         Store2DFloat4(Float4(0.0f, 0.0f, 0.0f, 0.0f), sysParam.materialParameterBuffer, pixelPosition);
     }
 
+    rayData->lastMissWasEnvironment = true;
+
     // if (rayData->isLastBounceDiffuse)
     // {
     //     rayData->distance = RayMax;
@@ -91,3 +93,4 @@ extern "C" __global__ void __miss__visibility()
     bool *isVisible = (bool *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
     *isVisible = true;
 }
+
