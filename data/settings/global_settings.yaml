@@ -7,14 +7,14 @@ denoising:
   enableTemporalAccumulation: true
   enableHistoryFix: true
   enableHistoryClamping: true
-  enableSpatialFiltering: false
+  enableSpatialFiltering: true
   maxAccumulatedFrameNum: 30
   maxFastAccumulatedFrameNum: 6
   phiLuminance: 2
   lobeAngleFraction: 0.5
   roughnessFraction: 0.15
   depthThreshold: 0.003
-  atrousIterationNum: 5
+  atrousIterationNum: 1
   disocclusionThreshold: 0.01
   disocclusionThresholdAlternate: 0.05
   denoisingRange: 500000
