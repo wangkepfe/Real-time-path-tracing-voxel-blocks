@@ -11,44 +11,38 @@ struct PostProcessingPipelineParams
 {
     // Bloom parameters
     bool enableBloom = true;
-    float bloomThreshold = 1.0f;   // Brightness threshold for bloom
-    float bloomIntensity = 0.15f;  // Bloom effect strength (reduced from 0.3f)
-    float bloomRadius = 2.0f;      // Bloom blur radius
-    int bloomDownsampleLevels = 5; // Number of mip levels for bloom
+    float bloomThreshold = 1.0f;
+    float bloomIntensity = 0.15f;
+    float bloomRadius = 2.0f;
 
     // Auto-exposure parameters
     bool enableAutoExposure = true;
-    float exposureSpeed = 1.0f;        // Auto-exposure adaptation speed
-    float exposureMin = -8.0f;         // Minimum exposure (EV)
-    float exposureMax = 8.0f;          // Maximum exposure (EV)
-    float exposureCompensation = 0.0f; // Manual exposure compensation
-    float histogramMinPercent = 40.0f; // Histogram range min (40%)
-    float histogramMaxPercent = 80.0f; // Histogram range max (80%)
-
-    // Luminance processing
-    int luminanceMipLevels = 6;    // Number of luminance mip levels
-    float targetLuminance = 0.18f; // Target scene brightness (18% gray)
+    float exposureSpeed = 1.0f;
+    float exposureMin = -8.0f;
+    float exposureMax = 8.0f;
+    float exposureCompensation = 0.0f;
+    float histogramMinPercent = 40.0f;
+    float histogramMaxPercent = 80.0f;
+    float targetLuminance = 0.18f;
 
     // Vignette parameters
     bool enableVignette = false;
-    float vignetteStrength = 0.5f;   // Vignette darkening strength
-    float vignetteRadius = 0.8f;     // Vignette radius (0=center, 1=edge)
-    float vignetteSmoothness = 0.5f; // Vignette edge smoothness
+    float vignetteStrength = 0.5f;
+    float vignetteRadius = 0.8f;
+    float vignetteSmoothness = 0.5f;
 
-    // Lens Flare parameters - Using very small, precise values for realistic effects
-    bool enableLensFlare = false;          // Disabled by default
-    float lensFlareIntensity = 0.0100f;    // Very subtle default intensity
-    float lensFlareThreshold = 4.0f;       // Higher threshold to reduce fireflies
-    float lensFlareGhostSpacing = 0.0800f; // Subtle ghost spacing
-    int lensFlareGhostCount = 4;           // Moderate ghost count
-    float lensFlareHaloRadius = 0.1000f;   // Small, realistic halo
-    float lensFlareSunSize = 0.0060f;      // Very small, realistic sun disk
-    float lensFlareDistortion = 0.0015f;   // Minimal chromatic aberration
-
-    // Performance/Quality settings
-    bool lensFlareHalfRes = true;        // Process at half resolution for performance
-    bool lensFlareNeighborFilter = true; // Filter single pixel fireflies
-    int lensFlareMaxSpots = 16;          // Reduced max spots for performance
+    // Lens flare parameters
+    bool enableLensFlare = false;
+    float lensFlareIntensity = 0.0100f;
+    float lensFlareThreshold = 4.0f;
+    float lensFlareGhostSpacing = 0.0800f;
+    int lensFlareGhostCount = 4;
+    float lensFlareHaloRadius = 0.1000f;
+    float lensFlareSunSize = 0.0060f;
+    float lensFlareDistortion = 0.0015f;
+    bool lensFlareHalfRes = true;
+    bool lensFlareNeighborFilter = true;
+    int lensFlareMaxSpots = 16;
 
     std::vector<std::tuple<float *, std::string, float, float, bool>> GetValueList()
     {
@@ -88,14 +82,12 @@ struct PostProcessingPipelineParams
     std::vector<std::pair<int *, std::string>> GetIntValueList()
     {
         return {
-            {&bloomDownsampleLevels, "Bloom Mip Levels"},
-            {&luminanceMipLevels, "Luminance Mip Levels"},
             {&lensFlareGhostCount, "Lens Flare Ghost Count"},
-            {&lensFlareMaxSpots, "Max Lens Flare Spots"}};
+            {&lensFlareMaxSpots, "Max Lens Flare Spots"}
+        };
     }
 };
 
-// Based on NRD ReLaX denoiser settings with comprehensive parameter coverage
 struct DenoisingParams
 {
     std::vector<std::pair<bool *, std::string>> GetBooleanValueList()
@@ -107,52 +99,21 @@ struct DenoisingParams
             {&enableHistoryFix, "Enable History Fix"},
             {&enableHistoryClamping, "Enable History Clamping"},
             {&enableSpatialFiltering, "Enable Spatial Filtering (A-trous)"},
-            {&enableAntiFirefly, "Enable Anti-Firefly"},
-            {&enableRoughnessEdgeStopping, "Enable Roughness Edge Stopping"},
         };
     }
 
     std::vector<std::pair<float *, std::string>> GetValueList()
     {
         return {
-            // Temporal accumulation parameters
             {&maxAccumulatedFrameNum, "Max Accumulated Frame Num"},
             {&maxFastAccumulatedFrameNum, "Max Fast Accumulated Frame Num"},
-            {&historyFixFrameNum, "History Fix Frame Num"},
-
-            // Pre-pass blur settings
-            {&prepassBlurRadius, "Pre-pass Blur Radius"},
-            {&minHitDistanceWeight, "Min Hit Distance Weight"},
-
-            // A-trous spatial filtering
             {&phiLuminance, "Phi Luminance"},
             {&lobeAngleFraction, "Lobe Angle Fraction"},
             {&roughnessFraction, "Roughness Fraction"},
             {&depthThreshold, "Depth Threshold"},
-            {&minLuminanceWeight, "Min Luminance Weight"},
-
-            // Edge stopping relaxation
-            {&luminanceEdgeStoppingRelaxation, "Luminance Edge Stopping Relaxation"},
-            {&normalEdgeStoppingRelaxation, "Normal Edge Stopping Relaxation"},
-            {&roughnessEdgeStoppingRelaxation, "Roughness Edge Stopping Relaxation"},
-
-            // Antilag settings
-            {&antilagAccelerationAmount, "Antilag Acceleration Amount"},
-            {&antilagSpatialSigmaScale, "Antilag Spatial Sigma Scale"},
-            {&antilagTemporalSigmaScale, "Antilag Temporal Sigma Scale"},
-            {&antilagResetAmount, "Antilag Reset Amount"},
-
-            // History clamping
-            {&historyClampingColorBoxSigmaScale, "History Clamping Color Box Sigma Scale"},
-
-            // Disocclusion
             {&disocclusionThreshold, "Disocclusion Threshold"},
             {&disocclusionThresholdAlternate, "Disocclusion Threshold Alternate"},
-
-            // Confidence driven parameters
-            {&confidenceDrivenRelaxationMultiplier, "Confidence Driven Relaxation Multiplier"},
-            {&confidenceDrivenLuminanceEdgeStoppingRelaxation, "Confidence Driven Luminance Edge Stopping Relaxation"},
-            {&confidenceDrivenNormalEdgeStoppingRelaxation, "Confidence Driven Normal Edge Stopping Relaxation"},
+            {&denoisingRange, "Denoising Range"},
         };
     }
 
@@ -160,72 +121,33 @@ struct DenoisingParams
     {
         return {
             {&atrousIterationNum, "A-trous Iteration Number"},
-            {&historyFixBasePixelStride, "History Fix Base Pixel Stride"},
-            {&spatialVarianceEstimationHistoryThreshold, "Spatial Variance Estimation History Threshold"},
         };
     }
 
-    // Pass control flags (replace hardcoded if statements)
     bool enableHitDistanceReconstruction = false;
     bool enablePrePass = false;
     bool enableTemporalAccumulation = true;
     bool enableHistoryFix = true;
     bool enableHistoryClamping = true;
     bool enableSpatialFiltering = true;
-    bool enableAntiFirefly = false;
-    bool enableRoughnessEdgeStopping = true;
 
-    // Temporal accumulation parameters (based on NRD ReLaX defaults)
     float maxAccumulatedFrameNum = 30.0f;
     float maxFastAccumulatedFrameNum = 6.0f;
-    float historyFixFrameNum = 3.0f;
 
-    // Pre-pass settings
-    float prepassBlurRadius = 30.0f;
-    float minHitDistanceWeight = 0.1f;
-
-    // A-trous spatial filtering parameters
     float phiLuminance = 2.0f;
     float lobeAngleFraction = 0.5f;
     float roughnessFraction = 0.15f;
     float depthThreshold = 0.003f;
-    float minLuminanceWeight = 0.0f;
+
     int atrousIterationNum = 5;
 
-    // Edge stopping relaxation parameters
-    float luminanceEdgeStoppingRelaxation = 0.5f;
-    float normalEdgeStoppingRelaxation = 0.3f;
-    float roughnessEdgeStoppingRelaxation = 1.0f;
-
-    // Antilag settings (based on NRD ReLaX defaults)
-    float antilagAccelerationAmount = 0.3f;
-    float antilagSpatialSigmaScale = 4.5f;
-    float antilagTemporalSigmaScale = 0.5f;
-    float antilagResetAmount = 0.5f;
-
-    // History clamping
-    float historyClampingColorBoxSigmaScale = 2.0f;
-
-    // History fix parameters
-    int historyFixBasePixelStride = 14;
-    float historyFixEdgeStoppingNormalPower = 8.0f;
-
-    // Spatial variance estimation
-    int spatialVarianceEstimationHistoryThreshold = 3;
-
-    // Disocclusion parameters
     float disocclusionThreshold = 0.01f;
     float disocclusionThresholdAlternate = 0.05f;
 
-    // Confidence driven parameters
-    float confidenceDrivenRelaxationMultiplier = 0.0f;
-    float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
-    float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
-
-    // Denoising range
     float denoisingRange = 500000.0f;
 };
 
+// Tone Mapping Parameters Structure
 // Tone Mapping Parameters Structure
 struct ToneMappingParams
 {
@@ -255,8 +177,6 @@ struct ToneMappingParams
 
     // Chromatic adaptation
     bool enableChromaticAdaptation = true;
-    Float3 sourceWhitePoint = Float3(0.95047f, 1.0f, 1.08883f); // D65
-    Float3 targetWhitePoint = Float3(0.95047f, 1.0f, 1.08883f); // D65
 
     std::vector<std::tuple<float *, std::string, float, float, bool>>
     GetValueList()

@@ -212,6 +212,30 @@ namespace
         }
     }
 
+    const Timer &getCurrentTimer()
+    {
+        if (GlobalSettings::IsOfflineMode())
+        {
+            return OfflineBackend::Get().getTimer();
+        }
+        else
+        {
+            return Backend::Get().getTimer();
+        }
+    }
+
+    CUcontext getCurrentCudaContext()
+    {
+        if (GlobalSettings::IsOfflineMode())
+        {
+            return OfflineBackend::Get().getCudaContext();
+        }
+        else
+        {
+            return Backend::Get().getCudaContext();
+        }
+    }
+
 } // namespace
 
 // Helper functions for geometry index calculations
@@ -281,8 +305,8 @@ void OptixRenderer::initializeSbtRecord(unsigned int sbtRecordIndex, unsigned in
 
 void OptixRenderer::clear()
 {
-    auto &backend = Backend::Get();
-    CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+    CUstream cudaStream = getCurrentCudaStream();
+    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
     // Material memory is now managed by MaterialManager, don't free here
     if (m_d_systemParameter)
@@ -350,14 +374,16 @@ void OptixRenderer::clear()
 
 void OptixRenderer::render()
 {
-    auto &backend = Backend::Get();
     auto &scene = Scene::Get();
     auto &bufferManager = BufferManager::Get();
+
+    CUstream cudaStream = getCurrentCudaStream();
+    const Timer &timer = getCurrentTimer();
 
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
     m_systemParameter.iterationIndex = iterationIndex++;
 
-    CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
 #ifndef OFFLINE_MODE
 #else
@@ -370,7 +396,10 @@ void OptixRenderer::render()
     m_systemParameter.camera = currentCameraForShader;
     m_systemParameter.prevCamera = historyCameraForShader;
 
-    m_systemParameter.timeInSecond = backend.getTimer().getTime() / 1000.0f; // Convert ms to seconds
+    const float timeSeconds = timer.getTime() * 0.001f;
+    const float deltaTimeSeconds = timer.getDeltaTime();
+
+    m_systemParameter.timeInSecond = timeSeconds;
 
     const auto &skyModel = SkyModel::Get();
     m_systemParameter.sunDir = skyModel.getSunDir();
@@ -385,27 +414,27 @@ void OptixRenderer::render()
     m_systemParameter.prevLightIdToCurrentId = scene.d_prevLightIdToCurrentId;
     m_systemParameter.lightsStateDirty = scene.m_lightsJustUpdated;
     m_systemParameter.instanceLightMappingSize = scene.instanceLightMappingSize;
-    
+
     // Reset the flag after reading it
     if (scene.m_lightsJustUpdated)
     {
         scene.m_lightsJustUpdated = false;
     }
 
-    updateAnimatedEntities(backend.getCudaStream(), backend.getTimer().getTime() / 1000.0f, backend.getTimer().getDeltaTime());
+    updateAnimatedEntities(cudaStream, timeSeconds, deltaTimeSeconds);
 
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
     m_systemParameter.prevTopObject = m_systemParameter.topObject;
     int nextIndex = (m_currentIasIdx + 1) % 2;
-    buildInstanceAccelerationStructure(backend.getCudaStream(), nextIndex);
+    buildInstanceAccelerationStructure(cudaStream, nextIndex);
     m_currentIasIdx = nextIndex;
 
-    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, backend.getCudaStream()));
+    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, cudaStream));
 
-    OPTIX_CHECK(m_api.optixLaunch(m_pipeline, backend.getCudaStream(), (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
+    OPTIX_CHECK(m_api.optixLaunch(m_pipeline, cudaStream, (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
-    CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
+    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
@@ -516,7 +545,7 @@ void OptixRenderer::createGasAndOptixInstanceForUninstancedObject()
             }
 
             OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                m_api, m_context, Backend::Get().getCudaStream(),
+                m_api, m_context, getCurrentCudaStream(),
                 geometry,
                 *scene.getChunkGeometryAttributes(chunkIndex, objectId),
                 *scene.getChunkGeometryIndices(chunkIndex, objectId),
@@ -564,7 +593,7 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
     }
 
     OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-        m_api, m_context, Backend::Get().getCudaStream(),
+        m_api, m_context, getCurrentCudaStream(),
         geometry,
         *scene.getChunkGeometryAttributes(chunkIndex, objectId),
         *scene.getChunkGeometryIndices(chunkIndex, objectId),
@@ -615,7 +644,7 @@ void OptixRenderer::createBlasForInstancedObjects()
 
         GeometryData geometry = {};
         OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-            m_api, m_context, Backend::Get().getCudaStream(),
+            m_api, m_context, getCurrentCudaStream(),
             geometry,
             scene.m_instancedGeometryAttributes[arrayIndex],
             scene.m_instancedGeometryIndices[arrayIndex],
@@ -660,7 +689,7 @@ void OptixRenderer::createBlasForEntities()
         {
             GeometryData geometry = {};
             OptixTraversableHandle blasHandle = Scene::CreateGeometry(
-                m_api, m_context, Backend::Get().getCudaStream(),
+                m_api, m_context, getCurrentCudaStream(),
                 geometry,
                 entity->getAttributes(),
                 entity->getIndices(),
@@ -782,7 +811,7 @@ void OptixRenderer::update()
         }
 
         // Upload SBT
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, getCurrentCudaStream()));
 
         // Instanced
         createOptixInstanceForInstancedObject();
@@ -802,7 +831,7 @@ void OptixRenderer::update()
             {
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
                 updateGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
-                CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+                CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, getCurrentCudaStream()));
             }
             // Instanced
             else if (Assets::BlockManager::Get().isInstancedBlockType(blockId))
@@ -926,8 +955,8 @@ void OptixRenderer::init()
         options.logCallbackData = &g_logger;
         options.logCallbackLevel = 3; // Keep at warning level to suppress the disk cache messages.
 
-        auto &backend = Backend::Get();
-        auto res = m_api.optixDeviceContextCreate(backend.getCudaContext(), &options, &m_context);
+        CUcontext cudaContext = getCurrentCudaContext();
+        auto res = m_api.optixDeviceContextCreate(cudaContext, &options, &m_context);
         if (res != OPTIX_SUCCESS)
         {
             throw std::runtime_error("ERROR: initOptiX() optixDeviceContextCreate() failed");
@@ -957,7 +986,7 @@ void OptixRenderer::init()
     createOptixInstanceForInstancedObject();
     createBlasForEntities();
     createOptixInstanceForEntity();
-    buildInstanceAccelerationStructure(Backend::Get().getCudaStream(), 0);
+    buildInstanceAccelerationStructure(getCurrentCudaStream(), 0);
 
     // Options
     OptixModuleCompileOptions moduleCompileOptions = {};
@@ -1151,7 +1180,7 @@ void OptixRenderer::init()
         SbtRecordHeader sbtRecordRaygeneration;
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[0], &sbtRecordRaygeneration));
         CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordRaygeneration, sizeof(SbtRecordHeader)));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader), cudaMemcpyHostToDevice, getCurrentCudaStream()));
     }
 
     // Miss group
@@ -1164,7 +1193,7 @@ void OptixRenderer::init()
         OPTIX_CHECK(m_api.optixSbtRecordPackHeader(programGroups[3], &sbtRecordMiss[2]));
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordMiss, sizeof(SbtRecordHeader) * numMissShaders));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * numMissShaders, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * numMissShaders, cudaMemcpyHostToDevice, getCurrentCudaStream()));
     }
 
     // Hit group
@@ -1222,7 +1251,7 @@ void OptixRenderer::init()
         }
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_sbtRecordGeometryInstanceData, sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES, cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * totalInstances * NUM_RAY_TYPES, cudaMemcpyHostToDevice, getCurrentCudaStream()));
     }
 
     // Setup the OptixShaderBindingTable
@@ -1250,7 +1279,7 @@ void OptixRenderer::init()
         m_systemParameter.materialParameters = Assets::MaterialManager::Get().getGPUMaterialsPointer();
 
         CUDA_CHECK(cudaMalloc((void **)&m_d_systemParameter, sizeof(SystemParameter)));
-        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, Backend::Get().getCudaStream()));
+        CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, getCurrentCudaStream()));
     }
 
     // Destroy modules

@@ -157,35 +157,18 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  enableHistoryFix: " << (denoisingParams.enableHistoryFix ? "true" : "false") << "\n";
     file << "  enableHistoryClamping: " << (denoisingParams.enableHistoryClamping ? "true" : "false") << "\n";
     file << "  enableSpatialFiltering: " << (denoisingParams.enableSpatialFiltering ? "true" : "false") << "\n";
-    file << "  enableAntiFirefly: " << (denoisingParams.enableAntiFirefly ? "true" : "false") << "\n";
     file << "  maxAccumulatedFrameNum: " << denoisingParams.maxAccumulatedFrameNum << "\n";
     file << "  maxFastAccumulatedFrameNum: " << denoisingParams.maxFastAccumulatedFrameNum << "\n";
-    file << "  historyFixFrameNum: " << denoisingParams.historyFixFrameNum << "\n";
-    file << "  prepassBlurRadius: " << denoisingParams.prepassBlurRadius << "\n";
-    file << "  minHitDistanceWeight: " << denoisingParams.minHitDistanceWeight << "\n";
     file << "  phiLuminance: " << denoisingParams.phiLuminance << "\n";
     file << "  lobeAngleFraction: " << denoisingParams.lobeAngleFraction << "\n";
     file << "  roughnessFraction: " << denoisingParams.roughnessFraction << "\n";
     file << "  depthThreshold: " << denoisingParams.depthThreshold << "\n";
-    file << "  minLuminanceWeight: " << denoisingParams.minLuminanceWeight << "\n";
     file << "  atrousIterationNum: " << denoisingParams.atrousIterationNum << "\n";
-    file << "  luminanceEdgeStoppingRelaxation: " << denoisingParams.luminanceEdgeStoppingRelaxation << "\n";
-    file << "  normalEdgeStoppingRelaxation: " << denoisingParams.normalEdgeStoppingRelaxation << "\n";
-    file << "  roughnessEdgeStoppingRelaxation: " << denoisingParams.roughnessEdgeStoppingRelaxation << "\n";
-    file << "  antilagAccelerationAmount: " << denoisingParams.antilagAccelerationAmount << "\n";
-    file << "  antilagSpatialSigmaScale: " << denoisingParams.antilagSpatialSigmaScale << "\n";
-    file << "  antilagTemporalSigmaScale: " << denoisingParams.antilagTemporalSigmaScale << "\n";
-    file << "  antilagResetAmount: " << denoisingParams.antilagResetAmount << "\n";
-    file << "  historyClampingColorBoxSigmaScale: " << denoisingParams.historyClampingColorBoxSigmaScale << "\n";
-    file << "  historyFixBasePixelStride: " << denoisingParams.historyFixBasePixelStride << "\n";
-    file << "  spatialVarianceEstimationHistoryThreshold: " << denoisingParams.spatialVarianceEstimationHistoryThreshold << "\n";
     file << "  disocclusionThreshold: " << denoisingParams.disocclusionThreshold << "\n";
     file << "  disocclusionThresholdAlternate: " << denoisingParams.disocclusionThresholdAlternate << "\n";
-    file << "  confidenceDrivenRelaxationMultiplier: " << denoisingParams.confidenceDrivenRelaxationMultiplier << "\n";
-    file << "  confidenceDrivenLuminanceEdgeStoppingRelaxation: " << denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation << "\n";
-    file << "  confidenceDrivenNormalEdgeStoppingRelaxation: " << denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation << "\n";
     file << "  denoisingRange: " << denoisingParams.denoisingRange << "\n\n";
 
+    // Save Post Processing Parameters
     // Save Post Processing Parameters
     file << "postprocess:\n";
     // Tone mapping parameters
@@ -205,7 +188,6 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  bloomThreshold: " << postProcessingPipelineParams.bloomThreshold << "\n";
     file << "  bloomIntensity: " << postProcessingPipelineParams.bloomIntensity << "\n";
     file << "  bloomRadius: " << postProcessingPipelineParams.bloomRadius << "\n";
-    file << "  bloomDownsampleLevels: " << postProcessingPipelineParams.bloomDownsampleLevels << "\n";
     
     // Auto-exposure parameters
     file << "  enableAutoExposure: " << (postProcessingPipelineParams.enableAutoExposure ? "true" : "false") << "\n";
@@ -215,7 +197,6 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  exposureCompensation: " << postProcessingPipelineParams.exposureCompensation << "\n";
     file << "  histogramMinPercent: " << postProcessingPipelineParams.histogramMinPercent << "\n";
     file << "  histogramMaxPercent: " << postProcessingPipelineParams.histogramMaxPercent << "\n";
-    file << "  luminanceMipLevels: " << postProcessingPipelineParams.luminanceMipLevels << "\n";
     file << "  targetLuminance: " << postProcessingPipelineParams.targetLuminance << "\n";
     
     // Vignette parameters
@@ -333,8 +314,6 @@ void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key,
         parseFloat(value, postProcessingPipelineParams.bloomIntensity);
     else if (key == "bloomRadius")
         parseFloat(value, postProcessingPipelineParams.bloomRadius);
-    else if (key == "bloomDownsampleLevels")
-        parseInt(value, postProcessingPipelineParams.bloomDownsampleLevels);
     
     // Auto-exposure parameters
     else if (key == "enableAutoExposure")
@@ -351,8 +330,6 @@ void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key,
         parseFloat(value, postProcessingPipelineParams.histogramMinPercent);
     else if (key == "histogramMaxPercent")
         parseFloat(value, postProcessingPipelineParams.histogramMaxPercent);
-    else if (key == "luminanceMipLevels")
-        parseInt(value, postProcessingPipelineParams.luminanceMipLevels);
     else if (key == "targetLuminance")
         parseFloat(value, postProcessingPipelineParams.targetLuminance);
     
@@ -500,34 +477,15 @@ void GlobalSettings::parseDenosingSettings(const std::string& key, const std::st
     else if (key == "enableHistoryFix") parseBool(value, denoisingParams.enableHistoryFix);
     else if (key == "enableHistoryClamping") parseBool(value, denoisingParams.enableHistoryClamping);
     else if (key == "enableSpatialFiltering") parseBool(value, denoisingParams.enableSpatialFiltering);
-    else if (key == "enableAntiFirefly") parseBool(value, denoisingParams.enableAntiFirefly);
-    else if (key == "enableRoughnessEdgeStopping") parseBool(value, denoisingParams.enableRoughnessEdgeStopping);
     else if (key == "maxAccumulatedFrameNum") parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
     else if (key == "maxFastAccumulatedFrameNum") parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
-    else if (key == "historyFixFrameNum") parseFloat(value, denoisingParams.historyFixFrameNum);
-    else if (key == "prepassBlurRadius") parseFloat(value, denoisingParams.prepassBlurRadius);
-    else if (key == "minHitDistanceWeight") parseFloat(value, denoisingParams.minHitDistanceWeight);
     else if (key == "phiLuminance") parseFloat(value, denoisingParams.phiLuminance);
     else if (key == "lobeAngleFraction") parseFloat(value, denoisingParams.lobeAngleFraction);
     else if (key == "roughnessFraction") parseFloat(value, denoisingParams.roughnessFraction);
     else if (key == "depthThreshold") parseFloat(value, denoisingParams.depthThreshold);
-    else if (key == "minLuminanceWeight") parseFloat(value, denoisingParams.minLuminanceWeight);
     else if (key == "atrousIterationNum") parseInt(value, denoisingParams.atrousIterationNum);
-    else if (key == "luminanceEdgeStoppingRelaxation") parseFloat(value, denoisingParams.luminanceEdgeStoppingRelaxation);
-    else if (key == "normalEdgeStoppingRelaxation") parseFloat(value, denoisingParams.normalEdgeStoppingRelaxation);
-    else if (key == "roughnessEdgeStoppingRelaxation") parseFloat(value, denoisingParams.roughnessEdgeStoppingRelaxation);
-    else if (key == "antilagAccelerationAmount") parseFloat(value, denoisingParams.antilagAccelerationAmount);
-    else if (key == "antilagSpatialSigmaScale") parseFloat(value, denoisingParams.antilagSpatialSigmaScale);
-    else if (key == "antilagTemporalSigmaScale") parseFloat(value, denoisingParams.antilagTemporalSigmaScale);
-    else if (key == "antilagResetAmount") parseFloat(value, denoisingParams.antilagResetAmount);
-    else if (key == "historyClampingColorBoxSigmaScale") parseFloat(value, denoisingParams.historyClampingColorBoxSigmaScale);
-    else if (key == "historyFixBasePixelStride") parseInt(value, denoisingParams.historyFixBasePixelStride);
-    else if (key == "spatialVarianceEstimationHistoryThreshold") parseInt(value, denoisingParams.spatialVarianceEstimationHistoryThreshold);
     else if (key == "disocclusionThreshold") parseFloat(value, denoisingParams.disocclusionThreshold);
     else if (key == "disocclusionThresholdAlternate") parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
-    else if (key == "confidenceDrivenRelaxationMultiplier") parseFloat(value, denoisingParams.confidenceDrivenRelaxationMultiplier);
-    else if (key == "confidenceDrivenLuminanceEdgeStoppingRelaxation") parseFloat(value, denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
-    else if (key == "confidenceDrivenNormalEdgeStoppingRelaxation") parseFloat(value, denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation);
     else if (key == "denoisingRange") parseFloat(value, denoisingParams.denoisingRange);
 }
 

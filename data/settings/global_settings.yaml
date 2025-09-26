@@ -8,33 +8,15 @@ denoising:
   enableHistoryFix: true
   enableHistoryClamping: true
   enableSpatialFiltering: false
-  enableAntiFirefly: false
   maxAccumulatedFrameNum: 30
   maxFastAccumulatedFrameNum: 6
-  historyFixFrameNum: 3
-  prepassBlurRadius: 30
-  minHitDistanceWeight: 0.1
   phiLuminance: 2
   lobeAngleFraction: 0.5
   roughnessFraction: 0.15
   depthThreshold: 0.003
-  minLuminanceWeight: 0
   atrousIterationNum: 5
-  luminanceEdgeStoppingRelaxation: 0.5
-  normalEdgeStoppingRelaxation: 0.3
-  roughnessEdgeStoppingRelaxation: 1
-  antilagAccelerationAmount: 0.3
-  antilagSpatialSigmaScale: 4.5
-  antilagTemporalSigmaScale: 0.5
-  antilagResetAmount: 0.5
-  historyClampingColorBoxSigmaScale: 2
-  historyFixBasePixelStride: 14
-  spatialVarianceEstimationHistoryThreshold: 3
   disocclusionThreshold: 0.01
   disocclusionThresholdAlternate: 0.05
-  confidenceDrivenRelaxationMultiplier: 0
-  confidenceDrivenLuminanceEdgeStoppingRelaxation: 0
-  confidenceDrivenNormalEdgeStoppingRelaxation: 0
   denoisingRange: 500000
 
 postprocess:
@@ -51,7 +33,6 @@ postprocess:
   bloomThreshold: 1
   bloomIntensity: 0.15
   bloomRadius: 2
-  bloomDownsampleLevels: 5
   enableAutoExposure: true
   exposureSpeed: 1
   exposureMin: -8
@@ -59,7 +40,6 @@ postprocess:
   exposureCompensation: -2
   histogramMinPercent: 40
   histogramMaxPercent: 80
-  luminanceMipLevels: 6
   targetLuminance: 0.1
   enableVignette: false
   vignetteStrength: 0.5

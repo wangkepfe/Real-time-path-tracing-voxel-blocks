@@ -205,7 +205,6 @@ void UI::update()
                 ImGui::SliderFloat("Bloom Radius", &pipelineParams.bloomRadius, 0.5f, 5.0f, "%.2f");
                 ImGui::SameLine(); ImGui::InputFloat("##bloom_radius_input", &pipelineParams.bloomRadius, 0.1f, 0.5f, "%.2f");
                 
-                ImGui::SliderInt("Bloom Mip Levels", &pipelineParams.bloomDownsampleLevels, 1, 6);
             }
             ImGui::TreePop();
         }
