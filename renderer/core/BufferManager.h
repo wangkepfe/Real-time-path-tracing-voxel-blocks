@@ -11,14 +11,6 @@ enum Buffer2DName
     IlluminationOutputBuffer,
     IlluminationPingBuffer,
     IlluminationPongBuffer,
-    DiffuseIlluminationBuffer,
-    SpecularIlluminationBuffer,
-    
-    // Separate diffuse/specular ping-pong buffers for temporal accumulation
-    DiffuseIlluminationPingBuffer,
-    DiffuseIlluminationPongBuffer,
-    SpecularIlluminationPingBuffer,
-    SpecularIlluminationPongBuffer,
     NormalRoughnessBuffer,
     DepthBuffer,
     MaterialBuffer,
@@ -30,26 +22,8 @@ enum Buffer2DName
     PrevMaterialBuffer,
     PrevIlluminationBuffer,
     PrevFastIlluminationBuffer,
-    
-    // Separate previous frame buffers for diffuse/specular
-    PrevDiffuseIlluminationBuffer,
-    PrevDiffuseFastIlluminationBuffer,
-    PrevSpecularIlluminationBuffer,
-    PrevSpecularFastIlluminationBuffer,
     PrevHistoryLengthBuffer,
     PrevNormalRoughnessBuffer,
-    
-    // Specular-specific buffers
-    SpecularHitDistBuffer,
-    PrevSpecularHitDistBuffer,
-    SpecularReprojectionConfidenceBuffer,
-    
-    // History confidence buffers
-    DiffuseHistoryConfidenceBuffer,
-    PrevDiffuseHistoryConfidenceBuffer,
-    SpecularHistoryConfidenceBuffer,
-    PrevSpecularHistoryConfidenceBuffer,
-    DisocclusionThresholdMixBuffer,
     GeoNormalThinfilmBuffer,
     MaterialParameterBuffer,
     PrevMaterialParameterBuffer,
@@ -59,8 +33,6 @@ enum Buffer2DName
     SunBuffer,
     DebugBuffer,
     UIBuffer,
-    
-    // Post-processing pipeline buffers
     BloomExtractBuffer,
     BloomTempBuffer,
     LuminanceMip0Buffer,
@@ -69,21 +41,7 @@ enum Buffer2DName
     LuminanceMip3Buffer,
     LuminanceMip4Buffer,
     LuminanceMip5Buffer,
-    
-    // Confidence computation buffers  
-    DiffuseGradientBuffer,
-    FilteredDiffuseGradientBuffer,
-    DiffuseConfidenceBuffer,
-    PrevDiffuseConfidenceBuffer,
-    SpecularGradientBuffer,
-    FilteredSpecularGradientBuffer,
-    SpecularConfidenceBuffer,
-    PrevSpecularConfidenceBuffer,
-    
-    // ReSTIR luminance buffers
-    RestirLuminanceBuffer,
-    PrevRestirLuminanceBuffer,
-    
+
     Buffer2DCount,
 };
 
@@ -125,8 +83,6 @@ public:
     Int2 GetBufferDim(Buffer2DName name) const { return m_buffers[(unsigned int)name].bufferDim; }
     SurfObj GetBuffer2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].buffer; }
     TexObj GetTexture2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].tex; }
-    cudaArray_t GetBufferArray(Buffer2DName name) const { return m_buffers[(unsigned int)name].bufferArray; }
-
     uint32_t reservoirBlockRowPitch;
     uint32_t reservoirArrayPitch;
     DIReservoir *reservoirBuffer;

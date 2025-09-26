@@ -103,21 +103,13 @@ void UI::update()
 
     if (ImGui::CollapsingHeader("Temporal Denoising", 0))
     {
-        DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();
-
-        // Master enable/disable checkbox
-        ImGui::Checkbox("Enable Denoiser", &denoisingParams.enableDenoiser);
-        ImGui::Separator();
-
-        // Boolean parameters (pass controls)
+        DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();// Boolean parameters (pass controls)
         if (ImGui::TreeNode("Pass Controls"))
         {
             for (auto &itempair : denoisingParams.GetBooleanValueList())
             {
-                if (itempair.first != &denoisingParams.enableDenoiser) // Skip the master enable checkbox
-                {
-                    ImGui::Checkbox(itempair.second.c_str(), itempair.first);
-                }
+                ImGui::Checkbox(itempair.second.c_str(), itempair.first);
+
             }
             ImGui::TreePop();
         }
@@ -643,3 +635,4 @@ void UI::render()
     glViewport(0, 0, backend.getWidth(), backend.getHeight());
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
+

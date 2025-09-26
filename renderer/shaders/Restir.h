@@ -184,8 +184,8 @@ INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
 {
     float pdf;
 
-    Float3 diffuse, specular;
-    DisneyBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, diffuse, specular, pdf);
+    Float3 f;
+    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     return pdf;
 }
@@ -194,8 +194,7 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, int &randIdx, Float3 &wi, 
 {
     Float3 bsdfOverPdf;
 
-    bool isSpecularSample;
-    DisneyBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent, isSpecularSample);
+    UberBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
 
     return pdf > 0.0f;
 }
@@ -209,12 +208,11 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
 
     Float3 wi = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
 
-    Float3 diffuse, specular;
+    Float3 f;
 
     float pdf;
-    DisneyBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, diffuse, specular, pdf);
+    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
-    Float3 f = diffuse + specular; // Combined BRDF for ReSTIR
     Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.state.normal)) / lightSample.solidAnglePdf;
 
     return luminance(reflectedRadiance);
@@ -420,7 +418,6 @@ INL_DEVICE bool GetLightSampleFromReservoir(LightSample &ls, const DIReservoir &
         ls = triLight.calcSample(uv, surface.pos);
         return true;
     }
-    
+
     return lightIndex < InvalidLightIndex;
 }
-

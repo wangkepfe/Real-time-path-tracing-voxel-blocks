@@ -2,7 +2,6 @@
 
 #include "shaders/LinearMath.h"
 #include "shaders/Camera.h"
-#include "shaders/Sampler.h"
 
 __device__ float LinearStep(float a, float b, float x)
 {
@@ -382,144 +381,22 @@ __device__ float GetNormalWeightParam2(float roughness, float angleFraction)
     return angle;
 }
 
-// Enhanced normal weight calculation for specular with view-vector dependency (based on NRD RELAX)
-__device__ Float2 GetSpecularNormalWeightParams(float roughness, float numFramesInHistory, float specularReprojectionConfidence, 
-                                               float normalEdgeStoppingRelaxation, float specularLobeAngleFraction, float specularLobeAngleSlack)
-{
-    // Relaxing normal weights if not enough frames in history and if specular reprojection confidence is low
-    float relaxation = saturate(numFramesInHistory / 5.0f);
-    relaxation *= lerp(1.0f, specularReprojectionConfidence, normalEdgeStoppingRelaxation);
-    float f = 0.9f + 0.1f * relaxation;
-
-    // This is the main parameter - cone angle based on roughness
-    float angle = atan(GetSpecLobeTanHalfAngle(roughness, specularLobeAngleFraction));
-
-    // Increasing angle ~10x to relax rejection of the neighbors if specular reprojection confidence is low
-    angle *= 10.0f - 9.0f * relaxation;
-
-    // Add slack angle
-    angle += specularLobeAngleSlack;
-
-    // Clamp to reasonable maximum
-    angle = min(M_PI * 0.5f, angle);
-
-    return Float2(angle, f);
-}
-
-// Calculate specular normal weight with view-vector dependency (based on NRD RELAX)
-__device__ float GetSpecularNormalWeightWithViewVector(Float2 params, Float3 centerNormal, Float3 sampleNormal, 
-                                                      Float3 centerViewVector, Float3 sampleViewVector)
-{
-    float cosaN = dot(centerNormal, sampleNormal);
-    float cosaV = dot(centerViewVector, sampleViewVector);
-    float cosa = min(cosaN, cosaV);
-    float a = acos(saturate(cosa));
-    a = SmoothStep(0.0f, params.x, a);
-
-    return saturate(1.0f - a * params.y);
-}
-
-// Roughness weight parameters calculation (based on NRD RELAX)
-__device__ Float2 GetRoughnessWeightParams(float roughness, float fraction)
-{
-    float a = lerp(0.0f, 0.99f, saturate(roughness * 2.0f));
-    float b = 1.0f / (lerp(0.01f, 1.0f, a) * fraction + 1e-6f);
-    return Float2(a, b);
-}
-
-// Missing function definitions
-__device__ float getSpecularNormalWeightFromRoughness(float roughness)
-{
-    // Higher normal weight power for lower roughness (more sensitive to normal variations)
-    return lerp(128.0f, 16.0f, saturate(roughness));
-}
-
-__device__ float getSpecularLuminanceWeightFromRoughness(float roughness, float basePhiLuminance)
-{
-    // Specular requires different luminance sensitivity based on roughness
-    return basePhiLuminance * lerp(0.3f, 1.0f, saturate(roughness));
-}
-
-// getSpecularRoughnessWeight is defined in HistoryFix.h
-
-// ComputeWeight is also defined in TemporalAccumulation.h with different signature
-
-// Additional required functions
-__device__ Float4 SampleBilinearCustomFloat4(SurfObj buffer, Float2 uv, Float2 screenSize, Float4 weights)
-{
-    Int2 pos = Int2(uv.x * screenSize.x, uv.y * screenSize.y);
-    Float4 result = Float4(0.0f);
-    float totalWeight = 0.0f;
-    
-    for (int i = 0; i < 4; i++) {
-        if (weights[i] > 0.0f) {
-            Int2 offset = Int2(i % 2, i / 2);
-            Int2 samplePos = pos + offset;
-            if (samplePos.x >= 0 && samplePos.y >= 0 && 
-                samplePos.x < (int)screenSize.x && samplePos.y < (int)screenSize.y) {
-                result += Load2DFloat4(buffer, samplePos) * weights[i];
-                totalWeight += weights[i];
-            }
-        }
-    }
-    
-    return totalWeight > 0.0f ? result / totalWeight : Float4(0.0f);
-}
-
-__device__ float SampleBilinearCustomFloat1(SurfObj buffer, Float2 uv, Float2 screenSize, Float4 weights)
-{
-    Int2 pos = Int2(uv.x * screenSize.x, uv.y * screenSize.y);
-    float result = 0.0f;
-    float totalWeight = 0.0f;
-    
-    for (int i = 0; i < 4; i++) {
-        if (weights[i] > 0.0f) {
-            Int2 offset = Int2(i % 2, i / 2);
-            Int2 samplePos = pos + offset;
-            if (samplePos.x >= 0 && samplePos.y >= 0 && 
-                samplePos.x < (int)screenSize.x && samplePos.y < (int)screenSize.y) {
-                result += Load2DFloat1(buffer, samplePos) * weights[i];
-                totalWeight += weights[i];
-            }
-        }
-    }
-    
-    return totalWeight > 0.0f ? result / totalWeight : 0.0f;
-}
-
-template<typename LoadFunc, typename T, typename BoundaryFunc>
-__device__ T SampleBicubic12Taps(SurfObj buffer, Float2 uv, Float2 screenSize)
-{
-    // Simplified bicubic sampling - fallback to bilinear for now
-    Int2 pos = Int2(uv.x * screenSize.x, uv.y * screenSize.y);
-    pos = clamp2i(pos, Int2(0), Int2((int)screenSize.x - 1, (int)screenSize.y - 1));
-    
-    if constexpr (std::is_same_v<T, Float4>) {
-        return Load2DFloat4(buffer, pos);
-    } else if constexpr (std::is_same_v<T, Float3>) {
-        Float4 sample = Load2DFloat4(buffer, pos);
-        return Float3(sample.x, sample.y, sample.z);
-    } else {
-        return Load2DFloat1(buffer, pos);
-    }
-}
-
-// Using existing reflect3f from LinearMath.h
-
-// Using existing IsInScreenBilinear function defined above
-
 __device__ float Pow01(float x, float y)
 {
     return pow(saturate(x), y);
 }
 
-// GetSpecMagicCurve is defined in TemporalAccumulation.h
+__device__ float GetSpecMagicCurve(float roughness, float power = 0.25f)
+{
+    float f = 1.0f - exp2(-200.0f * roughness * roughness);
+    f *= Pow01(roughness, power);
+
+    return f;
+}
 
 __device__ Float2 GetHitDistanceWeightParams(float hitDist, float nonLinearAccumSpeed, float roughness = 1.0f)
 {
-    // Using TemporalAccumulation version
-    float f = 1.0f - exp2(-200.0f * roughness * roughness);
-    float smc = f;
+    float smc = GetSpecMagicCurve(roughness);
     float norm = lerp(0.0005f, 1.0f, min(nonLinearAccumSpeed, smc));
     float a = 1.0f / norm;
     float b = hitDist * a;
@@ -633,29 +510,4 @@ __device__ Float4 RngHashGetFloat4(unsigned int &rngHashState)
 {
     UInt4 x = RngHashGetUint4(rngHashState);
     return UintToFloat01(x);
-}
-
-// Bilinear sampling for Float4 from surface object
-__device__ Float4 BilinearSample2DFloat4(SurfObj surfObj, Float2 pixelPos)
-{
-    // Get integer and fractional parts
-    int x0 = (int)floor(pixelPos.x);
-    int y0 = (int)floor(pixelPos.y);
-    int x1 = x0 + 1;
-    int y1 = y0 + 1;
-    
-    float fx = pixelPos.x - x0;
-    float fy = pixelPos.y - y0;
-    
-    // Sample four corners
-    Float4 c00 = Load2DFloat4(surfObj, Int2(x0, y0));
-    Float4 c10 = Load2DFloat4(surfObj, Int2(x1, y0));
-    Float4 c01 = Load2DFloat4(surfObj, Int2(x0, y1));
-    Float4 c11 = Load2DFloat4(surfObj, Int2(x1, y1));
-    
-    // Bilinear interpolation
-    Float4 c0 = c00 * (1.0f - fx) + c10 * fx;
-    Float4 c1 = c01 * (1.0f - fx) + c11 * fx;
-    
-    return c0 * (1.0f - fy) + c1 * fy;
 }

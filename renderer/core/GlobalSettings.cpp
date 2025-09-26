@@ -151,7 +151,6 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
 
     // Save Denoising Parameters
     file << "denoising:\n";
-    file << "  enableDenoiser: " << (denoisingParams.enableDenoiser ? "true" : "false") << "\n";
     file << "  enableHitDistanceReconstruction: " << (denoisingParams.enableHitDistanceReconstruction ? "true" : "false") << "\n";
     file << "  enablePrePass: " << (denoisingParams.enablePrePass ? "true" : "false") << "\n";
     file << "  enableTemporalAccumulation: " << (denoisingParams.enableTemporalAccumulation ? "true" : "false") << "\n";
@@ -159,8 +158,6 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  enableHistoryClamping: " << (denoisingParams.enableHistoryClamping ? "true" : "false") << "\n";
     file << "  enableSpatialFiltering: " << (denoisingParams.enableSpatialFiltering ? "true" : "false") << "\n";
     file << "  enableAntiFirefly: " << (denoisingParams.enableAntiFirefly ? "true" : "false") << "\n";
-    file << "  enableConfidenceComputation: " << (denoisingParams.enableConfidenceComputation ? "true" : "false") << "\n";
-    file << "  enableTemporalConfidenceFiltering: " << (denoisingParams.enableTemporalConfidenceFiltering ? "true" : "false") << "\n";
     file << "  maxAccumulatedFrameNum: " << denoisingParams.maxAccumulatedFrameNum << "\n";
     file << "  maxFastAccumulatedFrameNum: " << denoisingParams.maxFastAccumulatedFrameNum << "\n";
     file << "  historyFixFrameNum: " << denoisingParams.historyFixFrameNum << "\n";
@@ -187,11 +184,6 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  confidenceDrivenRelaxationMultiplier: " << denoisingParams.confidenceDrivenRelaxationMultiplier << "\n";
     file << "  confidenceDrivenLuminanceEdgeStoppingRelaxation: " << denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation << "\n";
     file << "  confidenceDrivenNormalEdgeStoppingRelaxation: " << denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation << "\n";
-    file << "  gradientScale: " << denoisingParams.gradientScale << "\n";
-    file << "  temporalWeight: " << denoisingParams.temporalWeight << "\n";
-    file << "  restirConfidenceWeight: " << denoisingParams.restirConfidenceWeight << "\n";
-    file << "  gradientFilterRadius: " << denoisingParams.gradientFilterRadius << "\n";
-    file << "  gradientFilterStepSize: " << denoisingParams.gradientFilterStepSize << "\n";
     file << "  denoisingRange: " << denoisingParams.denoisingRange << "\n\n";
 
     // Save Post Processing Parameters
@@ -302,93 +294,7 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
 }
 
 // Private helper methods for parsing specific sections
-void GlobalSettings::parseDenosingSettings(const std::string &key, const std::string &value)
-{
-    if (key == "enableDenoiser")
-        parseBool(value, denoisingParams.enableDenoiser);
-    else if (key == "enableHitDistanceReconstruction")
-        parseBool(value, denoisingParams.enableHitDistanceReconstruction);
-    else if (key == "enablePrePass")
-        parseBool(value, denoisingParams.enablePrePass);
-    else if (key == "enableTemporalAccumulation")
-        parseBool(value, denoisingParams.enableTemporalAccumulation);
-    else if (key == "enableHistoryFix")
-        parseBool(value, denoisingParams.enableHistoryFix);
-    else if (key == "enableHistoryClamping")
-        parseBool(value, denoisingParams.enableHistoryClamping);
-    else if (key == "enableSpatialFiltering")
-        parseBool(value, denoisingParams.enableSpatialFiltering);
-    else if (key == "enableAntiFirefly")
-        parseBool(value, denoisingParams.enableAntiFirefly);
-    else if (key == "enableConfidenceComputation")
-        parseBool(value, denoisingParams.enableConfidenceComputation);
-    else if (key == "enableTemporalConfidenceFiltering")
-        parseBool(value, denoisingParams.enableTemporalConfidenceFiltering);
-    else if (key == "maxAccumulatedFrameNum")
-        parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
-    else if (key == "maxFastAccumulatedFrameNum")
-        parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
-    else if (key == "historyFixFrameNum")
-        parseFloat(value, denoisingParams.historyFixFrameNum);
-    else if (key == "prepassBlurRadius")
-        parseFloat(value, denoisingParams.prepassBlurRadius);
-    else if (key == "minHitDistanceWeight")
-        parseFloat(value, denoisingParams.minHitDistanceWeight);
-    else if (key == "phiLuminance")
-        parseFloat(value, denoisingParams.phiLuminance);
-    else if (key == "lobeAngleFraction")
-        parseFloat(value, denoisingParams.lobeAngleFraction);
-    else if (key == "roughnessFraction")
-        parseFloat(value, denoisingParams.roughnessFraction);
-    else if (key == "depthThreshold")
-        parseFloat(value, denoisingParams.depthThreshold);
-    else if (key == "minLuminanceWeight")
-        parseFloat(value, denoisingParams.minLuminanceWeight);
-    else if (key == "atrousIterationNum")
-        parseInt(value, denoisingParams.atrousIterationNum);
-    else if (key == "luminanceEdgeStoppingRelaxation")
-        parseFloat(value, denoisingParams.luminanceEdgeStoppingRelaxation);
-    else if (key == "normalEdgeStoppingRelaxation")
-        parseFloat(value, denoisingParams.normalEdgeStoppingRelaxation);
-    else if (key == "roughnessEdgeStoppingRelaxation")
-        parseFloat(value, denoisingParams.roughnessEdgeStoppingRelaxation);
-    else if (key == "antilagAccelerationAmount")
-        parseFloat(value, denoisingParams.antilagAccelerationAmount);
-    else if (key == "antilagSpatialSigmaScale")
-        parseFloat(value, denoisingParams.antilagSpatialSigmaScale);
-    else if (key == "antilagTemporalSigmaScale")
-        parseFloat(value, denoisingParams.antilagTemporalSigmaScale);
-    else if (key == "antilagResetAmount")
-        parseFloat(value, denoisingParams.antilagResetAmount);
-    else if (key == "historyClampingColorBoxSigmaScale")
-        parseFloat(value, denoisingParams.historyClampingColorBoxSigmaScale);
-    else if (key == "historyFixBasePixelStride")
-        parseInt(value, denoisingParams.historyFixBasePixelStride);
-    else if (key == "spatialVarianceEstimationHistoryThreshold")
-        parseInt(value, denoisingParams.spatialVarianceEstimationHistoryThreshold);
-    else if (key == "disocclusionThreshold")
-        parseFloat(value, denoisingParams.disocclusionThreshold);
-    else if (key == "disocclusionThresholdAlternate")
-        parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
-    else if (key == "confidenceDrivenRelaxationMultiplier")
-        parseFloat(value, denoisingParams.confidenceDrivenRelaxationMultiplier);
-    else if (key == "confidenceDrivenLuminanceEdgeStoppingRelaxation")
-        parseFloat(value, denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
-    else if (key == "confidenceDrivenNormalEdgeStoppingRelaxation")
-        parseFloat(value, denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation);
-    else if (key == "gradientScale")
-        parseFloat(value, denoisingParams.gradientScale);
-    else if (key == "temporalWeight")
-        parseFloat(value, denoisingParams.temporalWeight);
-    else if (key == "restirConfidenceWeight")
-        parseFloat(value, denoisingParams.restirConfidenceWeight);
-    else if (key == "gradientFilterRadius")
-        parseInt(value, denoisingParams.gradientFilterRadius);
-    else if (key == "gradientFilterStepSize")
-        parseInt(value, denoisingParams.gradientFilterStepSize);
-    else if (key == "denoisingRange")
-        parseFloat(value, denoisingParams.denoisingRange);
-}
+
 
 void GlobalSettings::parseToneMappingSettings(const std::string &key, const std::string &value)
 {
@@ -582,3 +488,47 @@ void GlobalSettings::parseRenderingSettings(const std::string &key, const std::s
 }
 
 // Time management is now handled by Backend's Timer.h
+
+
+
+
+void GlobalSettings::parseDenosingSettings(const std::string& key, const std::string& value)
+{
+    if (key == "enableHitDistanceReconstruction") parseBool(value, denoisingParams.enableHitDistanceReconstruction);
+    else if (key == "enablePrePass") parseBool(value, denoisingParams.enablePrePass);
+    else if (key == "enableTemporalAccumulation") parseBool(value, denoisingParams.enableTemporalAccumulation);
+    else if (key == "enableHistoryFix") parseBool(value, denoisingParams.enableHistoryFix);
+    else if (key == "enableHistoryClamping") parseBool(value, denoisingParams.enableHistoryClamping);
+    else if (key == "enableSpatialFiltering") parseBool(value, denoisingParams.enableSpatialFiltering);
+    else if (key == "enableAntiFirefly") parseBool(value, denoisingParams.enableAntiFirefly);
+    else if (key == "enableRoughnessEdgeStopping") parseBool(value, denoisingParams.enableRoughnessEdgeStopping);
+    else if (key == "maxAccumulatedFrameNum") parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
+    else if (key == "maxFastAccumulatedFrameNum") parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
+    else if (key == "historyFixFrameNum") parseFloat(value, denoisingParams.historyFixFrameNum);
+    else if (key == "prepassBlurRadius") parseFloat(value, denoisingParams.prepassBlurRadius);
+    else if (key == "minHitDistanceWeight") parseFloat(value, denoisingParams.minHitDistanceWeight);
+    else if (key == "phiLuminance") parseFloat(value, denoisingParams.phiLuminance);
+    else if (key == "lobeAngleFraction") parseFloat(value, denoisingParams.lobeAngleFraction);
+    else if (key == "roughnessFraction") parseFloat(value, denoisingParams.roughnessFraction);
+    else if (key == "depthThreshold") parseFloat(value, denoisingParams.depthThreshold);
+    else if (key == "minLuminanceWeight") parseFloat(value, denoisingParams.minLuminanceWeight);
+    else if (key == "atrousIterationNum") parseInt(value, denoisingParams.atrousIterationNum);
+    else if (key == "luminanceEdgeStoppingRelaxation") parseFloat(value, denoisingParams.luminanceEdgeStoppingRelaxation);
+    else if (key == "normalEdgeStoppingRelaxation") parseFloat(value, denoisingParams.normalEdgeStoppingRelaxation);
+    else if (key == "roughnessEdgeStoppingRelaxation") parseFloat(value, denoisingParams.roughnessEdgeStoppingRelaxation);
+    else if (key == "antilagAccelerationAmount") parseFloat(value, denoisingParams.antilagAccelerationAmount);
+    else if (key == "antilagSpatialSigmaScale") parseFloat(value, denoisingParams.antilagSpatialSigmaScale);
+    else if (key == "antilagTemporalSigmaScale") parseFloat(value, denoisingParams.antilagTemporalSigmaScale);
+    else if (key == "antilagResetAmount") parseFloat(value, denoisingParams.antilagResetAmount);
+    else if (key == "historyClampingColorBoxSigmaScale") parseFloat(value, denoisingParams.historyClampingColorBoxSigmaScale);
+    else if (key == "historyFixBasePixelStride") parseInt(value, denoisingParams.historyFixBasePixelStride);
+    else if (key == "spatialVarianceEstimationHistoryThreshold") parseInt(value, denoisingParams.spatialVarianceEstimationHistoryThreshold);
+    else if (key == "disocclusionThreshold") parseFloat(value, denoisingParams.disocclusionThreshold);
+    else if (key == "disocclusionThresholdAlternate") parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
+    else if (key == "confidenceDrivenRelaxationMultiplier") parseFloat(value, denoisingParams.confidenceDrivenRelaxationMultiplier);
+    else if (key == "confidenceDrivenLuminanceEdgeStoppingRelaxation") parseFloat(value, denoisingParams.confidenceDrivenLuminanceEdgeStoppingRelaxation);
+    else if (key == "confidenceDrivenNormalEdgeStoppingRelaxation") parseFloat(value, denoisingParams.confidenceDrivenNormalEdgeStoppingRelaxation);
+    else if (key == "denoisingRange") parseFloat(value, denoisingParams.denoisingRange);
+}
+
+

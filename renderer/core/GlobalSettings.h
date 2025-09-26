@@ -101,7 +101,6 @@ struct DenoisingParams
     std::vector<std::pair<bool *, std::string>> GetBooleanValueList()
     {
         return {
-            {&enableDenoiser, "Enable Denoiser"},
             {&enableHitDistanceReconstruction, "Enable Hit Distance Reconstruction"},
             {&enablePrePass, "Enable Pre-Pass"},
             {&enableTemporalAccumulation, "Enable Temporal Accumulation"},
@@ -109,8 +108,7 @@ struct DenoisingParams
             {&enableHistoryClamping, "Enable History Clamping"},
             {&enableSpatialFiltering, "Enable Spatial Filtering (A-trous)"},
             {&enableAntiFirefly, "Enable Anti-Firefly"},
-            {&enableConfidenceComputation, "Enable Confidence Computation"},
-            {&enableTemporalConfidenceFiltering, "Enable Temporal Confidence Filtering"},
+            {&enableRoughnessEdgeStopping, "Enable Roughness Edge Stopping"},
         };
     }
 
@@ -155,11 +153,6 @@ struct DenoisingParams
             {&confidenceDrivenRelaxationMultiplier, "Confidence Driven Relaxation Multiplier"},
             {&confidenceDrivenLuminanceEdgeStoppingRelaxation, "Confidence Driven Luminance Edge Stopping Relaxation"},
             {&confidenceDrivenNormalEdgeStoppingRelaxation, "Confidence Driven Normal Edge Stopping Relaxation"},
-
-            // Confidence computation parameters
-            {&gradientScale, "Gradient Scale"},
-            {&temporalWeight, "Temporal Filtering Weight"},
-            {&restirConfidenceWeight, "ReSTIR Confidence Weight"},
         };
     }
 
@@ -169,21 +162,18 @@ struct DenoisingParams
             {&atrousIterationNum, "A-trous Iteration Number"},
             {&historyFixBasePixelStride, "History Fix Base Pixel Stride"},
             {&spatialVarianceEstimationHistoryThreshold, "Spatial Variance Estimation History Threshold"},
-            {&gradientFilterRadius, "Gradient Filter Radius"},
-            {&gradientFilterStepSize, "Gradient Filter Step Size"},
         };
     }
 
     // Pass control flags (replace hardcoded if statements)
-    bool enableDenoiser = true;
     bool enableHitDistanceReconstruction = false;
     bool enablePrePass = false;
     bool enableTemporalAccumulation = true;
     bool enableHistoryFix = true;
     bool enableHistoryClamping = true;
-    bool enableSpatialFiltering = false;
+    bool enableSpatialFiltering = true;
     bool enableAntiFirefly = false;
-    bool enableConfidenceComputation = false;
+    bool enableRoughnessEdgeStopping = true;
 
     // Temporal accumulation parameters (based on NRD ReLaX defaults)
     float maxAccumulatedFrameNum = 30.0f;
@@ -231,14 +221,6 @@ struct DenoisingParams
     float confidenceDrivenRelaxationMultiplier = 0.0f;
     float confidenceDrivenLuminanceEdgeStoppingRelaxation = 0.0f;
     float confidenceDrivenNormalEdgeStoppingRelaxation = 0.0f;
-
-    // Confidence computation parameters (RTXDI-based)
-    float gradientScale = 1.0f;
-    bool enableTemporalConfidenceFiltering = true;
-    float temporalWeight = 0.1f;
-    float restirConfidenceWeight = 0.5f;
-    int gradientFilterRadius = 1;
-    int gradientFilterStepSize = 1;
 
     // Denoising range
     float denoisingRange = 500000.0f;
@@ -489,3 +471,4 @@ private:
     void parseCameraMovementSettings(const std::string &key, const std::string &value);
     void parseRenderingSettings(const std::string &key, const std::string &value);
 };
+

@@ -16,6 +16,7 @@ extern "C" __global__ void __miss__radiance()
 
     const bool enableRIS = true && rayData->depth == 0;
     const bool enableReSTIR = true && enableRIS;
+
     if (enableReSTIR)
     {
         StoreDIReservoir(EmptyDIReservoir(), pixelPosition);
@@ -29,8 +30,6 @@ extern "C" __global__ void __miss__radiance()
         Store2DFloat4(Float4(0.0f, -1.0f, 0.0f, 0.0f), sysParam.geoNormalThinfilmBuffer, pixelPosition);
         Store2DFloat4(Float4(0.0f, 0.0f, 0.0f, 0.0f), sysParam.materialParameterBuffer, pixelPosition);
     }
-
-    rayData->lastMissWasEnvironment = true;
 
     // if (rayData->isLastBounceDiffuse)
     // {
@@ -93,4 +92,3 @@ extern "C" __global__ void __miss__visibility()
     bool *isVisible = (bool *)mergePointer(optixGetPayload_0(), optixGetPayload_1());
     *isVisible = true;
 }
-

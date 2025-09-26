@@ -2,7 +2,6 @@
 # Generated automatically
 
 denoising:
-  enableDenoiser: true
   enableHitDistanceReconstruction: false
   enablePrePass: false
   enableTemporalAccumulation: true

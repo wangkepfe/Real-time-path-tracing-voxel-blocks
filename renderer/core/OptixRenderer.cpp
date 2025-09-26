@@ -833,8 +833,6 @@ void OptixRenderer::init()
         const auto &skyModel = SkyModel::Get();
 
         m_systemParameter.illuminationBuffer = bufferManager.GetBuffer2D(IlluminationBuffer);
-        m_systemParameter.diffuseIlluminationBuffer = bufferManager.GetBuffer2D(DiffuseIlluminationBuffer);
-        m_systemParameter.specularIlluminationBuffer = bufferManager.GetBuffer2D(SpecularIlluminationBuffer);
 
         // Gbuffers
         m_systemParameter.normalRoughnessBuffer = bufferManager.GetBuffer2D(NormalRoughnessBuffer);
@@ -855,18 +853,8 @@ void OptixRenderer::init()
         m_systemParameter.motionVectorBuffer = bufferManager.GetBuffer2D(MotionVectorBuffer);
 
         // Confidence computation buffers
-        m_systemParameter.diffuseGradientBuffer = bufferManager.GetBuffer2D(DiffuseGradientBuffer);
-        m_systemParameter.filteredDiffuseGradientBuffer = bufferManager.GetBuffer2D(FilteredDiffuseGradientBuffer);
-        m_systemParameter.diffuseConfidenceBuffer = bufferManager.GetBuffer2D(DiffuseConfidenceBuffer);
-        m_systemParameter.prevDiffuseConfidenceBuffer = bufferManager.GetBuffer2D(PrevDiffuseConfidenceBuffer);
-        m_systemParameter.specularGradientBuffer = bufferManager.GetBuffer2D(SpecularGradientBuffer);
-        m_systemParameter.filteredSpecularGradientBuffer = bufferManager.GetBuffer2D(FilteredSpecularGradientBuffer);
-        m_systemParameter.specularConfidenceBuffer = bufferManager.GetBuffer2D(SpecularConfidenceBuffer);
-        m_systemParameter.prevSpecularConfidenceBuffer = bufferManager.GetBuffer2D(PrevSpecularConfidenceBuffer);
         
         // ReSTIR luminance buffers
-        m_systemParameter.restirLuminanceBuffer = bufferManager.GetBuffer2D(RestirLuminanceBuffer);
-        m_systemParameter.prevRestirLuminanceBuffer = bufferManager.GetBuffer2D(PrevRestirLuminanceBuffer);
 
         m_systemParameter.UIBuffer = bufferManager.GetBuffer2D(UIBuffer);
 

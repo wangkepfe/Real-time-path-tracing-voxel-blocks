@@ -88,9 +88,6 @@ extern "C" __global__ void __closesthit__radiance()
         if (!rayData->hitFirstDiffuseSurface)
         {
             rayData->radiance = parameters.albedo;
-            // Emissive materials are typically diffuse emitters
-            rayData->diffuseRadiance = parameters.albedo;
-            rayData->specularRadiance = Float3(0.0f);
 
             Store2DFloat4(Float4(1.0f), sysParam.albedoBuffer, pixelPosition);
             Store2DFloat1((float)(0xFFFF), sysParam.materialBuffer, pixelPosition);
@@ -205,6 +202,11 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool isDiffuse = state.roughness > roughnessThreshold;
 
+    // if (OPTIX_CENTER_BLOCK() && !isDiffuse)
+    // {
+    //     OPTIX_DEBUG_PRINT(state.roughness);
+    // }
+
     // Metallic
     state.metallic = parameters.metallic;
     if (parameters.textureMetallic != 0)
@@ -249,12 +251,7 @@ extern "C" __global__ void __closesthit__radiance()
     // optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, int &, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, rayData->randIdx, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf);
 
     rayData->transmissionEvent = false;
-
-    bool isSpecularSample = false;
-    DisneyBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent, isSpecularSample);
-    
-    // Store the sample type for the next bounce
-    rayData->isCurrentSampleSpecular = isSpecularSample;
+    UberBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent);
 
     if (bsdfSamplePdf <= 0.0f)
     {
@@ -268,7 +265,6 @@ extern "C" __global__ void __closesthit__radiance()
     //                               ? (rayData->isInsideVolume ? true : !rayData->transmissionEvent)
     //                               : (rayData->isInsideVolume ? rayData->transmissionEvent : true));
     rayData->pos = isThinfilm ? (dot(bsdfSampleWi, state.normal) > 0.0f ? frontPos : backPos) : frontPos;
-
     rayData->wi = bsdfSampleWi;
     rayData->bsdfOverPdf = bsdfSampleBsdfOverPdf;
     rayData->pdf = bsdfSamplePdf;
@@ -277,6 +273,7 @@ extern "C" __global__ void __closesthit__radiance()
     bool skipAlbedoInShadowRayContribution = false;
     if (rayData->depth == 0)
     {
+        rayData->hitFirstDiffuseSurface = true;
         Store2DFloat4(Float4(state.albedo, 1.0f), sysParam.albedoBuffer, pixelPosition);
 
         // Demodulate the first albedo contribution
@@ -284,14 +281,7 @@ extern "C" __global__ void __closesthit__radiance()
         skipAlbedoInShadowRayContribution = true;
     }
 
-    bool enableRIS = false;
-    if (!rayData->hitFirstDiffuseSurface && isDiffuse) // TODO
-    {
-        rayData->hitFirstDiffuseSurface = true;
-        enableRIS = true;
-    }
-
-    bool enableReSTIR = true && enableRIS;
+    const bool enableReSTIR = true && rayData->depth == 0;
 
     // Specular hit = no shadow ray
     if (!isDiffuse)
@@ -301,11 +291,6 @@ extern "C" __global__ void __closesthit__radiance()
             StoreDIReservoir(EmptyDIReservoir(), pixelPosition);
         }
 
-        return;
-    }
-
-    if (!enableRIS)
-    {
         return;
     }
 
@@ -321,7 +306,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool skipSunSample = !isThinfilm && (dot(state.normal, sysParam.sunDir) < 0.0f || dot(state.geoNormal, sysParam.sunDir) < 0.0f);
 
-    const int numLocalLightSamples = sysParam.numLights > 0 ? 8 : 0;
+    const int numLocalLightSamples = sysParam.numLights > 0 > 0.0f ? 8 : 0;
     const int numSunLightSamples = skipSunSample ? 0 : 1;
     const int numSkyLightSamples = 1;
     const int numBrdfSamples = 1;
@@ -334,9 +319,6 @@ extern "C" __global__ void __closesthit__radiance()
     const float brdfMisWeight = float(numBrdfSamples) / numMisSamples;
 
     const float totalSceneLuminance = sysParam.accumulatedLocalLightLuminance + sysParam.accumulatedSkyLuminance + sysParam.accumulatedSunLuminance;
-    // const float localLightSourcePdf = sysParam.accumulatedLocalLightLuminance / totalSceneLuminance;
-    // const float sunLightSourcePdf = sysParam.accumulatedSunLuminance / totalSceneLuminance;
-    // const float skyLightSourcePdf = sysParam.accumulatedSkyLuminance / totalSceneLuminance;
 
     const float brdfCutoff = 0.0f; // 0.0001f;
 
@@ -348,8 +330,6 @@ extern "C" __global__ void __closesthit__radiance()
     {
         float sourcePdf;
         int lightIndex = sysParam.lightAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
-
-        // Boundary check for light index
         if (lightIndex >= sysParam.numLights)
             continue;
 
@@ -518,7 +498,6 @@ extern "C" __global__ void __closesthit__radiance()
             {
                 lightIndex = shadowRayData.lightIdx;
 
-                // Boundary check for light index
                 if (lightIndex >= sysParam.numLights)
                 {
                     lightIndex = InvalidLightIndex;
@@ -664,18 +643,14 @@ extern "C" __global__ void __closesthit__radiance()
 
             Surface temporalSurface;
             if (!GetPrevSurface(temporalSurface, idx))
-            {
                 continue;
-            }
 
             bool isNormalValid = dot(surface.state.normal, temporalSurface.state.geoNormal) >= 0.5f;
             bool isDepthValid = abs(expectedPrevLinearDepth - temporalSurface.depth) <= 0.1f * max(expectedPrevLinearDepth, temporalSurface.depth);
             bool isRoughValid = abs(surface.state.roughness - temporalSurface.state.roughness) <= 0.5f * max(surface.state.roughness, temporalSurface.state.roughness);
 
             if (!(isNormalValid && isDepthValid && isRoughValid))
-            {
                 continue;
-            }
 
             cachedResult |= (1u << i);
 
@@ -690,9 +665,8 @@ extern "C" __global__ void __closesthit__radiance()
                 prevReservoir.M = mCap;
             }
 
-            LightSample candidateLightSample = {};
             float neighborWeight = 0;
-
+            LightSample candidateLightSample = {};
             if (IsValidDIReservoir(prevReservoir))
             {
                 if (!GetLightSampleFromReservoir(candidateLightSample, prevReservoir, surface, numLocalLightSamples > 0))
@@ -824,57 +798,29 @@ extern "C" __global__ void __closesthit__radiance()
         }
     }
 
-    // Shading with separated diffuse+specular for NRD ReLaX
+    // Shading
     DIReservoir shadingReservoir = enableReSTIR ? restirReservoir : risReservoir;
 
-    float currLuminanceSum = 0.0f; // For backward compatibility
-    Float3 diffuseRadiance = Float3(0.0f);
-    Float3 specularRadiance = Float3(0.0f);
-    float hitDistance = rayData->distance; // Distance from camera to this surface
-    
     if (lightSample.lightType != LightTypeInvalid && IsValidDIReservoir(shadingReservoir))
     {
         if (isLightVisible)
         {
             Float3 sampleDir = (lightSample.lightType == LightTypeLocalTriangle) ? normalize(lightSample.position - surface.pos) : lightSample.position;
 
+            // const int indexBsdfEval = indexBsdfSample + 1;
+            // const Float4 bsdfPdf = optixDirectCall<Float4, MaterialParameter const &, MaterialState const &, RayData const *, const Float3>(indexBsdfEval, parameters, state, rayData, sampleDir);
+            // Float3 bsdf = bsdfPdf.xyz;
             const Float3 albedo = skipAlbedoInShadowRayContribution ? Float3(1.0f) : state.albedo;
-            
-            // Separate diffuse and specular BSDF evaluation
-            Float3 diffuseBsdf, specularBsdf;
+            Float3 bsdf;
             float pdf;
-            DisneyBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, diffuseBsdf, specularBsdf, pdf);
+            UberBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, bsdf, pdf);
 
             float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
-            
-            // Calculate separate radiance contributions
-            Float3 lightContribution = cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
-            
-            diffuseRadiance = diffuseBsdf * lightContribution;
-            specularRadiance = specularBsdf * lightContribution;
 
-            // Total radiance for path tracing
-            Float3 totalShadowRayRadiance = diffuseRadiance + specularRadiance;
-            rayData->radiance += totalShadowRayRadiance;
-            
-            // Accumulate diffuse and specular separately
-            rayData->diffuseRadiance += diffuseRadiance;
-            rayData->specularRadiance += specularRadiance;
+            Float3 shadowRayRadiance = bsdf * cosTheta * lightSample.radiance * GetDIReservoirInvPdf(shadingReservoir) / lightSample.solidAnglePdf;
 
-            // Calculate diffuse and specular luminance separately (RTXDI pattern)
-            float diffuseLuminance = luminance(diffuseRadiance);
-            float specularLuminance = luminance(specularRadiance);
-            currLuminanceSum = diffuseLuminance + specularLuminance; // For backward compatibility
+            rayData->radiance += shadowRayRadiance;
         }
-    }
-
-    // Store ReSTIR luminance as float2 (diffuse + specular) following RTXDI pattern
-    if (enableReSTIR)
-    {
-        float diffuseLuminance = luminance(diffuseRadiance);
-        float specularLuminance = luminance(specularRadiance);
-        Float2 currLuminance = Float2(diffuseLuminance, specularLuminance);
-        Store2DFloat2(currLuminance, sysParam.restirLuminanceBuffer, pixelPosition);
     }
 
     // Store the reservoir

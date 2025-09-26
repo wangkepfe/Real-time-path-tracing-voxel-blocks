@@ -525,7 +525,7 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
 {
     diffuse = Float3(0.0f);
     specular = Float3(0.0f);
-    
+
     if (roughness < roughnessThreshold)
     {
         pdf = 0.0f;
@@ -596,4 +596,3 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
 
     pdf = diffusePdf * (1.0f - specularProb) + specularPdf * specularProb;
 }
-

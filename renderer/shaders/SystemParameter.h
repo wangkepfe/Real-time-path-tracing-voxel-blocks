@@ -46,8 +46,6 @@ struct SystemParameter
     OptixTraversableHandle prevTopObject;
 
     SurfObj illuminationBuffer;
-    SurfObj diffuseIlluminationBuffer;
-    SurfObj specularIlluminationBuffer;
 
     // G buffers
     SurfObj normalRoughnessBuffer;
@@ -66,21 +64,6 @@ struct SystemParameter
     SurfObj prevMaterialParameterBuffer;
 
     SurfObj motionVectorBuffer;
-
-    // Confidence computation buffers
-    SurfObj diffuseGradientBuffer;
-    SurfObj filteredDiffuseGradientBuffer;
-    SurfObj diffuseConfidenceBuffer;
-    SurfObj prevDiffuseConfidenceBuffer;
-    SurfObj specularGradientBuffer;
-    SurfObj filteredSpecularGradientBuffer;
-    SurfObj specularConfidenceBuffer;
-    SurfObj prevSpecularConfidenceBuffer;
-    
-    // ReSTIR luminance buffers
-    SurfObj restirLuminanceBuffer;
-    SurfObj prevRestirLuminanceBuffer;
-
     SurfObj UIBuffer;
 
     MaterialParameter *materialParameters;
