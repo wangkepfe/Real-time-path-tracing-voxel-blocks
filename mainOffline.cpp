@@ -28,7 +28,7 @@
 int main(int argc, char *argv[])
 {
     // Movement parameters for multi-frame animation (disabled)
-    constexpr float tangentialMovementSpeed = 0.0f;
+    [[maybe_unused]] constexpr float tangentialMovementSpeed = 0.0f;
 
     // Parse command line arguments
     int width = 3840;
@@ -36,8 +36,10 @@ int main(int argc, char *argv[])
     std::string outputPrefix = "offline_render";
     std::string sceneFile = "data/scene/scene_export.yaml";
     bool testCanonical = false;
-    bool updateCanonical = false;    std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
+    bool updateCanonical = false;
+    std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
     std::string runComment = "default run";
+    bool enableTestSequence = false;
 
     // Frame configuration - can be overridden via command line
     int totalFrames = 64;
@@ -70,13 +72,18 @@ int main(int argc, char *argv[])
         else if (arg == "--update-canonical")
         {
             updateCanonical = true;
-        }        else if (arg == "--canonical-image" && i + 1 < argc)
+        }
+        else if (arg == "--canonical-image" && i + 1 < argc)
         {
             canonicalImagePath = argv[++i];
         }
         else if (arg == "--comment" && i + 1 < argc)
         {
             runComment = argv[++i];
+        }
+        else if (arg == "--test-sequence")
+        {
+            enableTestSequence = true;
         }
         else if (arg == "--frames" && i + 1 < argc)
         {
@@ -99,8 +106,9 @@ int main(int argc, char *argv[])
             std::cout << "  --update-canonical   Update the canonical reference image\n";
             std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
             std::cout << "  --comment <text>     Comment for performance report (default: default run)\n";
+            std::cout << "  --test-sequence      Enable scripted block placement test sequence\n";
             std::cout << "  --frames <int>       Number of frames to render (default: 64, use 1 for single frame)\n";
-                        std::cout << "  --help, -h           Show this help message\n";
+            std::cout << "  --help, -h           Show this help message\n";
             return 0;
         }
     }
@@ -193,6 +201,10 @@ int main(int argc, char *argv[])
 
         // Update camera to recalculate matrices with correct yaw/pitch and FOV
         camera.update();
+        // Initialize history camera so temporal reprojection has a valid previous view
+        RenderCamera::Get().historyCamera = camera;
+        // Reset accumulation counters for a fresh offline render run
+        globalSettings.iterationIndex = 0;
 
         // Camera movement disabled - keep camera static
         Float3 staticCameraPosition = sceneConfig.camera.position;
@@ -210,6 +222,12 @@ int main(int argc, char *argv[])
         for (int frame = 0; frame < totalFrames; frame++)
         {
             int frameNumber = frame + 1; // Convert to 1-indexed
+
+            // Preserve previous camera state for temporal reprojection
+            auto &renderCameraSingleton = RenderCamera::Get();
+            renderCameraSingleton.historyCamera = renderCameraSingleton.camera;
+
+            camera.update();
 
             // Check if this frame should be saved
             bool shouldSave = std::find(savedFrames.begin(), savedFrames.end(), frameNumber) != savedFrames.end();
@@ -248,21 +266,24 @@ int main(int argc, char *argv[])
             // End performance tracking and print stats
             perfTracker.endFrame();
 
-            // Test sequence: add light block → remove → add second light block
-            if (frameNumber == 2)
+            if (enableTestSequence)
             {
-                std::cout << "TEST FRAME 2: Placing first light block (ID=16)..." << std::endl;
-                voxelengine.leftMouseButtonClicked = true;
-            }
-            else if (frameNumber == 5)
-            {
-                std::cout << "TEST FRAME 5: Removing light block (ID=0)..." << std::endl;
-                voxelengine.leftMouseButtonClicked = true;
-            }
-            else if (frameNumber == 8)
-            {
-                std::cout << "TEST FRAME 8: Placing second light block (ID=16)..." << std::endl;
-                voxelengine.leftMouseButtonClicked = true;
+                // Test sequence: add light block, remove it, then add a second light block
+                if (frameNumber == 2)
+                {
+                    std::cout << "TEST FRAME 2: Placing first light block (ID=16)..." << std::endl;
+                    voxelengine.leftMouseButtonClicked = true;
+                }
+                else if (frameNumber == 5)
+                {
+                    std::cout << "TEST FRAME 5: Removing light block (ID=0)..." << std::endl;
+                    voxelengine.leftMouseButtonClicked = true;
+                }
+                else if (frameNumber == 8)
+                {
+                    std::cout << "TEST FRAME 8: Placing second light block (ID=16)..." << std::endl;
+                    voxelengine.leftMouseButtonClicked = true;
+                }
             }
 
             // Print performance stats for saved frames or every 16th frame
