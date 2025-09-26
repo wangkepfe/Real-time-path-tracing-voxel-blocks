@@ -3,6 +3,7 @@
 #include "voxelengine/BlockType.h"
 
 #include <climits> // For UINT_MAX
+#include <cstddef>
 
 #include "core/Scene.h"
 #ifndef OFFLINE_MODE
@@ -200,6 +201,20 @@ static void MouseButtonCallback(int button, int action, int mods)
 
 VoxelEngine::~VoxelEngine()
 {
+}
+
+void VoxelEngine::configureOfflineClickSequence(const std::vector<int> &sequence, bool repeatLastValue)
+{
+    m_offlineClickSequence = sequence;
+    m_offlineClickIndex = 0;
+    m_offlineClickRepeatLast = repeatLastValue;
+}
+
+void VoxelEngine::clearOfflineClickSequence()
+{
+    m_offlineClickSequence.clear();
+    m_offlineClickIndex = 0;
+    m_offlineClickRepeatLast = false;
 }
 
 // Coordinate conversion helper functions
@@ -874,21 +889,51 @@ void VoxelEngine::update(float deltaTime)
 #ifndef OFFLINE_MODE
         int blockId = InputHandler::Get().currentSelectedBlockId;
 #else
-        // Test sequence: place light block (16) → remove (0) → place light block (16)
-        static int clickCount = 0;
-        int testSequence[] = {16, 0, 16}; // First light, delete, second light
-        int blockId = testSequence[clickCount % 3];
-        clickCount++;
+        int blockId = 0;
+        if (!m_offlineClickSequence.empty())
+        {
+            const std::size_t sequenceSize = m_offlineClickSequence.size();
+            std::size_t index = m_offlineClickIndex;
+
+            if (index >= sequenceSize)
+            {
+                index = sequenceSize - 1;
+            }
+
+            blockId = m_offlineClickSequence[index];
+
+            if (index + 1 < sequenceSize)
+            {
+                m_offlineClickIndex = index + 1;
+            }
+            else if (m_offlineClickRepeatLast && sequenceSize > 0)
+            {
+                m_offlineClickIndex = sequenceSize - 1;
+            }
+            else
+            {
+                m_offlineClickIndex = index;
+            }
+        }
+        else
+        {
+            static const int defaultSequence[] = {16, 0, 16};
+            static std::size_t defaultIndex = 0;
+            blockId = defaultSequence[defaultIndex % 3];
+            ++defaultIndex;
+        }
+
         auto &debugCamera = RenderCamera::Get().camera;
         std::cout << "CAMERA RAY DEBUG: Camera pos=(" << debugCamera.pos.x << "," << debugCamera.pos.y << "," << debugCamera.pos.z << ")" << std::endl;
         std::cout << "CAMERA RAY DEBUG: Camera dir=(" << debugCamera.dir.x << "," << debugCamera.dir.y << "," << debugCamera.dir.z << ")" << std::endl;
+        std::cout << "CAMERA RAY DEBUG: Scripted blockId=" << blockId << std::endl;
         if (rayResult.hitSurface)
         {
             std::cout << "CAMERA RAY DEBUG: Hit block at (" << rayResult.hitX << "," << rayResult.hitY << "," << rayResult.hitZ << ")" << std::endl;
         }
         if (rayResult.hasSpaceToCreate)
         {
-            std::cout << "CAMERA RAY DEBUG: Will place light block at (" << rayResult.createPos.x << "," << rayResult.createPos.y << "," << rayResult.createPos.z << ")" << std::endl;
+            std::cout << "CAMERA RAY DEBUG: Candidate placement at (" << rayResult.createPos.x << "," << rayResult.createPos.y << "," << rayResult.createPos.z << ") for blockId=" << blockId << std::endl;
         }
 #endif
 

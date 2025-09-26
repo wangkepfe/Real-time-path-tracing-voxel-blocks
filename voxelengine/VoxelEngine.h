@@ -4,6 +4,7 @@
 #include "VoxelChunk.h"
 
 #include "shaders/SystemParameter.h"
+#include <cstddef>
 #include <cassert>
 #include <cstring>
 #include <functional>
@@ -36,6 +37,10 @@ public:
     std::vector<VoxelChunk> voxelChunks;
 
     bool leftMouseButtonClicked = false;
+
+    // Offline-specific helpers for scripted input sequences
+    void configureOfflineClickSequence(const std::vector<int> &sequence, bool repeatLastValue = false);
+    void clearOfflineClickSequence();
 
     // Center block information for GUI display
     struct CenterBlockInfo
@@ -71,6 +76,11 @@ public:
     void addBlock(const Int3 &pos, int blockId);
 
 private:
+    // Offline scripted input state
+    std::vector<int> m_offlineClickSequence;
+    std::size_t m_offlineClickIndex = 0;
+    bool m_offlineClickRepeatLast = false;
+
     // Refactored update functions
     struct RayTraversalResult
     {

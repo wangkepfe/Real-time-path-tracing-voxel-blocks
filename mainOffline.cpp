@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 int main(int argc, char *argv[])
 {
@@ -40,6 +41,14 @@ int main(int argc, char *argv[])
     std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
     std::string runComment = "default run";
     bool enableTestSequence = false;
+    bool enableRemovalStressTest = false;
+    bool enableCircularRemovalTest = false;
+    constexpr int removalTestClickCount = 20;
+    constexpr int circularTestViewDirections = 8;
+    constexpr int circularTestRemovalsPerDirection = 5;
+    constexpr int circularTestTotalRemovals = circularTestViewDirections * circularTestRemovalsPerDirection;
+    constexpr float circularYawAmplitude = 12.0f * Pi_over_180;
+    constexpr float circularPitchAmplitude = 6.0f * Pi_over_180;
 
     // Frame configuration - can be overridden via command line
     int totalFrames = 64;
@@ -85,6 +94,14 @@ int main(int argc, char *argv[])
         {
             enableTestSequence = true;
         }
+        else if (arg == "--test-remove20")
+        {
+            enableRemovalStressTest = true;
+        }
+        else if (arg == "--test-remove-circle")
+        {
+            enableCircularRemovalTest = true;
+        }
         else if (arg == "--frames" && i + 1 < argc)
         {
             totalFrames = std::atoi(argv[++i]);
@@ -107,6 +124,8 @@ int main(int argc, char *argv[])
             std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
             std::cout << "  --comment <text>     Comment for performance report (default: default run)\n";
             std::cout << "  --test-sequence      Enable scripted block placement test sequence\n";
+            std::cout << "  --test-remove20      Enable scripted removal test (20 deletions)\n";
+            std::cout << "  --test-remove-circle  Enable circular removal test (8 directions, 5 deletions each)\n";
             std::cout << "  --frames <int>       Number of frames to render (default: 64, use 1 for single frame)\n";
             std::cout << "  --help, -h           Show this help message\n";
             return 0;
@@ -144,6 +163,29 @@ int main(int argc, char *argv[])
 
         std::cout << "Initializing voxel engine..." << std::endl;
         voxelengine.init();
+        voxelengine.clearOfflineClickSequence();
+
+        if (enableCircularRemovalTest)
+        {
+            std::vector<int> removalSequence(circularTestTotalRemovals, 0);
+            voxelengine.configureOfflineClickSequence(removalSequence);
+            std::cout << "Offline circular removal test enabled: " << circularTestViewDirections
+                      << " view directions, " << circularTestRemovalsPerDirection << " deletions each." << std::endl;
+            if (enableRemovalStressTest || enableTestSequence)
+            {
+                std::cout << "Note: circular removal test overrides other scripted block tests." << std::endl;
+            }
+        }
+        else if (enableRemovalStressTest)
+        {
+            std::vector<int> removalSequence(removalTestClickCount, 0);
+            voxelengine.configureOfflineClickSequence(removalSequence);
+            std::cout << "Offline removal stress test enabled: " << removalTestClickCount << " scripted deletions." << std::endl;
+            if (enableTestSequence)
+            {
+                std::cout << "Note: removal stress test overrides standard block placement test sequence." << std::endl;
+            }
+        }
 
         std::cout << "Initializing offline backend..." << std::endl;
         offlineBackend.init(width, height);
@@ -203,6 +245,8 @@ int main(int argc, char *argv[])
         camera.update();
         // Initialize history camera so temporal reprojection has a valid previous view
         RenderCamera::Get().historyCamera = camera;
+        const float baseCameraYaw = camera.yaw;
+        const float baseCameraPitch = camera.pitch;
         // Reset accumulation counters for a fresh offline render run
         globalSettings.iterationIndex = 0;
 
@@ -218,6 +262,13 @@ int main(int argc, char *argv[])
 
         auto &perfTracker = PerformanceTracker::Get();
 
+        int removalClickCounter = 0;
+        bool removalTestCompletionLogged = false;
+        int circularRemovalsPerformed = 0;
+        int lastCircularDirectionIndex = -1;
+        bool circularOrientationReset = false;
+        bool circularTestCompletionLogged = false;
+
         // Render frames (selective saving - only save specific frames)
         for (int frame = 0; frame < totalFrames; frame++)
         {
@@ -226,6 +277,32 @@ int main(int argc, char *argv[])
             // Preserve previous camera state for temporal reprojection
             auto &renderCameraSingleton = RenderCamera::Get();
             renderCameraSingleton.historyCamera = renderCameraSingleton.camera;
+
+            if (enableCircularRemovalTest)
+            {
+                if (circularRemovalsPerformed < circularTestTotalRemovals)
+                {
+                    int directionIndex = circularRemovalsPerformed / circularTestRemovalsPerDirection;
+                    if (directionIndex != lastCircularDirectionIndex)
+                    {
+                        float angle = static_cast<float>(directionIndex) * (TWO_PI / static_cast<float>(circularTestViewDirections));
+                        float yawOffset = static_cast<float>(circularYawAmplitude * std::cos(angle));
+                        float pitchOffset = static_cast<float>(circularPitchAmplitude * std::sin(angle));
+                        camera.yaw = baseCameraYaw + yawOffset;
+                        camera.pitch = baseCameraPitch + pitchOffset;
+                        std::cout << "CIRCULAR TEST: Switching to view direction #" << (directionIndex + 1)
+                                  << " (yaw offset " << yawOffset << ", pitch offset " << pitchOffset << ")" << std::endl;
+                        lastCircularDirectionIndex = directionIndex;
+                    }
+                }
+                else if (!circularOrientationReset)
+                {
+                    camera.yaw = baseCameraYaw;
+                    camera.pitch = baseCameraPitch;
+                    circularOrientationReset = true;
+                    std::cout << "CIRCULAR TEST: Restored base camera orientation after scripted removals." << std::endl;
+                }
+            }
 
             camera.update();
 
@@ -266,7 +343,38 @@ int main(int argc, char *argv[])
             // End performance tracking and print stats
             perfTracker.endFrame();
 
-            if (enableTestSequence)
+            if (enableCircularRemovalTest)
+            {
+                if (circularRemovalsPerformed < circularTestTotalRemovals)
+                {
+                    ++circularRemovalsPerformed;
+                    int directionIndex = std::min(circularTestViewDirections - 1, (circularRemovalsPerformed - 1) / circularTestRemovalsPerDirection);
+                    std::cout << "CIRCULAR TEST: Frame " << frameNumber << " deleting block #" << circularRemovalsPerformed
+                              << " (direction " << (directionIndex + 1) << ", ID=0)..." << std::endl;
+                    voxelengine.leftMouseButtonClicked = true;
+                }
+                else if (!circularTestCompletionLogged)
+                {
+                    std::cout << "CIRCULAR TEST: Completed " << circularTestTotalRemovals << " scripted deletions across "
+                              << circularTestViewDirections << " view directions." << std::endl;
+                    circularTestCompletionLogged = true;
+                }
+            }
+            else if (enableRemovalStressTest)
+            {
+                if (removalClickCounter < removalTestClickCount)
+                {
+                    ++removalClickCounter;
+                    std::cout << "REMOVAL TEST: Frame " << frameNumber << " deleting block #" << removalClickCounter << " (ID=0)..." << std::endl;
+                    voxelengine.leftMouseButtonClicked = true;
+                }
+                else if (!removalTestCompletionLogged)
+                {
+                    std::cout << "REMOVAL TEST: Completed " << removalTestClickCount << " scripted deletions." << std::endl;
+                    removalTestCompletionLogged = true;
+                }
+            }
+            else if (enableTestSequence)
             {
                 // Test sequence: add light block, remove it, then add a second light block
                 if (frameNumber == 2)
