@@ -47,6 +47,9 @@ public:
     unsigned int getMaterialIndexForEntity(int entityType) const;
     unsigned int getMaterialIndexForObjectId(unsigned int objectId) const;
     
+    // Get emissive radiance for a block
+    Float3 getEmissiveRadianceForBlock(int blockId) const;
+    
     
 private:
     MaterialManager() = default;

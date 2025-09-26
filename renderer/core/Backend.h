@@ -52,8 +52,6 @@ public:
     GLFWwindow *getWindow() { return m_window; }
 #endif
     CUcontext getCudaContext() const { return m_cudaContext; }
-    float *getToneMapGain() { return &m_toneMapGain; }
-    float *getToneMapMaxWhite() { return &m_toneMapMaxWhite; }
     const Timer &getTimer() const { return m_timer; }
     int getWidth() const { return m_width; }
     int getHeight() const { return m_height; }
@@ -117,6 +115,7 @@ private:
     GLuint m_glslVS;
     GLuint m_glslFS;
     GLuint m_glslProgram;
+
 #endif
 
     // CUDA stuffs
@@ -128,10 +127,6 @@ private:
     // buffer
     Float4 *m_interopBuffer;
 #endif
-
-    // tone mapping
-    float m_toneMapGain = 1.0f;
-    float m_toneMapMaxWhite = 100.0f;
 
     std::vector<cudaDeviceProp> m_deviceProperties;
 

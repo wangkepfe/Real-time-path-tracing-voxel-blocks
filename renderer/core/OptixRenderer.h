@@ -48,7 +48,7 @@ private:
     // OptiX pipeline configuration constants
     static constexpr int NUM_RAY_TYPES = 2;
 
-    void updateAnimatedEntities(CUstream cudaStream, float currentTime);
+    void updateAnimatedEntities(CUstream cudaStream, float currentTime, float deltaTime);
     void buildInstanceAccelerationStructure(CUstream cudaStream, int targetIasIndex);
     void rebuildTlasIfNeeded(CUstream cudaStream);
     void createGasAndOptixInstanceForUninstancedObject();

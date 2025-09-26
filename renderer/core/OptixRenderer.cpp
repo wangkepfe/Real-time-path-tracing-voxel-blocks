@@ -285,22 +285,64 @@ void OptixRenderer::clear()
     CUDA_CHECK(cudaStreamSynchronize(backend.getCudaStream()));
 
     // Material memory is now managed by MaterialManager, don't free here
-    CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
+    if (m_d_systemParameter)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_systemParameter));
+    }
 
     for (size_t i = 0; i < m_geometries.size(); ++i)
     {
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].indices));
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].attributes));
-        CUDA_CHECK(cudaFree((void *)m_geometries[i].gas));
+        if (m_geometries[i].indices)
+        {
+            cudaError_t err = cudaFree((void *)m_geometries[i].indices);
+            if (err != cudaSuccess && err != cudaErrorInvalidValue)
+            {
+                CUDA_CHECK(err);
+            }
+        }
+        if (m_geometries[i].attributes)
+        {
+            cudaError_t err = cudaFree((void *)m_geometries[i].attributes);
+            if (err != cudaSuccess && err != cudaErrorInvalidValue)
+            {
+                CUDA_CHECK(err);
+            }
+        }
+        if (m_geometries[i].gas)
+        {
+            cudaError_t err = cudaFree((void *)m_geometries[i].gas);
+            if (err != cudaSuccess && err != cudaErrorInvalidValue)
+            {
+                CUDA_CHECK(err);
+            }
+        }
     }
-    CUDA_CHECK(cudaFree((void *)m_d_ias[0]));
-    CUDA_CHECK(cudaFree((void *)m_d_ias[1]));
+    if (m_d_ias[0])
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_ias[0]));
+    }
+    if (m_d_ias[1])
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_ias[1]));
+    }
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
+    if (m_d_sbtRecordRaygeneration)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordRaygeneration));
+    }
+    if (m_d_sbtRecordMiss)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordMiss));
+    }
+    if (m_d_sbtRecordCallables)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordCallables));
+    }
 
-    CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    if (m_d_sbtRecordGeometryInstanceData)
+    {
+        CUDA_CHECK(cudaFree((void *)m_d_sbtRecordGeometryInstanceData));
+    }
 
     OPTIX_CHECK(m_api.optixPipelineDestroy(m_pipeline));
     OPTIX_CHECK(m_api.optixDeviceContextDestroy(m_context));
@@ -328,20 +370,29 @@ void OptixRenderer::render()
     m_systemParameter.camera = currentCameraForShader;
     m_systemParameter.prevCamera = historyCameraForShader;
 
-    m_systemParameter.timeInSecond = GlobalSettings::GetGameTime();
+    m_systemParameter.timeInSecond = backend.getTimer().getTime() / 1000.0f; // Convert ms to seconds
 
     const auto &skyModel = SkyModel::Get();
     m_systemParameter.sunDir = skyModel.getSunDir();
     m_systemParameter.accumulatedSkyLuminance = skyModel.getAccumulatedSkyLuminance();
     m_systemParameter.accumulatedSunLuminance = skyModel.getAccumulatedSunLuminance();
     m_systemParameter.accumulatedLocalLightLuminance = scene.accumulatedLocalLightLuminance;
-
     m_systemParameter.lights = scene.m_lights;
+    m_systemParameter.numLights = scene.m_currentNumLights;
+    m_systemParameter.prevNumLights = scene.m_prevNumLights;
     m_systemParameter.lightAliasTable = scene.d_lightAliasTable;
     m_systemParameter.instanceLightMapping = scene.d_instanceLightMapping;
-    m_systemParameter.numInstancedLightMesh = scene.numInstancedLightMesh;
+    m_systemParameter.prevLightIdToCurrentId = scene.d_prevLightIdToCurrentId;
+    m_systemParameter.lightsStateDirty = scene.m_lightsJustUpdated;
+    m_systemParameter.instanceLightMappingSize = scene.instanceLightMappingSize;
+    
+    // Reset the flag after reading it
+    if (scene.m_lightsJustUpdated)
+    {
+        scene.m_lightsJustUpdated = false;
+    }
 
-    updateAnimatedEntities(backend.getCudaStream(), GlobalSettings::GetGameTime());
+    updateAnimatedEntities(backend.getCudaStream(), backend.getTimer().getTime() / 1000.0f, backend.getTimer().getDeltaTime());
 
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
@@ -359,14 +410,19 @@ void OptixRenderer::render()
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(MaterialParameterBuffer), bufferManager.GetBuffer2D(MaterialParameterBuffer), bufferManager.GetBuffer2D(PrevMaterialParameterBuffer));
+
+    // Clear the lights dirty flag after rendering one frame with it. This ensures ReSTIR only remaps light IDs for one frame after lights change
+    if (scene.m_lightsNeedUpdate)
+    {
+        scene.m_lightsNeedUpdate = false;
+    }
 }
 
-void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime)
+void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTime, float deltaTime)
 {
     auto &scene = Scene::Get();
 
-    // Use unified delta time from GlobalSettings
-    float deltaTime = GlobalSettings::GetDeltaTime();
+    // Delta time is now passed as parameter from Backend's Timer
 
     // Update each animated entity
     for (size_t entityIndex = 0; entityIndex < scene.getEntityCount(); ++entityIndex)
@@ -795,6 +851,10 @@ void OptixRenderer::init()
         m_systemParameter.prevMaterialParameterBuffer = bufferManager.GetBuffer2D(PrevMaterialParameterBuffer);
 
         m_systemParameter.motionVectorBuffer = bufferManager.GetBuffer2D(MotionVectorBuffer);
+
+        // Confidence computation buffers
+        
+        // ReSTIR luminance buffers
 
         m_systemParameter.UIBuffer = bufferManager.GetBuffer2D(UIBuffer);
 

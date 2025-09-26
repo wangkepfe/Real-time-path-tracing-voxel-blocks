@@ -8,29 +8,37 @@ models:
     file: "models/test_plane.obj"
     type: instanced
     block_type: BlockTypeTest1
-    
+
   - id: leaves_cube
     name: "Leaves Cube Model"
     file: "models/leavesCube4.obj"
     type: instanced
     block_type: BlockTypeLeaves
-    
+
   - id: lantern_base
     name: "Lantern Base Model"
     file: "models/lanternBase.obj"
     type: instanced
     block_type: BlockTypeTestLightBase
-    
+
   - id: lantern_light
     name: "Lantern Light Model"
     file: "models/lanternLight.obj"
     type: instanced
     block_type: BlockTypeTestLight
-    
+
   # Entity models
+
   - id: minecraft_character
     name: "Minecraft Character Model"
     file: "models/character-pink-smoothie.gltf"
+    # file: "models/character-frozen-roses.gltf"
     type: entity
     entity_type: EntityTypeMinecraftCharacter
     has_animation: true
+
+  - id: shader_ball
+    name: "Shader Ball Model"
+    file: "models/shaderBall.obj"
+    type: instanced
+    block_type: BlockTypeShaderBallR0

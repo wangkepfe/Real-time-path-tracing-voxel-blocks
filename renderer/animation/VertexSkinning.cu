@@ -8,34 +8,34 @@ static Mat4 *d_globalJointMatrices = nullptr;
 static bool skinningInitialized = false;
 
 // Device function to blend vertex transforms based on joint weights
-__device__ Float3 blendTransforms(const Float3 &vertex, const Int4 &joints, const Float4 &weights,
+__device__ Float3 blendTransforms(const Float3 &vertex, const VertexSkinningData &skinningData,
                                   const Mat4 *jointMatrices, int numJoints)
 {
     Float3 result = Float3(0.0f);
 
     // Apply skinning for each joint with non-zero weight
-    if (weights.x > 0.0f && joints.x < numJoints)
+    if (skinningData.jointWeights.x > 0.0f && skinningData.jointIndices.x < numJoints)
     {
-        Float3 transformed = jointMatrices[joints.x] * vertex;
-        result = result + transformed * weights.x;
+        Float3 transformed = jointMatrices[skinningData.jointIndices.x] * vertex;
+        result = result + transformed * skinningData.jointWeights.x;
     }
 
-    if (weights.y > 0.0f && joints.y < numJoints)
+    if (skinningData.jointWeights.y > 0.0f && skinningData.jointIndices.y < numJoints)
     {
-        Float3 transformed = jointMatrices[joints.y] * vertex;
-        result = result + transformed * weights.y;
+        Float3 transformed = jointMatrices[skinningData.jointIndices.y] * vertex;
+        result = result + transformed * skinningData.jointWeights.y;
     }
 
-    if (weights.z > 0.0f && joints.z < numJoints)
+    if (skinningData.jointWeights.z > 0.0f && skinningData.jointIndices.z < numJoints)
     {
-        Float3 transformed = jointMatrices[joints.z] * vertex;
-        result = result + transformed * weights.z;
+        Float3 transformed = jointMatrices[skinningData.jointIndices.z] * vertex;
+        result = result + transformed * skinningData.jointWeights.z;
     }
 
-    if (weights.w > 0.0f && joints.w < numJoints)
+    if (skinningData.jointWeights.w > 0.0f && skinningData.jointIndices.w < numJoints)
     {
-        Float3 transformed = jointMatrices[joints.w] * vertex;
-        result = result + transformed * weights.w;
+        Float3 transformed = jointMatrices[skinningData.jointIndices.w] * vertex;
+        result = result + transformed * skinningData.jointWeights.w;
     }
 
     return result;
@@ -45,6 +45,7 @@ __device__ Float3 blendTransforms(const Float3 &vertex, const Int4 &joints, cons
 __global__ void applyVertexSkinning(
     VertexAttributes *vertices,
     const VertexAttributes *originalVertices,
+    const VertexSkinningData *skinningData,
     const Mat4 *jointMatrices,
     int numVertices,
     int numJoints)
@@ -55,18 +56,16 @@ __global__ void applyVertexSkinning(
         return;
 
     const VertexAttributes &original = originalVertices[idx];
+    const VertexSkinningData &skinning = skinningData[idx];
     VertexAttributes &skinned = vertices[idx];
 
     // Copy texture coordinates (unchanged)
     skinned.texcoord = original.texcoord;
-    skinned.jointIndices = original.jointIndices;
-    skinned.jointWeights = original.jointWeights;
 
     // Apply vertex skinning to position
     skinned.vertex = blendTransforms(
         original.vertex,
-        original.jointIndices,
-        original.jointWeights,
+        skinning,
         jointMatrices,
         numJoints);
 }
@@ -75,6 +74,7 @@ __global__ void applyVertexSkinning(
 __global__ void applyVertexSkinningOptimized(
     VertexAttributes *vertices,
     const VertexAttributes *originalVertices,
+    const VertexSkinningData *skinningData,
     const Mat4 *jointMatrices,
     int numVertices,
     int numJoints)
@@ -104,18 +104,16 @@ __global__ void applyVertexSkinningOptimized(
         return;
 
     const VertexAttributes &original = originalVertices[idx];
+    const VertexSkinningData &skinning = skinningData[idx];
     VertexAttributes &skinned = vertices[idx];
 
     // Copy unchanged attributes
     skinned.texcoord = original.texcoord;
-    skinned.jointIndices = original.jointIndices;
-    skinned.jointWeights = original.jointWeights;
 
     // Apply vertex skinning using shared memory
     skinned.vertex = blendTransforms(
         original.vertex,
-        original.jointIndices,
-        original.jointWeights,
+        skinning,
         sharedJointMatrices,
         matricesToLoad);
 }
@@ -180,14 +178,14 @@ void updateSkinningMatrices(const float *hostMatrices, int numJoints)
 }
 
 void applySkinningToVertices(VertexAttributes *d_vertices, const VertexAttributes *d_originalVertices,
-                             int numVertices, const SkinningData &skinningData)
+                             const VertexSkinningData *d_skinningData, int numVertices, const SkinningData &skinningData)
 {
     if (!skinningData.enabled || numVertices == 0)
     {
         return;
     }
 
-    if (!d_vertices || !d_originalVertices || !skinningData.jointMatrices)
+    if (!d_vertices || !d_originalVertices || !d_skinningData || !skinningData.jointMatrices)
     {
         return;
     }
@@ -206,6 +204,7 @@ void applySkinningToVertices(VertexAttributes *d_vertices, const VertexAttribute
         applyVertexSkinningOptimized<<<numBlocks, blockSize, sharedMemSize>>>(
             d_vertices,
             d_originalVertices,
+            d_skinningData,
             skinningData.jointMatrices ? skinningData.jointMatrices : d_globalJointMatrices,
             numVertices,
             skinningData.numJoints);
@@ -216,6 +215,7 @@ void applySkinningToVertices(VertexAttributes *d_vertices, const VertexAttribute
         applyVertexSkinning<<<numBlocks, blockSize>>>(
             d_vertices,
             d_originalVertices,
+            d_skinningData,
             skinningData.jointMatrices ? skinningData.jointMatrices : d_globalJointMatrices,
             numVertices,
             skinningData.numJoints);

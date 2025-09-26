@@ -33,6 +33,15 @@ enum Buffer2DName
     SunBuffer,
     DebugBuffer,
     UIBuffer,
+    BloomExtractBuffer,
+    BloomTempBuffer,
+    LuminanceMip0Buffer,
+    LuminanceMip1Buffer,
+    LuminanceMip2Buffer,
+    LuminanceMip3Buffer,
+    LuminanceMip4Buffer,
+    LuminanceMip5Buffer,
+
     Buffer2DCount,
 };
 
@@ -74,7 +83,6 @@ public:
     Int2 GetBufferDim(Buffer2DName name) const { return m_buffers[(unsigned int)name].bufferDim; }
     SurfObj GetBuffer2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].buffer; }
     TexObj GetTexture2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].tex; }
-
     uint32_t reservoirBlockRowPitch;
     uint32_t reservoirArrayPitch;
     DIReservoir *reservoirBuffer;

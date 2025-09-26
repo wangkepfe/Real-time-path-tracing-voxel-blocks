@@ -344,3 +344,255 @@ INL_DEVICE void UberBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Floa
     bsdf = lerp3f(bsdfDiffuse, bsdfReflection, reflectionProbability);
     pdf = lerpf(pdfDiffuse, pdfReflection, reflectionProbability) * transmissionPdf;
 }
+
+//
+// Disney BSDF Implementation
+// Based on: https://github.com/schuttejoe/Selas/blob/dev/Source/Core/Shading/Disney.cpp
+// and https://schuttejoe.github.io/post/disneybsdf/
+//
+
+// Helper function for Disney diffuse
+INL_DEVICE float DisneyDiffuseFresnel(float cosThetaWo, float cosThetaWi, float roughness)
+{
+    float energyBias = lerpf(0.0f, 0.5f, roughness);
+    float energyFactor = lerpf(1.0f, 1.0f / 1.51f, roughness);
+    float fd90 = energyBias + 2.0f * roughness * cosThetaWi * cosThetaWi;
+    float f0 = 1.0f;
+    float lightScatter = f0 + (fd90 - f0) * pow5(1.0f - cosThetaWo);
+    float viewScatter = f0 + (fd90 - f0) * pow5(1.0f - cosThetaWi);
+    return lightScatter * viewScatter * energyFactor;
+}
+
+// Helper function for GTR2 anisotropic distribution
+INL_DEVICE float GTR2Aniso(float cosThetaH, float sinThetaH, float sinPhiH, float cosPhiH, float ax, float ay)
+{
+    float ax2 = ax * ax;
+    float ay2 = ay * ay;
+    float s = (cosPhiH * cosPhiH) / ax2 + (sinPhiH * sinPhiH) / ay2;
+    float t = sinThetaH * sinThetaH * s + cosThetaH * cosThetaH;
+    return 1.0f / (M_PI * ax * ay * t * t);
+}
+
+// Helper function for Smith G masking-shadowing for GTR2
+INL_DEVICE float SmithGGGX(float cosTheta, float alpha)
+{
+    float a2 = alpha * alpha;
+    float cosTheta2 = cosTheta * cosTheta;
+    return 2.0f / (1.0f + sqrtf(1.0f + a2 * (1.0f - cosTheta2) / cosTheta2));
+}
+
+// Disney BSDF Sample function with separate diffuse/specular output
+INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &wi, Float3 &bsdfOverPdf, float &pdf, bool &transmissive, bool &isSpecular)
+{
+    if (roughness < roughnessThreshold)
+    {
+        if (translucency < translucencyThreshold)
+        {
+            SpecularReflectionSample(n, ng, wo, albedo, wi, bsdfOverPdf, pdf);
+            isSpecular = true; // Mirror-like reflection is always specular
+        }
+        else if (translucency > 1.0f - translucencyThreshold)
+        {
+            SpecularReflectionTransmissionSample(u.x, n, ng, wo, albedo, wi, bsdfOverPdf, pdf, transmissive);
+            isSpecular = true; // Mirror-like transmission is also specular
+        }
+        else
+        {
+            bsdfOverPdf = Float3(0.0f);
+            pdf = 0.0f;
+            isSpecular = false;
+        }
+        return;
+    }
+
+    transmissive = false; // Disney BSDF doesn't handle transmission in this implementation
+
+    // Disney parameters (simplified version)
+    const float specular_param = 0.5f; // Default Disney specular amount for dielectrics
+    const float metalness = metallic ? 1.0f : 0.0f;
+
+    // Roughness remapping for Disney model
+    float alpha = roughness * roughness;
+
+    // Calculate Fresnel reflectance at normal incidence
+    float cosThetaWo = fmaxf(SAFE_COSINE_EPSI, dot(n, wo));
+
+    // Luminance for specular tint
+    float luminance = 0.299f * albedo.x + 0.587f * albedo.y + 0.114f * albedo.z;
+    Float3 tint = luminance > 0.0f ? albedo / luminance : Float3(1.0f);
+
+    // Specular color for dielectrics (with optional tint)
+    Float3 specularColor = lerp3f(Float3(1.0f), tint, 0.0f); // specularTint = 0 for now
+    Float3 C0 = lerp3f(0.08f * specular_param * specularColor, albedo, metalness);
+
+    // Calculate Fresnel
+    Float3 F = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWo);
+    float avgF = (F.x + F.y + F.z) / 3.0f;
+
+    // Probability of choosing specular vs diffuse
+    float specularWeight = avgF;
+    float diffuseWeight = (1.0f - metalness) * (1.0f - avgF);
+
+    // Normalize weights
+    float totalWeight = specularWeight + diffuseWeight;
+    if (totalWeight < SAFE_COSINE_EPSI)
+    {
+        bsdfOverPdf = Float3(0.0f);
+        pdf = 0.0f;
+        return;
+    }
+
+    float specularProb = specularWeight / totalWeight;
+
+    // Sample either diffuse or specular
+    if (u.w < specularProb)
+    {
+        isSpecular = true;
+        // Sample microfacet normal using GGX distribution
+        float cosTheta = sqrtf((1.0f - u.x) / (1.0f + (alpha * alpha - 1.0f) * u.x));
+        float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
+        float phi = TWO_PI * u.y;
+
+        Float3 wh = Float3(sinTheta * cosf(phi), sinTheta * sinf(phi), cosTheta);
+        alignVector(n, wh);
+
+        // Reflect to get wi
+        wi = normalize(reflect3f(-wo, wh));
+
+        if (dot(wi, n) <= 0.0f || dot(wi, ng) <= 0.0f)
+        {
+            bsdfOverPdf = Float3(0.0f);
+            pdf = 0.0f;
+            return;
+        }
+
+        // Calculate BSDF and PDF for specular
+        float cosThetaWi = dot(wi, n);
+        float cosThetaWh = dot(wh, n);
+        float cosThetaWoWh = dot(wo, wh);
+
+        // GTR2 distribution
+        float D = GTR2Aniso(cosThetaWh, sinTheta, 0.0f, 1.0f, alpha, alpha);
+
+        // Fresnel
+        Float3 F_sample = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWoWh);
+
+        // Masking-shadowing
+        float G = SmithGGGX(cosThetaWo, alpha) * SmithGGGX(cosThetaWi, alpha);
+
+        // BRDF
+        Float3 brdf = F_sample * D * G / (4.0f * cosThetaWo * cosThetaWi);
+
+        // PDF
+        pdf = D * cosThetaWh / (4.0f * cosThetaWoWh) * specularProb;
+
+        bsdfOverPdf = brdf * cosThetaWi / pdf;
+    }
+    else
+    {
+        isSpecular = false;
+        // Sample diffuse using cosine-weighted hemisphere sampling
+        float cosTheta = sqrtf(u.x);
+        float sinTheta = sqrtf(1.0f - u.x);
+        float phi = TWO_PI * u.y;
+
+        wi = Float3(sinTheta * cosf(phi), sinTheta * sinf(phi), cosTheta);
+        alignVector(n, wi);
+
+        if (dot(wi, ng) <= 0.0f)
+        {
+            bsdfOverPdf = Float3(0.0f);
+            pdf = 0.0f;
+            return;
+        }
+
+        // Calculate Disney diffuse
+        float cosThetaWi = dot(wi, n);
+        float fl = DisneyDiffuseFresnel(cosThetaWo, cosThetaWi, roughness);
+
+        // Disney diffuse BRDF
+        Float3 diffuseBrdf = albedo * (1.0f - metalness) * fl / M_PI;
+
+        // PDF for cosine-weighted sampling
+        pdf = cosThetaWi / M_PI * (1.0f - specularProb);
+
+        bsdfOverPdf = diffuseBrdf * cosThetaWi / pdf;
+    }
+}
+
+// Disney BSDF Evaluate function with separate diffuse/specular outputs
+INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &diffuse, Float3 &specular, float &pdf)
+{
+    diffuse = Float3(0.0f);
+    specular = Float3(0.0f);
+
+    if (roughness < roughnessThreshold)
+    {
+        pdf = 0.0f;
+        return;
+    }
+
+    if (dot(wo, n) <= 0 || dot(wi, n) <= 0 || dot(wo, ng) <= 0 || dot(wi, ng) <= 0)
+    {
+        pdf = 0.0f;
+        return;
+    }
+
+    // Disney parameters
+    const float specular_param = 0.5f;
+    const float metalness = metallic ? 1.0f : 0.0f;
+
+    // Roughness remapping
+    float alpha = roughness * roughness;
+
+    // Calculate angles
+    float cosThetaWo = dot(wo, n);
+    float cosThetaWi = dot(wi, n);
+
+    // Half vector
+    Float3 wh = normalize(wi + wo);
+    float cosThetaWh = dot(wh, n);
+    float cosThetaWoWh = dot(wo, wh);
+
+    // Luminance and tint
+    float luminance = 0.299f * albedo.x + 0.587f * albedo.y + 0.114f * albedo.z;
+    Float3 tint = luminance > 0.0f ? albedo / luminance : Float3(1.0f);
+    Float3 specularColor = lerp3f(Float3(1.0f), tint, 0.0f);
+    Float3 C0 = lerp3f(0.08f * specular_param * specularColor, albedo, metalness);
+
+    // Fresnel
+    Float3 F = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWoWh);
+
+    // Diffuse component (Disney diffuse) - zero for metals
+    if (!metallic)
+    {
+        float fl = DisneyDiffuseFresnel(cosThetaWo, cosThetaWi, roughness);
+        diffuse = albedo * (1.0f - metalness) * fl / M_PI;
+    }
+
+    // Specular component (GTR2/GGX)
+    float sinThetaWh = sqrtf(1.0f - cosThetaWh * cosThetaWh);
+    float D = GTR2Aniso(cosThetaWh, sinThetaWh, 0.0f, 1.0f, alpha, alpha);
+    float G = SmithGGGX(cosThetaWo, alpha) * SmithGGGX(cosThetaWi, alpha);
+    specular = F * D * G / (4.0f * cosThetaWo * cosThetaWi);
+
+    // PDF calculation
+    float avgF = (F.x + F.y + F.z) / 3.0f;
+    float specularWeight = avgF;
+    float diffuseWeight = (1.0f - metalness) * (1.0f - avgF);
+    float totalWeight = specularWeight + diffuseWeight;
+
+    if (totalWeight < SAFE_COSINE_EPSI)
+    {
+        pdf = 0.0f;
+        return;
+    }
+
+    float specularProb = specularWeight / totalWeight;
+
+    // Combined PDF
+    float diffusePdf = cosThetaWi / M_PI;
+    float specularPdf = D * cosThetaWh / (4.0f * cosThetaWoWh);
+
+    pdf = diffusePdf * (1.0f - specularProb) + specularPdf * specularProb;
+}

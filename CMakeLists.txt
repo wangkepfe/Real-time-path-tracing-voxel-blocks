@@ -83,7 +83,7 @@ set( HEADERS
     renderer/core/UI.h
     renderer/core/InputHandler.h
     renderer/core/CameraController.h
-    renderer/core/FreeCameraController.h  
+    renderer/core/FreeCameraController.h
     renderer/core/CharacterFollowCameraController.h
     renderer/core/GlobalSettings.h
     renderer/core/BufferManager.h
@@ -97,6 +97,8 @@ set( HEADERS
     renderer/postprocessing/BicubicFilter.h
     renderer/postprocessing/ScalingFilter.h
     renderer/postprocessing/PostProcessor.h
+    renderer/postprocessing/FilmicToneMapping.h
+    renderer/postprocessing/PostProcessingPipeline.h
     renderer/denoising/Denoiser.h
     renderer/util/KernelHelper.h
     renderer/util/DebugUtils.h
@@ -151,6 +153,7 @@ set( SOURCES
     renderer/assets/ModelManager.cpp
     renderer/assets/BlockManager.cpp
     renderer/postprocessing/PostProcessor.cu
+    renderer/postprocessing/PostProcessingPipeline.cu
     renderer/denoising/Denoiser.cu
     renderer/assets/TextureManager.cu
     renderer/util/RandGenHost.cpp
@@ -174,7 +177,6 @@ set( OPTIX_SHADERS
     renderer/shaders/ClosestHit.cu
     renderer/shaders/Miss.cu
     renderer/shaders/RayGen.cu
-    renderer/shaders/Bsdf.cu
     renderer/shaders/AliasTable.cu
 )
 
@@ -306,6 +308,7 @@ set( OFFLINE_SOURCES
     renderer/assets/ModelManager.cpp
     renderer/assets/BlockManager.cpp
     renderer/postprocessing/PostProcessor.cu
+    renderer/postprocessing/PostProcessingPipeline.cu
     renderer/denoising/Denoiser.cu
     renderer/assets/TextureManager.cu
     renderer/util/RandGenHost.cpp

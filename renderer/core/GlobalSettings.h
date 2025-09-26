@@ -4,6 +4,96 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include "shaders/LinearMath.h"
+
+// Post Processing Pipeline Parameters Structure
+struct PostProcessingPipelineParams
+{
+    // Bloom parameters
+    bool enableBloom = true;
+    float bloomThreshold = 1.0f;   // Brightness threshold for bloom
+    float bloomIntensity = 0.15f;  // Bloom effect strength (reduced from 0.3f)
+    float bloomRadius = 2.0f;      // Bloom blur radius
+    int bloomDownsampleLevels = 5; // Number of mip levels for bloom
+
+    // Auto-exposure parameters
+    bool enableAutoExposure = true;
+    float exposureSpeed = 1.0f;        // Auto-exposure adaptation speed
+    float exposureMin = -8.0f;         // Minimum exposure (EV)
+    float exposureMax = 8.0f;          // Maximum exposure (EV)
+    float exposureCompensation = 0.0f; // Manual exposure compensation
+    float histogramMinPercent = 40.0f; // Histogram range min (40%)
+    float histogramMaxPercent = 80.0f; // Histogram range max (80%)
+
+    // Luminance processing
+    int luminanceMipLevels = 6;    // Number of luminance mip levels
+    float targetLuminance = 0.18f; // Target scene brightness (18% gray)
+
+    // Vignette parameters
+    bool enableVignette = false;
+    float vignetteStrength = 0.5f;   // Vignette darkening strength
+    float vignetteRadius = 0.8f;     // Vignette radius (0=center, 1=edge)
+    float vignetteSmoothness = 0.5f; // Vignette edge smoothness
+
+    // Lens Flare parameters - Using very small, precise values for realistic effects
+    bool enableLensFlare = false;          // Disabled by default
+    float lensFlareIntensity = 0.0100f;    // Very subtle default intensity
+    float lensFlareThreshold = 4.0f;       // Higher threshold to reduce fireflies
+    float lensFlareGhostSpacing = 0.0800f; // Subtle ghost spacing
+    int lensFlareGhostCount = 4;           // Moderate ghost count
+    float lensFlareHaloRadius = 0.1000f;   // Small, realistic halo
+    float lensFlareSunSize = 0.0060f;      // Very small, realistic sun disk
+    float lensFlareDistortion = 0.0015f;   // Minimal chromatic aberration
+
+    // Performance/Quality settings
+    bool lensFlareHalfRes = true;        // Process at half resolution for performance
+    bool lensFlareNeighborFilter = true; // Filter single pixel fireflies
+    int lensFlareMaxSpots = 16;          // Reduced max spots for performance
+
+    std::vector<std::tuple<float *, std::string, float, float, bool>> GetValueList()
+    {
+        return {
+            {&bloomThreshold, "Bloom Threshold", 0.0f, 5.0f, false},
+            {&bloomIntensity, "Bloom Intensity", 0.0f, 2.0f, false},
+            {&bloomRadius, "Bloom Radius", 0.5f, 5.0f, false},
+            {&exposureSpeed, "Auto-Exposure Speed", 0.1f, 5.0f, false},
+            {&exposureMin, "Exposure Min (EV)", -12.0f, 0.0f, false},
+            {&exposureMax, "Exposure Max (EV)", 0.0f, 12.0f, false},
+            {&exposureCompensation, "Exposure Compensation", -5.0f, 5.0f, false},
+            {&histogramMinPercent, "Histogram Min %", 0.0f, 50.0f, false},
+            {&histogramMaxPercent, "Histogram Max %", 50.0f, 100.0f, false},
+            {&targetLuminance, "Target Luminance", 0.05f, 0.5f, false},
+            {&vignetteStrength, "Vignette Strength", 0.0f, 2.0f, false},
+            {&vignetteRadius, "Vignette Radius", 0.1f, 1.5f, false},
+            {&vignetteSmoothness, "Vignette Smoothness", 0.1f, 1.0f, false},
+            {&lensFlareIntensity, "Lens Flare Intensity", 0.0f, 1.0f, false},
+            {&lensFlareThreshold, "Lens Flare Threshold", 1.0f, 10.0f, false},
+            {&lensFlareGhostSpacing, "Ghost Spacing", 0.1f, 1.0f, false},
+            {&lensFlareHaloRadius, "Halo Radius", 0.1f, 0.8f, false},
+            {&lensFlareSunSize, "Sun Size", 0.005f, 0.05f, false},
+            {&lensFlareDistortion, "Chromatic Aberration", 0.0f, 0.2f, false}};
+    }
+
+    std::vector<std::pair<bool *, std::string>> GetBooleanValueList()
+    {
+        return {
+            {&enableBloom, "Enable Bloom"},
+            {&enableAutoExposure, "Enable Auto Exposure"},
+            {&enableVignette, "Enable Vignette"},
+            {&enableLensFlare, "Enable Lens Flare"},
+            {&lensFlareHalfRes, "Lens Flare Half Resolution"},
+            {&lensFlareNeighborFilter, "Lens Flare Neighbor Filter"}};
+    }
+
+    std::vector<std::pair<int *, std::string>> GetIntValueList()
+    {
+        return {
+            {&bloomDownsampleLevels, "Bloom Mip Levels"},
+            {&luminanceMipLevels, "Luminance Mip Levels"},
+            {&lensFlareGhostCount, "Lens Flare Ghost Count"},
+            {&lensFlareMaxSpots, "Max Lens Flare Spots"}};
+    }
+};
 
 // Based on NRD ReLaX denoiser settings with comprehensive parameter coverage
 struct DenoisingParams
@@ -136,21 +226,50 @@ struct DenoisingParams
     float denoisingRange = 500000.0f;
 };
 
-struct PostProcessParams
+// Tone Mapping Parameters Structure
+struct ToneMappingParams
 {
+    // Manual exposure (used when auto-exposure is disabled)
+    float manualExposure = 10.0f; // Manual exposure multiplier
+
+    // Tone mapping curve selection
+    enum ToneMappingCurve
+    {
+        CURVE_NARKOWICZ_ACES = 0, // Fast ACES approximation
+        CURVE_UNCHARTED2 = 1,     // Uncharted 2 filmic
+        CURVE_REINHARD = 2        // Simple Reinhard
+    };
+    ToneMappingCurve curve = CURVE_NARKOWICZ_ACES;
+
+    // Highlight handling
+    float highlightDesaturation = 0.8f; // Amount of desaturation for bright areas
+    float whitePoint = 10.0f;           // Scene white point luminance
+
+    // Color grading
+    float contrast = 1.0f;   // Contrast adjustment
+    float saturation = 1.0f; // Saturation adjustment
+    float lift = 0.0f;       // Shadows lift
+    float gain = 1.0f;       // Highlights gain
+
+    // Output is always sRGB (no HDR output modes)
+
+    // Chromatic adaptation
+    bool enableChromaticAdaptation = true;
+    Float3 sourceWhitePoint = Float3(0.95047f, 1.0f, 1.08883f); // D65
+    Float3 targetWhitePoint = Float3(0.95047f, 1.0f, 1.08883f); // D65
+
     std::vector<std::tuple<float *, std::string, float, float, bool>>
     GetValueList()
     {
         return {
-            {&postGain, "Post Gain", 1.0f, 100.0f, true},
-            {&gain, "Gain", 1.0f, 100.0f, true},
-            {&maxWhite, "Max White", 0.000001f, 100.0f, true},
-        };
+            {&manualExposure, "Manual Exposure", 0.1f, 20.0f, true},
+            {&highlightDesaturation, "Highlight Desaturation", 0.0f, 1.0f, false},
+            {&whitePoint, "White Point", 1.0f, 20.0f, true},
+            {&contrast, "Contrast", 0.5f, 2.0f, false},
+            {&saturation, "Saturation", 0.0f, 2.0f, false},
+            {&gain, "Gain", 0.5f, 2.0f, false},
+            {&lift, "Lift", -0.5f, 0.5f, false}};
     }
-
-    float postGain = 1.0f;
-    float gain = 16.0f;
-    float maxWhite = 1.0f;
 };
 
 struct SkyParams
@@ -305,7 +424,8 @@ public:
     void operator=(GlobalSettings const &) = delete;
 
     static DenoisingParams &GetDenoisingParams() { return Get().denoisingParams; }
-    static PostProcessParams &GetPostProcessParams() { return Get().postProcessParams; }
+    static ToneMappingParams &GetToneMappingParams() { return Get().toneMappingParams; }
+    static PostProcessingPipelineParams &GetPostProcessingPipelineParams() { return Get().postProcessingPipelineParams; }
     static SkyParams &GetSkyParams() { return Get().skyParams; }
     static CharacterMovementParams &GetCharacterMovementParams() { return Get().characterMovementParams; }
     static CharacterAnimationParams &GetCharacterAnimationParams() { return Get().characterAnimationParams; }
@@ -316,17 +436,15 @@ public:
     static bool IsOfflineMode() { return Get().offlineMode; }
     static void SetOfflineMode(bool offline) { Get().offlineMode = offline; }
 
-    // Unified time management
-    static float GetGameTime();
-    static float GetDeltaTime();
-    static void UpdateTime();
+    // Time management is now handled by Backend's Timer.h
 
     // YAML serialization methods
     bool LoadFromYAML(const std::string &filepath);
     void SaveToYAML(const std::string &filepath) const;
 
     DenoisingParams denoisingParams{};
-    PostProcessParams postProcessParams{};
+    ToneMappingParams toneMappingParams{};
+    PostProcessingPipelineParams postProcessingPipelineParams{};
     SkyParams skyParams{};
     CharacterMovementParams characterMovementParams{};
     CharacterAnimationParams characterAnimationParams{};
@@ -341,18 +459,16 @@ private:
 
     bool offlineMode = false;
 
-    // Time management state
-    static float currentTime;
-    static float lastTime;
-    static float deltaTime;
-    static int frameCounter;
+    // Time management is now handled by Backend's Timer.h
 
     // Private helper methods for parsing YAML sections
     void parseDenosingSettings(const std::string &key, const std::string &value);
-    void parsePostProcessSettings(const std::string &key, const std::string &value);
+    void parseToneMappingSettings(const std::string &key, const std::string &value);
+    void parsePostProcessingPipelineSettings(const std::string &key, const std::string &value);
     void parseSkySettings(const std::string &key, const std::string &value);
     void parseCharacterMovementSettings(const std::string &key, const std::string &value);
     void parseCharacterAnimationSettings(const std::string &key, const std::string &value);
     void parseCameraMovementSettings(const std::string &key, const std::string &value);
     void parseRenderingSettings(const std::string &key, const std::string &value);
 };
+

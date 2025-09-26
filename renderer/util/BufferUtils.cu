@@ -89,6 +89,39 @@ void BufferCopyFloat1(
         outBuffer);
 }
 
+__global__ void BufferCopyFloat2_impl(
+    Int2 bufferDim,
+    SurfObj inBuffer,
+    SurfObj outBuffer)
+{
+    Int2 threadPos;
+    threadPos.x = threadIdx.x;
+    threadPos.y = threadIdx.y;
+
+    Int2 pixelPos;
+    pixelPos.x = blockIdx.x * blockDim.x + threadIdx.x;
+    pixelPos.y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (pixelPos.x >= bufferDim.x || pixelPos.y >= bufferDim.y)
+    {
+        return;
+    }
+
+    Float2 val = Load2DFloat2(inBuffer, pixelPos);
+    Store2DFloat2(val, outBuffer, pixelPos);
+}
+
+void BufferCopyFloat2(
+    Int2 bufferDim,
+    SurfObj inBuffer,
+    SurfObj outBuffer)
+{
+    BufferCopyFloat2_impl KERNEL_ARGS2(GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x8x1), GetBlockDim(BLOCK_DIM_8x8x1))(
+        bufferDim,
+        inBuffer,
+        outBuffer);
+}
+
 __global__ void BufferCopyFloat4_impl(
     Int2 bufferDim,
     SurfObj inBuffer,

@@ -143,13 +143,23 @@ extern "C" __global__ void __raygen__pathtracer()
 
     rayData->hitFirstDiffuseSurface = false;
 
-    static constexpr int BounceLimit = 1;
+    constexpr int totalBounceLimit = 3;
+    constexpr int diffuseBounceLimit = 1;
+
+    int totalBounce = 0;
+    int diffuseBounce = 0;
 
     while (!pathTerminated)
     {
         pathTerminated = !TraceNextPath(rayData, absorptionIor, volumnIdx, radiance, throughput);
 
-        if (rayData->depth == BounceLimit - 1)
+        ++totalBounce;
+        if (rayData->isCurrentBounceDiffuse)
+        {
+            ++diffuseBounce;
+        }
+
+        if (totalBounce == totalBounceLimit || diffuseBounce == diffuseBounceLimit)
         {
             pathTerminated = true;
         }

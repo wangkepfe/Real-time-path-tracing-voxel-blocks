@@ -265,10 +265,12 @@ extern "C" __global__ void __closesthit__radiance()
     //                               ? (rayData->isInsideVolume ? true : !rayData->transmissionEvent)
     //                               : (rayData->isInsideVolume ? rayData->transmissionEvent : true));
     rayData->pos = isThinfilm ? (dot(bsdfSampleWi, state.normal) > 0.0f ? frontPos : backPos) : frontPos;
+    rayData->wi = bsdfSampleWi;
+    rayData->bsdfOverPdf = bsdfSampleBsdfOverPdf;
+    rayData->pdf = bsdfSamplePdf;
 
     // Demodulate albedo and save it in the albedo map
     bool skipAlbedoInShadowRayContribution = false;
-    // if (!rayData->hitFirstDiffuseSurface && isDiffuse) // TODO
     if (rayData->depth == 0)
     {
         rayData->hitFirstDiffuseSurface = true;
@@ -278,10 +280,6 @@ extern "C" __global__ void __closesthit__radiance()
         bsdfSampleBsdfOverPdf /= state.albedo;
         skipAlbedoInShadowRayContribution = true;
     }
-
-    rayData->wi = bsdfSampleWi;
-    rayData->bsdfOverPdf = bsdfSampleBsdfOverPdf;
-    rayData->pdf = bsdfSamplePdf;
 
     const bool enableReSTIR = true && rayData->depth == 0;
 
@@ -308,7 +306,7 @@ extern "C" __global__ void __closesthit__radiance()
 
     bool skipSunSample = !isThinfilm && (dot(state.normal, sysParam.sunDir) < 0.0f || dot(state.geoNormal, sysParam.sunDir) < 0.0f);
 
-    const int numLocalLightSamples = sysParam.accumulatedLocalLightLuminance > 0.0f ? 8 : 0;
+    const int numLocalLightSamples = sysParam.numLights > 0 > 0.0f ? 8 : 0;
     const int numSunLightSamples = skipSunSample ? 0 : 1;
     const int numSkyLightSamples = 1;
     const int numBrdfSamples = 1;
@@ -321,9 +319,6 @@ extern "C" __global__ void __closesthit__radiance()
     const float brdfMisWeight = float(numBrdfSamples) / numMisSamples;
 
     const float totalSceneLuminance = sysParam.accumulatedLocalLightLuminance + sysParam.accumulatedSkyLuminance + sysParam.accumulatedSunLuminance;
-    const float localLightSourcePdf = sysParam.accumulatedLocalLightLuminance / totalSceneLuminance;
-    const float sunLightSourcePdf = sysParam.accumulatedSunLuminance / totalSceneLuminance;
-    const float skyLightSourcePdf = sysParam.accumulatedSkyLuminance / totalSceneLuminance;
 
     const float brdfCutoff = 0.0f; // 0.0001f;
 
@@ -335,6 +330,9 @@ extern "C" __global__ void __closesthit__radiance()
     {
         float sourcePdf;
         int lightIndex = sysParam.lightAliasTable->sample(rand(sysParam, randIdx), sourcePdf);
+        if (lightIndex >= sysParam.numLights)
+            continue;
+
         LightInfo lightInfo = sysParam.lights[lightIndex];
 
         Float2 uv = rand2(sysParam, randIdx);
@@ -500,27 +498,34 @@ extern "C" __global__ void __closesthit__radiance()
             {
                 lightIndex = shadowRayData.lightIdx;
 
-                LightInfo lightInfo = sysParam.lights[lightIndex];
-
-                TriangleLight triLight = TriangleLight::Create(lightInfo);
-
-                uv = InverseTriangleSample(shadowRayData.bary);
-                candidateSample = triLight.calcSample(uv, surface.pos);
-
-                if (brdfCutoff > 0.0f)
+                if (lightIndex >= sysParam.numLights)
                 {
-                    float lightDistance = length(candidateSample.position - surface.pos);
-
-                    float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
-                    if (lightDistance > maxDistance)
-                    {
-                        lightIndex = InvalidLightIndex;
-                    }
+                    lightIndex = InvalidLightIndex;
                 }
-
-                if (lightIndex != InvalidLightIndex)
+                else
                 {
-                    lightSourcePdf = sysParam.lightAliasTable->PMF(lightIndex);
+                    LightInfo lightInfo = sysParam.lights[lightIndex];
+
+                    TriangleLight triLight = TriangleLight::Create(lightInfo);
+
+                    uv = InverseTriangleSample(shadowRayData.bary);
+                    candidateSample = triLight.calcSample(uv, surface.pos);
+
+                    if (brdfCutoff > 0.0f)
+                    {
+                        float lightDistance = length(candidateSample.position - surface.pos);
+
+                        float maxDistance = BrdfMaxDistanceFromPdf(brdfCutoff, brdfPdf);
+                        if (lightDistance > maxDistance)
+                        {
+                            lightIndex = InvalidLightIndex;
+                        }
+                    }
+
+                    if (lightIndex != InvalidLightIndex)
+                    {
+                        lightSourcePdf = sysParam.lightAliasTable->PMF(lightIndex);
+                    }
                 }
             }
         }
@@ -664,7 +669,10 @@ extern "C" __global__ void __closesthit__radiance()
             LightSample candidateLightSample = {};
             if (IsValidDIReservoir(prevReservoir))
             {
-                candidateLightSample = GetLightSampleFromReservoir(prevReservoir, surface, numLocalLightSamples > 0);
+                if (!GetLightSampleFromReservoir(candidateLightSample, prevReservoir, surface, numLocalLightSamples > 0))
+                {
+                    prevReservoir = EmptyDIReservoir();
+                }
                 neighborWeight = GetLightSampleTargetPdfForSurface(candidateLightSample, surface);
             }
 
@@ -695,7 +703,8 @@ extern "C" __global__ void __closesthit__radiance()
                 Surface temporalSurface;
                 GetPrevSurface(temporalSurface, idx);
 
-                LightSample selectedSampleAtNeighbor = GetLightSampleFromReservoir(restirReservoir, temporalSurface, numLocalLightSamples > 0);
+                LightSample selectedSampleAtNeighbor = {};
+                GetLightSampleFromReservoir(selectedSampleAtNeighbor, restirReservoir, temporalSurface, numLocalLightSamples > 0);
 
                 float ps = GetLightSampleTargetPdfForSurface(selectedSampleAtNeighbor, temporalSurface);
 
@@ -841,7 +850,7 @@ extern "C" __global__ void __closesthit__bsdf_light()
         int idx = -1;
         {
             int left = 0;
-            int right = sysParam.numInstancedLightMesh - 1;
+            int right = sysParam.instanceLightMappingSize - 1;
 
             while (left <= right)
             {

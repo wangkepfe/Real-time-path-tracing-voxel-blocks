@@ -36,8 +36,7 @@ int main(int argc, char *argv[])
     std::string outputPrefix = "offline_render";
     std::string sceneFile = "data/scene/scene_export.yaml";
     bool testCanonical = false;
-    bool updateCanonical = false;
-    std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
+    bool updateCanonical = false;    std::string canonicalImagePath = "../../data/canonical/canonical_render.png";
     std::string runComment = "default run";
 
     // Frame configuration - can be overridden via command line
@@ -71,8 +70,7 @@ int main(int argc, char *argv[])
         else if (arg == "--update-canonical")
         {
             updateCanonical = true;
-        }
-        else if (arg == "--canonical-image" && i + 1 < argc)
+        }        else if (arg == "--canonical-image" && i + 1 < argc)
         {
             canonicalImagePath = argv[++i];
         }
@@ -102,7 +100,7 @@ int main(int argc, char *argv[])
             std::cout << "  --canonical-image    Path to canonical image (default: ../../data/canonical/canonical_render.png)\n";
             std::cout << "  --comment <text>     Comment for performance report (default: default run)\n";
             std::cout << "  --frames <int>       Number of frames to render (default: 64, use 1 for single frame)\n";
-            std::cout << "  --help, -h           Show this help message\n";
+                        std::cout << "  --help, -h           Show this help message\n";
             return 0;
         }
     }
@@ -141,7 +139,6 @@ int main(int argc, char *argv[])
 
         std::cout << "Initializing offline backend..." << std::endl;
         offlineBackend.init(width, height);
-
         std::cout << "Initializing buffer manager..." << std::endl;
         bufferManager.init();
 
@@ -231,8 +228,7 @@ int main(int argc, char *argv[])
             // Begin performance tracking for this frame
             perfTracker.beginFrame(frameNumber, width, height, frameComment);
 
-            // Update unified time management for this frame
-            GlobalSettings::UpdateTime();
+            // Time management is now handled by OfflineBackend's Timer internally
 
             if (shouldSave)
             {
@@ -252,15 +248,21 @@ int main(int argc, char *argv[])
             // End performance tracking and print stats
             perfTracker.endFrame();
 
-            // Add test blocks after first frame is rendered
-            if (frameNumber >= 2 && frameNumber <= 6)
+            // Test sequence: add light block → remove → add second light block
+            if (frameNumber == 2)
             {
-                std::cout << "Simulating mouse click #" << (frameNumber - 1) << " to place light block at camera center..." << std::endl;
-
-                // Simulate multiple mouse clicks to place light blocks along the ray
+                std::cout << "TEST FRAME 2: Placing first light block (ID=16)..." << std::endl;
                 voxelengine.leftMouseButtonClicked = true;
-
-                std::cout << "Mouse click simulated - VoxelEngine will handle placement on next update." << std::endl;
+            }
+            else if (frameNumber == 5)
+            {
+                std::cout << "TEST FRAME 5: Removing light block (ID=0)..." << std::endl;
+                voxelengine.leftMouseButtonClicked = true;
+            }
+            else if (frameNumber == 8)
+            {
+                std::cout << "TEST FRAME 8: Placing second light block (ID=16)..." << std::endl;
+                voxelengine.leftMouseButtonClicked = true;
             }
 
             // Print performance stats for saved frames or every 16th frame

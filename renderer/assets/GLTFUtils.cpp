@@ -692,8 +692,6 @@ namespace GLTFUtils
         {
             finalVertices[i].vertex = vertices[i];
             finalVertices[i].texcoord = (i < texcoords.size()) ? texcoords[i] : Float2(0.0f, 0.0f);
-            finalVertices[i].jointIndices = (i < jointIndices.size()) ? jointIndices[i] : Int4(0, 0, 0, 0);
-            finalVertices[i].jointWeights = (i < jointWeights.size()) ? jointWeights[i] : Float4(1.0f, 0.0f, 0.0f, 0.0f);
         }
 
         attrSize = static_cast<unsigned int>(finalVertices.size());
@@ -750,9 +748,6 @@ namespace GLTFUtils
         {
             finalVertices[i].vertex = vertices[i];
             finalVertices[i].texcoord = (i < texcoords.size()) ? texcoords[i] : Float2(0.0f, 0.0f);
-            // Set default joint data for non-animated models
-            finalVertices[i].jointIndices = Int4(0, 0, 0, 0);
-            finalVertices[i].jointWeights = Float4(1.0f, 0.0f, 0.0f, 0.0f);
         }
 
         attrSize = static_cast<unsigned int>(finalVertices.size());
@@ -779,6 +774,75 @@ namespace GLTFUtils
                               indices.data(),
                               indicesSize * sizeof(unsigned int),
                               cudaMemcpyHostToDevice));
+
+        return true;
+    }
+
+    bool loadAnimatedGLTFModelSeparate(VertexAttributes** d_attr,
+                                       VertexSkinningData** d_skinning,
+                                       unsigned int** d_indices,
+                                       unsigned int& attrSize,
+                                       unsigned int& indicesSize,
+                                       Skeleton& skeleton,
+                                       std::vector<AnimationClip>& animationClips,
+                                       const std::string& filename)
+    {
+        // Extract animated mesh data from GLTF
+        std::vector<Float3> vertices;
+        std::vector<unsigned int> indices;
+        std::vector<Float2> texcoords;
+        std::vector<Int4> jointIndices;
+        std::vector<Float4> jointWeights;
+
+        if (!extractAnimatedMeshFromGLTF(vertices, indices, texcoords, jointIndices, jointWeights,
+                                         skeleton, animationClips, filename))
+        {
+            attrSize = 0;
+            indicesSize = 0;
+            *d_attr = nullptr;
+            *d_skinning = nullptr;
+            *d_indices = nullptr;
+            return false;
+        }
+
+        // Build CPU-side vertex attributes array (without joint data)
+        std::vector<VertexAttributes> finalVertices(vertices.size());
+        for (size_t i = 0; i < vertices.size(); ++i)
+        {
+            finalVertices[i].vertex = vertices[i];
+            finalVertices[i].texcoord = (i < texcoords.size()) ? texcoords[i] : Float2(0.0f, 0.0f);
+        }
+
+        // Build CPU-side skinning data array
+        std::vector<VertexSkinningData> finalSkinningData(vertices.size());
+        for (size_t i = 0; i < vertices.size(); ++i)
+        {
+            finalSkinningData[i].jointIndices = (i < jointIndices.size()) ? jointIndices[i] : Int4(0, 0, 0, 0);
+            finalSkinningData[i].jointWeights = (i < jointWeights.size()) ? jointWeights[i] : Float4(1.0f, 0.0f, 0.0f, 0.0f);
+        }
+
+        attrSize = static_cast<unsigned int>(finalVertices.size());
+        indicesSize = static_cast<unsigned int>(indices.size());
+
+        if (attrSize == 0)
+        {
+            *d_attr = nullptr;
+            *d_skinning = nullptr;
+            *d_indices = nullptr;
+            return false;
+        }
+
+        // Allocate device memory for vertex attributes
+        CUDA_CHECK(cudaMalloc((void **)d_attr, attrSize * sizeof(VertexAttributes)));
+        CUDA_CHECK(cudaMemcpy(*d_attr, finalVertices.data(), attrSize * sizeof(VertexAttributes), cudaMemcpyHostToDevice));
+
+        // Allocate device memory for skinning data
+        CUDA_CHECK(cudaMalloc((void **)d_skinning, attrSize * sizeof(VertexSkinningData)));
+        CUDA_CHECK(cudaMemcpy(*d_skinning, finalSkinningData.data(), attrSize * sizeof(VertexSkinningData), cudaMemcpyHostToDevice));
+
+        // Allocate device memory for indices
+        CUDA_CHECK(cudaMalloc((void **)d_indices, indicesSize * sizeof(unsigned int)));
+        CUDA_CHECK(cudaMemcpy(*d_indices, indices.data(), indicesSize * sizeof(unsigned int), cudaMemcpyHostToDevice));
 
         return true;
     }

@@ -73,6 +73,7 @@ private:
     // GPU geometry data
     VertexAttributes* m_d_attributes = nullptr;           // Current (possibly skinned) vertices
     VertexAttributes* m_d_originalAttributes = nullptr;   // Original unskinned vertices for animation
+    VertexSkinningData* m_d_skinningData = nullptr;       // Joint indices and weights for animation
     unsigned int* m_d_indices = nullptr;
     unsigned int m_attributeSize = 0;
     unsigned int m_indicesSize = 0;

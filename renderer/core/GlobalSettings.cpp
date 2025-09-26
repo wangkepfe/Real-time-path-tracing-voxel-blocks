@@ -4,15 +4,14 @@
 #include <iostream>
 #include <algorithm>
 #include <cctype>
-#include <chrono>
 #ifndef OFFLINE_MODE
 #include <GLFW/glfw3.h>
 #endif
 
 // Helper functions for YAML parsing (similar to SceneConfig.cpp)
-namespace 
+namespace
 {
-    std::string trim(const std::string& str)
+    std::string trim(const std::string &str)
     {
         size_t start = str.find_first_not_of(" \t\r\n");
         if (start == std::string::npos)
@@ -22,37 +21,37 @@ namespace
         return str.substr(start, end - start + 1);
     }
 
-    bool parseFloat(const std::string& value, float& result)
+    bool parseFloat(const std::string &value, float &result)
     {
         try
         {
             result = std::stof(trim(value));
             return true;
         }
-        catch (const std::exception&)
+        catch (const std::exception &)
         {
             return false;
         }
     }
 
-    bool parseInt(const std::string& value, int& result)
+    bool parseInt(const std::string &value, int &result)
     {
         try
         {
             result = std::stoi(trim(value));
             return true;
         }
-        catch (const std::exception&)
+        catch (const std::exception &)
         {
             return false;
         }
     }
 
-    bool parseBool(const std::string& value, bool& result)
+    bool parseBool(const std::string &value, bool &result)
     {
         std::string trimmedValue = trim(value);
         std::transform(trimmedValue.begin(), trimmedValue.end(), trimmedValue.begin(), ::tolower);
-        
+
         if (trimmedValue == "true" || trimmedValue == "1" || trimmedValue == "yes" || trimmedValue == "on")
         {
             result = true;
@@ -67,7 +66,7 @@ namespace
     }
 }
 
-bool GlobalSettings::LoadFromYAML(const std::string& filepath)
+bool GlobalSettings::LoadFromYAML(const std::string &filepath)
 {
     std::ifstream file(filepath);
     if (!file.is_open())
@@ -109,7 +108,8 @@ bool GlobalSettings::LoadFromYAML(const std::string& filepath)
         }
         else if (currentSection == "postprocess")
         {
-            parsePostProcessSettings(key, value);
+            parseToneMappingSettings(key, value);
+            parsePostProcessingPipelineSettings(key, value);
         }
         else if (currentSection == "sky")
         {
@@ -137,7 +137,7 @@ bool GlobalSettings::LoadFromYAML(const std::string& filepath)
     return true;
 }
 
-void GlobalSettings::SaveToYAML(const std::string& filepath) const
+void GlobalSettings::SaveToYAML(const std::string &filepath) const
 {
     std::ofstream file(filepath);
     if (!file.is_open())
@@ -158,7 +158,6 @@ void GlobalSettings::SaveToYAML(const std::string& filepath) const
     file << "  enableHistoryClamping: " << (denoisingParams.enableHistoryClamping ? "true" : "false") << "\n";
     file << "  enableSpatialFiltering: " << (denoisingParams.enableSpatialFiltering ? "true" : "false") << "\n";
     file << "  enableAntiFirefly: " << (denoisingParams.enableAntiFirefly ? "true" : "false") << "\n";
-    file << "  enableRoughnessEdgeStopping: " << (denoisingParams.enableRoughnessEdgeStopping ? "true" : "false") << "\n";
     file << "  maxAccumulatedFrameNum: " << denoisingParams.maxAccumulatedFrameNum << "\n";
     file << "  maxFastAccumulatedFrameNum: " << denoisingParams.maxFastAccumulatedFrameNum << "\n";
     file << "  historyFixFrameNum: " << denoisingParams.historyFixFrameNum << "\n";
@@ -189,9 +188,54 @@ void GlobalSettings::SaveToYAML(const std::string& filepath) const
 
     // Save Post Processing Parameters
     file << "postprocess:\n";
-    file << "  postGain: " << postProcessParams.postGain << "\n";
-    file << "  gain: " << postProcessParams.gain << "\n";
-    file << "  maxWhite: " << postProcessParams.maxWhite << "\n\n";
+    // Tone mapping parameters
+    file << "  manualExposure: " << toneMappingParams.manualExposure << "\n";
+    file << "  toneMappingCurve: " << static_cast<int>(toneMappingParams.curve) << "\n";
+    file << "  highlightDesaturation: " << toneMappingParams.highlightDesaturation << "\n";
+    file << "  whitePoint: " << toneMappingParams.whitePoint << "\n";
+    file << "  contrast: " << toneMappingParams.contrast << "\n";
+    file << "  saturation: " << toneMappingParams.saturation << "\n";
+    file << "  gain: " << toneMappingParams.gain << "\n";
+    file << "  lift: " << toneMappingParams.lift << "\n";
+    file << "  enableChromaticAdaptation: " << (toneMappingParams.enableChromaticAdaptation ? "true" : "false") << "\n";
+    
+    // Post processing pipeline parameters
+    // Bloom parameters
+    file << "  enableBloom: " << (postProcessingPipelineParams.enableBloom ? "true" : "false") << "\n";
+    file << "  bloomThreshold: " << postProcessingPipelineParams.bloomThreshold << "\n";
+    file << "  bloomIntensity: " << postProcessingPipelineParams.bloomIntensity << "\n";
+    file << "  bloomRadius: " << postProcessingPipelineParams.bloomRadius << "\n";
+    file << "  bloomDownsampleLevels: " << postProcessingPipelineParams.bloomDownsampleLevels << "\n";
+    
+    // Auto-exposure parameters
+    file << "  enableAutoExposure: " << (postProcessingPipelineParams.enableAutoExposure ? "true" : "false") << "\n";
+    file << "  exposureSpeed: " << postProcessingPipelineParams.exposureSpeed << "\n";
+    file << "  exposureMin: " << postProcessingPipelineParams.exposureMin << "\n";
+    file << "  exposureMax: " << postProcessingPipelineParams.exposureMax << "\n";
+    file << "  exposureCompensation: " << postProcessingPipelineParams.exposureCompensation << "\n";
+    file << "  histogramMinPercent: " << postProcessingPipelineParams.histogramMinPercent << "\n";
+    file << "  histogramMaxPercent: " << postProcessingPipelineParams.histogramMaxPercent << "\n";
+    file << "  luminanceMipLevels: " << postProcessingPipelineParams.luminanceMipLevels << "\n";
+    file << "  targetLuminance: " << postProcessingPipelineParams.targetLuminance << "\n";
+    
+    // Vignette parameters
+    file << "  enableVignette: " << (postProcessingPipelineParams.enableVignette ? "true" : "false") << "\n";
+    file << "  vignetteStrength: " << postProcessingPipelineParams.vignetteStrength << "\n";
+    file << "  vignetteRadius: " << postProcessingPipelineParams.vignetteRadius << "\n";
+    file << "  vignetteSmoothness: " << postProcessingPipelineParams.vignetteSmoothness << "\n";
+    
+    // Lens Flare parameters
+    file << "  enableLensFlare: " << (postProcessingPipelineParams.enableLensFlare ? "true" : "false") << "\n";
+    file << "  lensFlareIntensity: " << postProcessingPipelineParams.lensFlareIntensity << "\n";
+    file << "  lensFlareThreshold: " << postProcessingPipelineParams.lensFlareThreshold << "\n";
+    file << "  lensFlareGhostSpacing: " << postProcessingPipelineParams.lensFlareGhostSpacing << "\n";
+    file << "  lensFlareGhostCount: " << postProcessingPipelineParams.lensFlareGhostCount << "\n";
+    file << "  lensFlareHaloRadius: " << postProcessingPipelineParams.lensFlareHaloRadius << "\n";
+    file << "  lensFlareSunSize: " << postProcessingPipelineParams.lensFlareSunSize << "\n";
+    file << "  lensFlareDistortion: " << postProcessingPipelineParams.lensFlareDistortion << "\n";
+    file << "  lensFlareHalfRes: " << (postProcessingPipelineParams.lensFlareHalfRes ? "true" : "false") << "\n";
+    file << "  lensFlareNeighborFilter: " << (postProcessingPipelineParams.lensFlareNeighborFilter ? "true" : "false") << "\n";
+    file << "  lensFlareMaxSpots: " << postProcessingPipelineParams.lensFlareMaxSpots << "\n\n";
 
     // Save Sky Parameters
     file << "sky:\n";
@@ -250,6 +294,204 @@ void GlobalSettings::SaveToYAML(const std::string& filepath) const
 }
 
 // Private helper methods for parsing specific sections
+
+
+void GlobalSettings::parseToneMappingSettings(const std::string &key, const std::string &value)
+{
+    if (key == "manualExposure")
+        parseFloat(value, toneMappingParams.manualExposure);
+    else if (key == "toneMappingCurve")
+    {
+        int curveValue;
+        if (parseInt(value, curveValue))
+            toneMappingParams.curve = static_cast<ToneMappingParams::ToneMappingCurve>(curveValue);
+    }
+    else if (key == "highlightDesaturation")
+        parseFloat(value, toneMappingParams.highlightDesaturation);
+    else if (key == "whitePoint")
+        parseFloat(value, toneMappingParams.whitePoint);
+    else if (key == "contrast")
+        parseFloat(value, toneMappingParams.contrast);
+    else if (key == "saturation")
+        parseFloat(value, toneMappingParams.saturation);
+    else if (key == "gain")
+        parseFloat(value, toneMappingParams.gain);
+    else if (key == "lift")
+        parseFloat(value, toneMappingParams.lift);
+    else if (key == "enableChromaticAdaptation")
+        toneMappingParams.enableChromaticAdaptation = (value == "true");
+}
+
+void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key, const std::string &value)
+{
+    // Bloom parameters
+    if (key == "enableBloom")
+        postProcessingPipelineParams.enableBloom = (value == "true");
+    else if (key == "bloomThreshold")
+        parseFloat(value, postProcessingPipelineParams.bloomThreshold);
+    else if (key == "bloomIntensity")
+        parseFloat(value, postProcessingPipelineParams.bloomIntensity);
+    else if (key == "bloomRadius")
+        parseFloat(value, postProcessingPipelineParams.bloomRadius);
+    else if (key == "bloomDownsampleLevels")
+        parseInt(value, postProcessingPipelineParams.bloomDownsampleLevels);
+    
+    // Auto-exposure parameters
+    else if (key == "enableAutoExposure")
+        postProcessingPipelineParams.enableAutoExposure = (value == "true");
+    else if (key == "exposureSpeed")
+        parseFloat(value, postProcessingPipelineParams.exposureSpeed);
+    else if (key == "exposureMin")
+        parseFloat(value, postProcessingPipelineParams.exposureMin);
+    else if (key == "exposureMax")
+        parseFloat(value, postProcessingPipelineParams.exposureMax);
+    else if (key == "exposureCompensation")
+        parseFloat(value, postProcessingPipelineParams.exposureCompensation);
+    else if (key == "histogramMinPercent")
+        parseFloat(value, postProcessingPipelineParams.histogramMinPercent);
+    else if (key == "histogramMaxPercent")
+        parseFloat(value, postProcessingPipelineParams.histogramMaxPercent);
+    else if (key == "luminanceMipLevels")
+        parseInt(value, postProcessingPipelineParams.luminanceMipLevels);
+    else if (key == "targetLuminance")
+        parseFloat(value, postProcessingPipelineParams.targetLuminance);
+    
+    // Vignette parameters
+    else if (key == "enableVignette")
+        postProcessingPipelineParams.enableVignette = (value == "true");
+    else if (key == "vignetteStrength")
+        parseFloat(value, postProcessingPipelineParams.vignetteStrength);
+    else if (key == "vignetteRadius")
+        parseFloat(value, postProcessingPipelineParams.vignetteRadius);
+    else if (key == "vignetteSmoothness")
+        parseFloat(value, postProcessingPipelineParams.vignetteSmoothness);
+    
+    // Lens Flare parameters
+    else if (key == "enableLensFlare")
+        postProcessingPipelineParams.enableLensFlare = (value == "true");
+    else if (key == "lensFlareIntensity")
+        parseFloat(value, postProcessingPipelineParams.lensFlareIntensity);
+    else if (key == "lensFlareThreshold")
+        parseFloat(value, postProcessingPipelineParams.lensFlareThreshold);
+    else if (key == "lensFlareGhostSpacing")
+        parseFloat(value, postProcessingPipelineParams.lensFlareGhostSpacing);
+    else if (key == "lensFlareGhostCount")
+        parseInt(value, postProcessingPipelineParams.lensFlareGhostCount);
+    else if (key == "lensFlareHaloRadius")
+        parseFloat(value, postProcessingPipelineParams.lensFlareHaloRadius);
+    else if (key == "lensFlareSunSize")
+        parseFloat(value, postProcessingPipelineParams.lensFlareSunSize);
+    else if (key == "lensFlareDistortion")
+        parseFloat(value, postProcessingPipelineParams.lensFlareDistortion);
+    else if (key == "lensFlareHalfRes")
+        postProcessingPipelineParams.lensFlareHalfRes = (value == "true");
+    else if (key == "lensFlareNeighborFilter")
+        postProcessingPipelineParams.lensFlareNeighborFilter = (value == "true");
+    else if (key == "lensFlareMaxSpots")
+        parseInt(value, postProcessingPipelineParams.lensFlareMaxSpots);
+}
+
+void GlobalSettings::parseSkySettings(const std::string &key, const std::string &value)
+{
+    if (key == "timeOfDay")
+        parseFloat(value, skyParams.timeOfDay);
+    else if (key == "sunAxisAngle")
+        parseFloat(value, skyParams.sunAxisAngle);
+    else if (key == "sunAxisRotate")
+        parseFloat(value, skyParams.sunAxisRotate);
+    else if (key == "skyBrightness")
+        parseFloat(value, skyParams.skyBrightness);
+}
+
+void GlobalSettings::parseCharacterMovementSettings(const std::string &key, const std::string &value)
+{
+    if (key == "walkMoveForce")
+        parseFloat(value, characterMovementParams.walkMoveForce);
+    else if (key == "runMoveForce")
+        parseFloat(value, characterMovementParams.runMoveForce);
+    else if (key == "walkMaxSpeed")
+        parseFloat(value, characterMovementParams.walkMaxSpeed);
+    else if (key == "runMaxSpeed")
+        parseFloat(value, characterMovementParams.runMaxSpeed);
+    else if (key == "jumpForce")
+        parseFloat(value, characterMovementParams.jumpForce);
+    else if (key == "gravity")
+        parseFloat(value, characterMovementParams.gravity);
+    else if (key == "friction")
+        parseFloat(value, characterMovementParams.friction);
+    else if (key == "rotationSpeed")
+        parseFloat(value, characterMovementParams.rotationSpeed);
+    else if (key == "radius")
+        parseFloat(value, characterMovementParams.radius);
+    else if (key == "height")
+        parseFloat(value, characterMovementParams.height);
+}
+
+void GlobalSettings::parseCharacterAnimationSettings(const std::string &key, const std::string &value)
+{
+    if (key == "walkSpeedThreshold")
+        parseFloat(value, characterAnimationParams.walkSpeedThreshold);
+    else if (key == "mediumSpeedThreshold")
+        parseFloat(value, characterAnimationParams.mediumSpeedThreshold);
+    else if (key == "runSpeedThreshold")
+        parseFloat(value, characterAnimationParams.runSpeedThreshold);
+    else if (key == "runMediumSpeedThreshold")
+        parseFloat(value, characterAnimationParams.runMediumSpeedThreshold);
+    else if (key == "animationSpeed")
+        parseFloat(value, characterAnimationParams.animationSpeed);
+    else if (key == "blendRatio")
+        parseFloat(value, characterAnimationParams.blendRatio);
+    else if (key == "placeAnimationSpeed")
+        parseFloat(value, characterAnimationParams.placeAnimationSpeed);
+}
+
+void GlobalSettings::parseCameraMovementSettings(const std::string &key, const std::string &value)
+{
+    if (key == "moveSpeed")
+        parseFloat(value, cameraMovementParams.moveSpeed);
+    else if (key == "cursorMoveSpeed")
+        parseFloat(value, cameraMovementParams.cursorMoveSpeed);
+    else if (key == "fov")
+        parseFloat(value, cameraMovementParams.fov);
+    else if (key == "followSpeed")
+        parseFloat(value, cameraMovementParams.followSpeed);
+    else if (key == "followDistance")
+        parseFloat(value, cameraMovementParams.followDistance);
+    else if (key == "followHeight")
+        parseFloat(value, cameraMovementParams.followHeight);
+    else if (key == "gameplayHeight")
+        parseFloat(value, cameraMovementParams.gameplayHeight);
+}
+
+void GlobalSettings::parseRenderingSettings(const std::string &key, const std::string &value)
+{
+    if (key == "maxFpsAllowed")
+        parseFloat(value, renderingParams.maxFpsAllowed);
+    else if (key == "targetFPS")
+        parseFloat(value, renderingParams.targetFPS);
+    else if (key == "dynamicResolution")
+        parseBool(value, renderingParams.dynamicResolution);
+    else if (key == "vsync")
+        parseBool(value, renderingParams.vsync);
+    else if (key == "windowWidth")
+        parseInt(value, renderingParams.windowWidth);
+    else if (key == "windowHeight")
+        parseInt(value, renderingParams.windowHeight);
+    else if (key == "maxRenderWidth")
+        parseInt(value, renderingParams.maxRenderWidth);
+    else if (key == "maxRenderHeight")
+        parseInt(value, renderingParams.maxRenderHeight);
+    else if (key == "minRenderWidth")
+        parseInt(value, renderingParams.minRenderWidth);
+    else if (key == "minRenderHeight")
+        parseInt(value, renderingParams.minRenderHeight);
+}
+
+// Time management is now handled by Backend's Timer.h
+
+
+
+
 void GlobalSettings::parseDenosingSettings(const std::string& key, const std::string& value)
 {
     if (key == "enableHitDistanceReconstruction") parseBool(value, denoisingParams.enableHitDistanceReconstruction);
@@ -289,133 +531,4 @@ void GlobalSettings::parseDenosingSettings(const std::string& key, const std::st
     else if (key == "denoisingRange") parseFloat(value, denoisingParams.denoisingRange);
 }
 
-void GlobalSettings::parsePostProcessSettings(const std::string& key, const std::string& value)
-{
-    if (key == "postGain") parseFloat(value, postProcessParams.postGain);
-    else if (key == "gain") parseFloat(value, postProcessParams.gain);
-    else if (key == "maxWhite") parseFloat(value, postProcessParams.maxWhite);
-}
 
-void GlobalSettings::parseSkySettings(const std::string& key, const std::string& value)
-{
-    if (key == "timeOfDay") parseFloat(value, skyParams.timeOfDay);
-    else if (key == "sunAxisAngle") parseFloat(value, skyParams.sunAxisAngle);
-    else if (key == "sunAxisRotate") parseFloat(value, skyParams.sunAxisRotate);
-    else if (key == "skyBrightness") parseFloat(value, skyParams.skyBrightness);
-}
-
-void GlobalSettings::parseCharacterMovementSettings(const std::string& key, const std::string& value)
-{
-    if (key == "walkMoveForce") parseFloat(value, characterMovementParams.walkMoveForce);
-    else if (key == "runMoveForce") parseFloat(value, characterMovementParams.runMoveForce);
-    else if (key == "walkMaxSpeed") parseFloat(value, characterMovementParams.walkMaxSpeed);
-    else if (key == "runMaxSpeed") parseFloat(value, characterMovementParams.runMaxSpeed);
-    else if (key == "jumpForce") parseFloat(value, characterMovementParams.jumpForce);
-    else if (key == "gravity") parseFloat(value, characterMovementParams.gravity);
-    else if (key == "friction") parseFloat(value, characterMovementParams.friction);
-    else if (key == "rotationSpeed") parseFloat(value, characterMovementParams.rotationSpeed);
-    else if (key == "radius") parseFloat(value, characterMovementParams.radius);
-    else if (key == "height") parseFloat(value, characterMovementParams.height);
-}
-
-void GlobalSettings::parseCharacterAnimationSettings(const std::string& key, const std::string& value)
-{
-    if (key == "walkSpeedThreshold") parseFloat(value, characterAnimationParams.walkSpeedThreshold);
-    else if (key == "mediumSpeedThreshold") parseFloat(value, characterAnimationParams.mediumSpeedThreshold);
-    else if (key == "runSpeedThreshold") parseFloat(value, characterAnimationParams.runSpeedThreshold);
-    else if (key == "runMediumSpeedThreshold") parseFloat(value, characterAnimationParams.runMediumSpeedThreshold);
-    else if (key == "animationSpeed") parseFloat(value, characterAnimationParams.animationSpeed);
-    else if (key == "blendRatio") parseFloat(value, characterAnimationParams.blendRatio);
-    else if (key == "placeAnimationSpeed") parseFloat(value, characterAnimationParams.placeAnimationSpeed);
-}
-
-void GlobalSettings::parseCameraMovementSettings(const std::string& key, const std::string& value)
-{
-    if (key == "moveSpeed") parseFloat(value, cameraMovementParams.moveSpeed);
-    else if (key == "cursorMoveSpeed") parseFloat(value, cameraMovementParams.cursorMoveSpeed);
-    else if (key == "fov") parseFloat(value, cameraMovementParams.fov);
-    else if (key == "followSpeed") parseFloat(value, cameraMovementParams.followSpeed);
-    else if (key == "followDistance") parseFloat(value, cameraMovementParams.followDistance);
-    else if (key == "followHeight") parseFloat(value, cameraMovementParams.followHeight);
-    else if (key == "gameplayHeight") parseFloat(value, cameraMovementParams.gameplayHeight);
-}
-
-void GlobalSettings::parseRenderingSettings(const std::string& key, const std::string& value)
-{
-    if (key == "maxFpsAllowed") parseFloat(value, renderingParams.maxFpsAllowed);
-    else if (key == "targetFPS") parseFloat(value, renderingParams.targetFPS);
-    else if (key == "dynamicResolution") parseBool(value, renderingParams.dynamicResolution);
-    else if (key == "vsync") parseBool(value, renderingParams.vsync);
-    else if (key == "windowWidth") parseInt(value, renderingParams.windowWidth);
-    else if (key == "windowHeight") parseInt(value, renderingParams.windowHeight);
-    else if (key == "maxRenderWidth") parseInt(value, renderingParams.maxRenderWidth);
-    else if (key == "maxRenderHeight") parseInt(value, renderingParams.maxRenderHeight);
-    else if (key == "minRenderWidth") parseInt(value, renderingParams.minRenderWidth);
-    else if (key == "minRenderHeight") parseInt(value, renderingParams.minRenderHeight);
-}
-
-// Static member definitions for time management
-float GlobalSettings::currentTime = 0.0f;
-float GlobalSettings::lastTime = -1.0f;
-float GlobalSettings::deltaTime = 0.0f;
-int GlobalSettings::frameCounter = 0;
-
-// Unified time management implementation
-float GlobalSettings::GetGameTime()
-{
-    if (IsOfflineMode())
-    {
-        const float targetFPS = 30.0f;
-        return frameCounter * (1.0f / targetFPS);
-    }
-    else
-    {
-#ifdef OFFLINE_MODE
-        // For offline builds, use std::chrono instead of GLFW
-        static auto startTime = std::chrono::high_resolution_clock::now();
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<float>(currentTime - startTime);
-        return elapsed.count();
-#else
-        return static_cast<float>(glfwGetTime());
-#endif
-    }
-}
-
-float GlobalSettings::GetDeltaTime()
-{
-    return deltaTime;
-}
-
-void GlobalSettings::UpdateTime()
-{
-    if (IsOfflineMode())
-    {
-        frameCounter++;
-        const float targetFPS = 30.0f;
-        deltaTime = 1.0f / targetFPS;
-        currentTime = frameCounter * deltaTime;
-    }
-    else
-    {
-#ifdef OFFLINE_MODE
-        // For offline builds, use std::chrono instead of GLFW
-        static auto startTime = std::chrono::high_resolution_clock::now();
-        auto currentTimePoint = std::chrono::high_resolution_clock::now();
-        auto elapsed = std::chrono::duration<float>(currentTimePoint - startTime);
-        currentTime = elapsed.count();
-#else
-        currentTime = static_cast<float>(glfwGetTime());
-#endif
-        
-        if (lastTime < 0.0f)
-        {
-            deltaTime = 1.0f / 60.0f; // Default for first frame
-        }
-        else
-        {
-            deltaTime = currentTime - lastTime;
-        }
-        lastTime = currentTime;
-    }
-}

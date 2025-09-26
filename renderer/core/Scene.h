@@ -8,6 +8,9 @@
 // OptiX 7 function table structure.
 #include <optix_function_table.h>
 
+#include <unordered_map>
+#include <functional>
+
 #include <vector>
 #include <array>
 #include <functional>
@@ -64,7 +67,7 @@ public:
     std::vector<unsigned int> sceneUpdateObjectId;
     std::vector<unsigned int> sceneUpdateInstanceId;
     std::vector<unsigned int> sceneUpdateChunkId; // Track which chunks need updates
-    Float3 *edgeToHighlight;
+    Float3 *edgeToHighlight = nullptr;
 
     int uninstancedGeometryCount;
     int instancedGeometryCount;
@@ -78,19 +81,36 @@ public:
     float accumulatedLocalLightLuminance = 0.0f;
 
     std::vector<InstanceLightMapping> instanceLightMapping;
-    InstanceLightMapping *d_instanceLightMapping;
-    unsigned int numInstancedLightMesh;
-    
+    InstanceLightMapping *d_instanceLightMapping = nullptr;
+    unsigned int instanceLightMappingSize = 0;
+
     // Dynamic light management
     unsigned int m_currentNumLights = 0;
+    unsigned int m_prevNumLights = 0;
     unsigned int m_maxLightCapacity = 0;
     bool m_lightsNeedUpdate = false;
-    
+    bool m_lightsJustUpdated = false; // Flag for renderer to know lights were updated this frame
+
     // Light ID mapping for temporal coherence (ReSTIR)
-    // Maps current frame light ID to previous frame light ID
-    // -1 means the light is new this frame
-    std::vector<int> m_lightIdToPrevFrameId;
-    int *d_lightIdToPrevFrameId = nullptr;
+    // Maps previous frame light array index to current frame light array index
+    // -1 means the light no longer exists
+    std::vector<int> m_prevLightIdToCurrentId;
+    int *d_prevLightIdToCurrentId = nullptr;
+
+    // Smart light update tracking
+    enum class LightUpdateType {
+        FULL_REBUILD,    // Scene init/reload - need full rebuild
+        INCREMENTAL      // Add/remove block - can do incremental update
+    };
+    LightUpdateType m_lightUpdateType = LightUpdateType::FULL_REBUILD;
+    
+    // For incremental updates: instanceID to light range mapping
+    // Maps instanceID -> {lightOffset, lightCount} in the global light array
+    std::unordered_map<unsigned int, std::pair<unsigned int, unsigned int>> m_instanceToLightRange;
+    
+    // Track changed instances for incremental updates
+    std::set<unsigned int> m_changedInstances;  // instanceIDs that changed
+    std::set<unsigned int> m_removedInstances;  // instanceIDs that were removed
 
     // Entity management
     std::vector<std::unique_ptr<Entity>> m_entities;
@@ -102,18 +122,19 @@ public:
     void initInstancedGeometry(unsigned int numInstancedObjects);
 
     // Get geometry data for a specific chunk and object
-    VertexAttributes** getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId);
-    unsigned int** getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId);
-    unsigned int& getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId);
-    unsigned int& getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId);
+    VertexAttributes **getChunkGeometryAttributes(unsigned int chunkIndex, unsigned int objectId);
+    unsigned int **getChunkGeometryIndices(unsigned int chunkIndex, unsigned int objectId);
+    unsigned int &getChunkGeometryAttributeSize(unsigned int chunkIndex, unsigned int objectId);
+    unsigned int &getChunkGeometryIndicesSize(unsigned int chunkIndex, unsigned int objectId);
 
+public:
     // Entity management functions
     void addEntity(std::unique_ptr<Entity> entity);
     void removeEntity(size_t index);
     void clearEntities();
     size_t getEntityCount() const { return m_entities.size(); }
-    Entity* getEntity(size_t index) { return index < m_entities.size() ? m_entities[index].get() : nullptr; }
-    const std::vector<std::unique_ptr<Entity>>& getEntities() const { return m_entities; }
+    Entity *getEntity(size_t index) { return index < m_entities.size() ? m_entities[index].get() : nullptr; }
+    const std::vector<std::unique_ptr<Entity>> &getEntities() const { return m_entities; }
 
     static OptixTraversableHandle CreateGeometry(
         OptixFunctionTable &api,

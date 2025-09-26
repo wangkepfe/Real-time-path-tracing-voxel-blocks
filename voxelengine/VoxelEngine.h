@@ -22,7 +22,7 @@ public:
     ~VoxelEngine();
 
     void init();
-    void update();
+    void update(float deltaTime);
     void generateVoxels();
     void reload();
     void initEntities();
@@ -38,7 +38,8 @@ public:
     bool leftMouseButtonClicked = false;
 
     // Center block information for GUI display
-    struct CenterBlockInfo {
+    struct CenterBlockInfo
+    {
         int blockId = 0;
         std::string blockName = "Empty";
         Int3 position = Int3(-1, -1, -1);
@@ -55,24 +56,24 @@ public:
     // Helper functions for coordinate conversion
     unsigned int getChunkIndex(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ) const;
     void globalToChunkCoords(unsigned int globalX, unsigned int globalY, unsigned int globalZ,
-                           unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
-                           unsigned int &localX, unsigned int &localY, unsigned int &localZ) const;
+                             unsigned int &chunkX, unsigned int &chunkY, unsigned int &chunkZ,
+                             unsigned int &localX, unsigned int &localY, unsigned int &localZ) const;
     void chunkToGlobalCoords(unsigned int chunkX, unsigned int chunkY, unsigned int chunkZ,
-                           unsigned int localX, unsigned int localY, unsigned int localZ,
-                           unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const;
+                             unsigned int localX, unsigned int localY, unsigned int localZ,
+                             unsigned int &globalX, unsigned int &globalY, unsigned int &globalZ) const;
 
     // Helper to get voxel at global coordinates
     Voxel getVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ) const;
     void setVoxelAtGlobal(unsigned int globalX, unsigned int globalY, unsigned int globalZ, unsigned int blockId);
 
     // Public block manipulation functions
-    void deleteBlock(const Int3& pos, int blockId);
-    void addBlock(const Int3& pos, int blockId);
-    void updateDynamicLights();
+    void deleteBlock(const Int3 &pos, int blockId);
+    void addBlock(const Int3 &pos, int blockId);
 
 private:
     // Refactored update functions
-    struct RayTraversalResult {
+    struct RayTraversalResult
+    {
         bool hasSpaceToCreate = false;
         bool hitSurface = false;
         Int3 createPos = Int3(-1, -1, -1);
@@ -80,18 +81,30 @@ private:
         int deleteBlockId = -1;
         int hitX = -1, hitY = -1, hitZ = -1;
     };
-    
+
     RayTraversalResult performRayTraversal();
-    
-    void deleteInstancedBlock(const Int3& pos, int blockId);
-    void deleteUninstancedBlock(const Int3& pos, int blockId);
-    void addInstancedBlock(const Int3& pos, int blockId);
-    void addUninstancedBlock(const Int3& pos, int blockId);
-    
-    void updateSceneForBlock(int objectId, unsigned int instanceId, unsigned int chunkIndex = 0);
+
+    void deleteInstancedBlock(const Int3 &pos, int blockId);
+    void deleteUninstancedBlock(const Int3 &pos, int blockId);
+    void addInstancedBlock(const Int3 &pos, int blockId);
+    void addUninstancedBlock(const Int3 &pos, int blockId);
+
+    void updateSceneForInstancedBlock(int objectId, unsigned int instanceId);
+    void updateSceneForUninstancedBlock(int objectId, unsigned int chunkIndex);
+
     void initInstanceGeometry();
-    void updateInstances();
-    void updateUninstancedMeshes(const std::vector<Voxel*> &d_dataChunks);
+    void updateUninstancedMeshes(const std::vector<Voxel *> &d_dataChunks);
+    void collectInstanceTransforms();
+
+    void updateLight();
+
+    // Helper functions for updateLight
+    unsigned int countLightTriangles();
+    void generateInstanceLights(unsigned int totalNumTriLights);
+    void uploadInstanceLightMapping();
+    void buildLightIdMapping(unsigned int totalNumTriLights, LightInfo *prevLights, unsigned int prevNumLights);
+    void buildIncrementalLightMapping(unsigned int totalNumTriLights, unsigned int prevNumLights);
+    void buildLightAliasTable(unsigned int totalNumTriLights);
 
     VoxelEngine()
     {
