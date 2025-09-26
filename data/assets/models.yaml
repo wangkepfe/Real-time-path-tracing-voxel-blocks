@@ -31,8 +31,8 @@ models:
 
   - id: minecraft_character
     name: "Minecraft Character Model"
-    # file: "models/character-pink-smoothie.gltf"
-    file: "models/character-frozen-roses.gltf"
+    file: "models/character-pink-smoothie.gltf"
+    # file: "models/character-frozen-roses.gltf"
     type: entity
     entity_type: EntityTypeMinecraftCharacter
     has_animation: true

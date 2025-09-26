@@ -197,12 +197,12 @@ materials:
   - id: minecraft_character
     name: "Minecraft Character Material"
     textures:
-      # albedo: "textures/high_fidelity_pink_smoothie_albedo.png"
-      # normal: "textures/high_fidelity_pink_smoothie_normal.png"
-      # roughness: "textures/high_fidelity_pink_smoothie_roughness.png"
-      albedo: "textures/high_fidelity_frozen_roses_albedo.png"
-      normal: "textures/high_fidelity_frozen_roses_normal.png"
-      roughness: "textures/high_fidelity_frozen_roses_roughness.png"
+      albedo: "textures/high_fidelity_pink_smoothie_albedo.png"
+      normal: "textures/high_fidelity_pink_smoothie_normal.png"
+      roughness: "textures/high_fidelity_pink_smoothie_roughness.png"
+      # albedo: "textures/high_fidelity_frozen_roses_albedo.png"
+      # normal: "textures/high_fidelity_frozen_roses_normal.png"
+      # roughness: "textures/high_fidelity_frozen_roses_roughness.png"
     properties:
       albedo: [1.0, 1.0, 1.0]
       roughness: 1.0
