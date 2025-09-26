@@ -22,11 +22,11 @@ denoising:
 postprocess:
   manualExposure: 0.8
   toneMappingCurve: 0
-  highlightDesaturation: 0.8
+  highlightDesaturation: 0
   whitePoint: 10
   contrast: 1
   saturation: 1
-  gain: 16
+  gain: 1
   lift: 0
   enableChromaticAdaptation: true
   enableBloom: true
@@ -37,14 +37,14 @@ postprocess:
   exposureSpeed: 1
   exposureMin: -8
   exposureMax: 8
-  exposureCompensation: -2
-  histogramMinPercent: 40
-  histogramMaxPercent: 80
-  targetLuminance: 0.1
-  enableVignette: false
-  vignetteStrength: 0.5
+  exposureCompensation: 0
+  histogramMinPercent: 50
+  histogramMaxPercent: 95
+  targetLuminance: 0.25
+  enableVignette: true
+  vignetteStrength: 0.42
   vignetteRadius: 0.8
-  vignetteSmoothness: 0.5
+  vignetteSmoothness: 0.56
   enableLensFlare: false
   lensFlareIntensity: 0.01
   lensFlareThreshold: 4
