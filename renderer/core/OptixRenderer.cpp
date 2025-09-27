@@ -60,6 +60,28 @@ namespace
 
 #define RENDER_CUDA_CHECK(call) TerminateRenderOnCudaError((call), #call, __FILE__, __LINE__)
 
+    VertexAttributes *GetEmptyGeometryAttributesDevice()
+    {
+        static VertexAttributes *devicePtr = nullptr;
+        if (devicePtr == nullptr)
+        {
+            RENDER_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devicePtr), sizeof(VertexAttributes)));
+            RENDER_CUDA_CHECK(cudaMemset(devicePtr, 0, sizeof(VertexAttributes)));
+        }
+        return devicePtr;
+    }
+
+    Int3 *GetEmptyGeometryIndicesDevice()
+    {
+        static Int3 *devicePtr = nullptr;
+        if (devicePtr == nullptr)
+        {
+            RENDER_CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&devicePtr), sizeof(Int3)));
+            RENDER_CUDA_CHECK(cudaMemset(devicePtr, 0, sizeof(Int3)));
+        }
+        return devicePtr;
+    }
+
     class OptixLogger
     {
     public:
@@ -320,6 +342,7 @@ void OptixRenderer::clear()
 {
     CUstream cudaStream = getCurrentCudaStream();
     RENDER_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    m_prevTopObjectHandle = 0;
 
     // Material memory is now managed by MaterialManager, don't free here
     if (m_d_systemParameter)
@@ -438,10 +461,11 @@ void OptixRenderer::render()
 
     BufferSetFloat4(bufferManager.GetBufferDim(UIBuffer), bufferManager.GetBuffer2D(UIBuffer), Float4(0.0f));
 
-    m_systemParameter.prevTopObject = m_systemParameter.topObject;
+    m_systemParameter.prevTopObject = m_prevTopObjectHandle;
     int nextIndex = (m_currentIasIdx + 1) % 2;
     buildInstanceAccelerationStructure(cudaStream, nextIndex);
     m_currentIasIdx = nextIndex;
+    m_prevTopObjectHandle = m_systemParameter.topObject;
 
     RENDER_CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, cudaStream));
 
@@ -619,8 +643,8 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
     }
     assert(targetInstance != nullptr);
 
-    static VertexAttributes kEmptyAttributes[1] = {};
-    static Int3 kEmptyIndices[1] = {Int3(0, 0, 0)};
+    VertexAttributes *emptyAttributes = GetEmptyGeometryAttributesDevice();
+    Int3 *emptyIndices = GetEmptyGeometryIndicesDevice();
 
     if (!hasGeometry)
     {
@@ -636,8 +660,8 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
         {
             for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
             {
-                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = kEmptyIndices;
-                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = kEmptyAttributes;
+                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = emptyIndices;
+                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = emptyAttributes;
             }
         }
         return;
@@ -815,6 +839,7 @@ void OptixRenderer::updateInstancedObjectInstance(unsigned int instanceId, unsig
 void OptixRenderer::update()
 {
     auto &scene = Scene::Get();
+    bool geometryChanged = false;
 
     if (!scene.needSceneUpdate)
     {
@@ -823,6 +848,7 @@ void OptixRenderer::update()
 
     if (scene.needSceneReloadUpdate)
     {
+        geometryChanged = true;
         // We will recreate all optix instances
         m_instances.resize(scene.uninstancedGeometryCount);
         m_instanceIds.clear();
@@ -867,6 +893,7 @@ void OptixRenderer::update()
             {
                 unsigned int chunkIndex = scene.sceneUpdateChunkId[i];
                 updateGasAndOptixInstanceForUninstancedObject(chunkIndex, objectId);
+                geometryChanged = true;
                 CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(), sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(), cudaMemcpyHostToDevice, getCurrentCudaStream()));
             }
             // Instanced
@@ -874,10 +901,15 @@ void OptixRenderer::update()
             {
                 auto instanceId = scene.sceneUpdateInstanceId[i];
                 updateInstancedObjectInstance(instanceId, objectId);
+                geometryChanged = true;
             }
         }
     }
 
+    if (geometryChanged)
+    {
+        m_prevTopObjectHandle = 0;
+    }
     scene.sceneUpdateObjectId.clear();
     scene.sceneUpdateInstanceId.clear();
     scene.sceneUpdateChunkId.clear();
@@ -888,6 +920,7 @@ void OptixRenderer::update()
 
 void OptixRenderer::init()
 {
+    m_prevTopObjectHandle = 0;
     Scene &scene = Scene::Get();
     {
         m_systemParameter.topObject = 0;

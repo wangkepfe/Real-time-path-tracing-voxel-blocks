@@ -82,6 +82,7 @@ private:
 
     // TLAS rebuild optimization
     bool m_needTlasRebuild = false;
+    OptixTraversableHandle m_prevTopObjectHandle = 0;
 
     SystemParameter *m_d_systemParameter;
 
