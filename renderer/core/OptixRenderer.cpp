@@ -580,10 +580,11 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
 {
     auto &scene = Scene::Get();
     unsigned int geometryIndex = getUninstancedGeometryIndex(chunkIndex, objectId);
+    unsigned int attributeSize = scene.getChunkGeometryAttributeSize(chunkIndex, objectId);
+    unsigned int indexSize = scene.getChunkGeometryIndicesSize(chunkIndex, objectId);
+    bool hasGeometry = attributeSize > 0 && indexSize > 0;
 
     assert(geometryIndex < m_geometries.size());
-    assert(scene.getChunkGeometryAttributeSize(chunkIndex, objectId) > 0);
-    assert(scene.getChunkGeometryIndicesSize(chunkIndex, objectId) > 0);
 
     GeometryData &geometry = m_geometries[geometryIndex];
     if (geometry.gas != 0)
@@ -592,39 +593,61 @@ void OptixRenderer::updateGasAndOptixInstanceForUninstancedObject(unsigned int c
         geometry.gas = 0;
     }
 
+    unsigned int sbtIndex = 0;
+    OptixInstance *targetInstance = nullptr;
+    for (auto &instance : m_instances)
+    {
+        if (instance.instanceId == geometryIndex)
+        {
+            targetInstance = &instance;
+            sbtIndex = instance.sbtOffset;
+            break;
+        }
+    }
+    assert(targetInstance != nullptr);
+
+    static VertexAttributes kEmptyAttributes[1] = {};
+    static Int3 kEmptyIndices[1] = {Int3(0, 0, 0)};
+
+    if (!hasGeometry)
+    {
+        geometry.indices = nullptr;
+        geometry.attributes = nullptr;
+        geometry.numIndices = 0;
+        geometry.numAttributes = 0;
+
+        targetInstance->traversableHandle = 0;
+        targetInstance->visibilityMask = 0;
+
+        if (sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size())
+        {
+            for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
+            {
+                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = kEmptyIndices;
+                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = kEmptyAttributes;
+            }
+        }
+        return;
+    }
+
     OptixTraversableHandle blasHandle = Scene::CreateGeometry(
         m_api, m_context, getCurrentCudaStream(),
         geometry,
         *scene.getChunkGeometryAttributes(chunkIndex, objectId),
         *scene.getChunkGeometryIndices(chunkIndex, objectId),
-        scene.getChunkGeometryAttributeSize(chunkIndex, objectId),
-        scene.getChunkGeometryIndicesSize(chunkIndex, objectId));
+        attributeSize,
+        indexSize);
 
-    // Find and update the corresponding instance, and get its sbtOffset
-    unsigned int sbtIndex = 0;
-    bool instanceFound = false;
-    for (auto &instance : m_instances)
-    {
-        if (instance.instanceId == geometryIndex)
-        {
-            instance.traversableHandle = blasHandle;
-            sbtIndex = instance.sbtOffset;
-            instanceFound = true;
-            break;
-        }
-    }
+    unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
+    targetInstance->traversableHandle = blasHandle;
+    targetInstance->visibilityMask = Assets::BlockManager::Get().isTransparentBlockType(blockId) ? 1 : 255;
 
-    // Update shader binding table record using the correct SBT index
-    if (instanceFound)
+    if (sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size())
     {
-        // Update geometry data using the sbtIndex directly since it's already calculated
-        if (sbtIndex + NUM_RAY_TYPES - 1 < m_sbtRecordGeometryInstanceData.size())
+        for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
         {
-            for (unsigned int rayType = 0; rayType < NUM_RAY_TYPES; ++rayType)
-            {
-                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
-                m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
-            }
+            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.indices = (Int3 *)geometry.indices;
+            m_sbtRecordGeometryInstanceData[sbtIndex + rayType].data.attributes = (VertexAttributes *)geometry.attributes;
         }
     }
 }
@@ -882,7 +905,7 @@ void OptixRenderer::init()
         m_systemParameter.motionVectorBuffer = bufferManager.GetBuffer2D(MotionVectorBuffer);
 
         // Confidence computation buffers
-        
+
         // ReSTIR luminance buffers
 
         m_systemParameter.UIBuffer = bufferManager.GetBuffer2D(UIBuffer);
@@ -1451,3 +1474,4 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
         std::cerr << "IAS BUILD ERROR: Failed to free instances buffer: " << cudaGetErrorString(cudaErr) << std::endl;
     }
 }
+
