@@ -34,6 +34,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -46,6 +47,18 @@
 
 namespace
 {
+    inline void TerminateRenderOnCudaError(cudaError_t result, const char *expression, const char *file, int line)
+    {
+        if (result != cudaSuccess)
+        {
+            std::cerr << "RENDER CUDA ERROR: " << file << "(" << line << "): " << expression
+                      << " failed with code " << static_cast<int>(result) << ": "
+                      << cudaGetErrorString(result) << std::endl;
+            std::terminate();
+        }
+    }
+
+#define RENDER_CUDA_CHECK(call) TerminateRenderOnCudaError((call), #call, __FILE__, __LINE__)
 
     class OptixLogger
     {
@@ -306,7 +319,7 @@ void OptixRenderer::initializeSbtRecord(unsigned int sbtRecordIndex, unsigned in
 void OptixRenderer::clear()
 {
     CUstream cudaStream = getCurrentCudaStream();
-    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    RENDER_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
     // Material memory is now managed by MaterialManager, don't free here
     if (m_d_systemParameter)
@@ -383,7 +396,7 @@ void OptixRenderer::render()
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
     m_systemParameter.iterationIndex = iterationIndex++;
 
-    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    RENDER_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
 #ifndef OFFLINE_MODE
 #else
@@ -430,11 +443,11 @@ void OptixRenderer::render()
     buildInstanceAccelerationStructure(cudaStream, nextIndex);
     m_currentIasIdx = nextIndex;
 
-    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, cudaStream));
+    RENDER_CUDA_CHECK(cudaMemcpyAsync((void *)m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice, cudaStream));
 
     OPTIX_CHECK(m_api.optixLaunch(m_pipeline, cudaStream, (CUdeviceptr)m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, 1));
 
-    CUDA_CHECK(cudaStreamSynchronize(cudaStream));
+    RENDER_CUDA_CHECK(cudaStreamSynchronize(cudaStream));
 
     BufferCopyFloat4(bufferManager.GetBufferDim(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(GeoNormalThinfilmBuffer), bufferManager.GetBuffer2D(PrevGeoNormalThinfilmBuffer));
     BufferCopyFloat4(bufferManager.GetBufferDim(AlbedoBuffer), bufferManager.GetBuffer2D(AlbedoBuffer), bufferManager.GetBuffer2D(PrevAlbedoBuffer));
@@ -508,7 +521,7 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
         }
     }
 
-    CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
+    RENDER_CUDA_CHECK(cudaMemcpyAsync((void *)m_d_sbtRecordGeometryInstanceData, m_sbtRecordGeometryInstanceData.data(),
                                sizeof(SbtRecordGeometryInstanceData) * m_sbtRecordGeometryInstanceData.size(),
                                cudaMemcpyHostToDevice, cudaStream));
 }
@@ -1474,4 +1487,3 @@ void OptixRenderer::buildInstanceAccelerationStructure(CUstream cudaStream, int 
         std::cerr << "IAS BUILD ERROR: Failed to free instances buffer: " << cudaGetErrorString(cudaErr) << std::endl;
     }
 }
-
