@@ -381,26 +381,25 @@ INL_DEVICE float SmithGGGX(float cosTheta, float alpha)
     return 2.0f / (1.0f + sqrtf(1.0f + a2 * (1.0f - cosTheta2) / cosTheta2));
 }
 
-// Disney BSDF Sample function with separate diffuse/specular output
-INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &wi, Float3 &bsdfOverPdf, float &pdf, bool &transmissive, bool &isSpecular)
+// Disney BSDF sample matching UberBSDF interface
+INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &wi, Float3 &bsdfOverPdf, float &pdf, bool &transmissive)
 {
     if (roughness < roughnessThreshold)
     {
+        transmissive = false;
+
         if (translucency < translucencyThreshold)
         {
             SpecularReflectionSample(n, ng, wo, albedo, wi, bsdfOverPdf, pdf);
-            isSpecular = true; // Mirror-like reflection is always specular
         }
         else if (translucency > 1.0f - translucencyThreshold)
         {
             SpecularReflectionTransmissionSample(u.x, n, ng, wo, albedo, wi, bsdfOverPdf, pdf, transmissive);
-            isSpecular = true; // Mirror-like transmission is also specular
         }
         else
         {
             bsdfOverPdf = Float3(0.0f);
             pdf = 0.0f;
-            isSpecular = false;
         }
         return;
     }
@@ -447,7 +446,6 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
     // Sample either diffuse or specular
     if (u.w < specularProb)
     {
-        isSpecular = true;
         // Sample microfacet normal using GGX distribution
         float cosTheta = sqrtf((1.0f - u.x) / (1.0f + (alpha * alpha - 1.0f) * u.x));
         float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
@@ -490,7 +488,6 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
     }
     else
     {
-        isSpecular = false;
         // Sample diffuse using cosine-weighted hemisphere sampling
         float cosTheta = sqrtf(u.x);
         float sinTheta = sqrtf(1.0f - u.x);
@@ -520,11 +517,11 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
     }
 }
 
-// Disney BSDF Evaluate function with separate diffuse/specular outputs
-INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &diffuse, Float3 &specular, float &pdf)
+
+// Disney BSDF evaluate returning combined BSDF
+INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Float3 albedo, bool metallic, float translucency, float roughness, Float3 &bsdf, float &pdf)
 {
-    diffuse = Float3(0.0f);
-    specular = Float3(0.0f);
+    bsdf = Float3(0.0f);
 
     if (roughness < roughnessThreshold)
     {
@@ -532,7 +529,7 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
         return;
     }
 
-    if (dot(wo, n) <= 0 || dot(wi, n) <= 0 || dot(wo, ng) <= 0 || dot(wi, ng) <= 0)
+    if (dot(wo, n) <= 0.0f || dot(wi, n) <= 0.0f || dot(wo, ng) <= 0.0f || dot(wi, ng) <= 0.0f)
     {
         pdf = 0.0f;
         return;
@@ -563,6 +560,9 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
     // Fresnel
     Float3 F = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWoWh);
 
+    Float3 diffuse = Float3(0.0f);
+    Float3 specular = Float3(0.0f);
+
     // Diffuse component (Disney diffuse) - zero for metals
     if (!metallic)
     {
@@ -571,10 +571,13 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
     }
 
     // Specular component (GTR2/GGX)
-    float sinThetaWh = sqrtf(1.0f - cosThetaWh * cosThetaWh);
+    float sinThetaWhSq = fmaxf(0.0f, 1.0f - cosThetaWh * cosThetaWh);
+    float sinThetaWh = sqrtf(sinThetaWhSq);
     float D = GTR2Aniso(cosThetaWh, sinThetaWh, 0.0f, 1.0f, alpha, alpha);
     float G = SmithGGGX(cosThetaWo, alpha) * SmithGGGX(cosThetaWi, alpha);
     specular = F * D * G / (4.0f * cosThetaWo * cosThetaWi);
+
+    bsdf = diffuse + specular;
 
     // PDF calculation
     float avgF = (F.x + F.y + F.z) / 3.0f;

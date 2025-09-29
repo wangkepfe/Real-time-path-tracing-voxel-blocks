@@ -251,7 +251,7 @@ extern "C" __global__ void __closesthit__radiance()
     // optixDirectCall<void, MaterialParameter const &, MaterialState const &, RayData *, int &, Float3 &, Float3 &, float &>(indexBsdfSample, parameters, state, rayData, rayData->randIdx, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf);
 
     rayData->transmissionEvent = false;
-    UberBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent);
+    DisneyBSDFSample(rand4(sysParam, randIdx), state.normal, state.geoNormal, state.wo, state.albedo, state.metallic, state.translucency, state.roughness, bsdfSampleWi, bsdfSampleBsdfOverPdf, bsdfSamplePdf, rayData->transmissionEvent);
 
     if (bsdfSamplePdf <= 0.0f)
     {
@@ -813,7 +813,7 @@ extern "C" __global__ void __closesthit__radiance()
             const Float3 albedo = skipAlbedoInShadowRayContribution ? Float3(1.0f) : state.albedo;
             Float3 bsdf;
             float pdf;
-            UberBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, bsdf, pdf);
+            DisneyBSDFEvaluate(state.normal, state.geoNormal, sampleDir, state.wo, albedo, state.metallic, state.translucency, state.roughness, bsdf, pdf);
 
             float cosTheta = fmaxf(0.0f, dot(sampleDir, state.normal));
 

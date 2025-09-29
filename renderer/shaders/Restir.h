@@ -185,7 +185,7 @@ INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
     float pdf;
 
     Float3 f;
-    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
+    DisneyBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     return pdf;
 }
@@ -194,7 +194,7 @@ INL_DEVICE bool GetSurfaceBrdfSample(Surface surface, int &randIdx, Float3 &wi, 
 {
     Float3 bsdfOverPdf;
 
-    UberBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
+    DisneyBSDFSample(rand4(sysParam, randIdx), surface.state.normal, surface.state.geoNormal, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, wi, bsdfOverPdf, pdf, isTransmissiveEvent);
 
     return pdf > 0.0f;
 }
@@ -211,7 +211,7 @@ INL_DEVICE float GetLightSampleTargetPdfForSurface(LightSample lightSample, Surf
     Float3 f;
 
     float pdf;
-    UberBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
+    DisneyBSDFEvaluate(surface.state.normal, surface.state.geoNormal, wi, surface.state.wo, surface.state.albedo, surface.state.metallic, surface.state.translucency, surface.state.roughness, f, pdf);
 
     Float3 reflectedRadiance = lightSample.radiance * f * abs(dot(wi, surface.state.normal)) / lightSample.solidAnglePdf;
 
