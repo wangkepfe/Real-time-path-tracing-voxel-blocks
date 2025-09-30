@@ -157,6 +157,7 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  enableHistoryFix: " << (denoisingParams.enableHistoryFix ? "true" : "false") << "\n";
     file << "  enableHistoryClamping: " << (denoisingParams.enableHistoryClamping ? "true" : "false") << "\n";
     file << "  enableSpatialFiltering: " << (denoisingParams.enableSpatialFiltering ? "true" : "false") << "\n";
+    file << "  enableFireflyFilter: " << (denoisingParams.enableFireflyFilter ? "true" : "false") << "\n";
     file << "  maxAccumulatedFrameNum: " << denoisingParams.maxAccumulatedFrameNum << "\n";
     file << "  maxFastAccumulatedFrameNum: " << denoisingParams.maxFastAccumulatedFrameNum << "\n";
     file << "  phiLuminance: " << denoisingParams.phiLuminance << "\n";
@@ -477,6 +478,7 @@ void GlobalSettings::parseDenosingSettings(const std::string& key, const std::st
     else if (key == "enableHistoryFix") parseBool(value, denoisingParams.enableHistoryFix);
     else if (key == "enableHistoryClamping") parseBool(value, denoisingParams.enableHistoryClamping);
     else if (key == "enableSpatialFiltering") parseBool(value, denoisingParams.enableSpatialFiltering);
+    else if (key == "enableFireflyFilter") parseBool(value, denoisingParams.enableFireflyFilter);
     else if (key == "maxAccumulatedFrameNum") parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
     else if (key == "maxFastAccumulatedFrameNum") parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
     else if (key == "phiLuminance") parseFloat(value, denoisingParams.phiLuminance);
@@ -488,5 +490,8 @@ void GlobalSettings::parseDenosingSettings(const std::string& key, const std::st
     else if (key == "disocclusionThresholdAlternate") parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
     else if (key == "denoisingRange") parseFloat(value, denoisingParams.denoisingRange);
 }
+
+
+
 
 

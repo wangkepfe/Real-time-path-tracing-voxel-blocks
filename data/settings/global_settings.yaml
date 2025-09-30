@@ -8,6 +8,7 @@ denoising:
   enableHistoryFix: true
   enableHistoryClamping: true
   enableSpatialFiltering: true
+  enableFireflyFilter: true
   maxAccumulatedFrameNum: 30
   maxFastAccumulatedFrameNum: 6
   phiLuminance: 2
@@ -104,3 +105,4 @@ rendering:
   maxRenderHeight: 1440
   minRenderWidth: 480
   minRenderHeight: 270
+

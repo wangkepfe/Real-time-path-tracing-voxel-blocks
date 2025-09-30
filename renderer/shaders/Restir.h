@@ -88,20 +88,14 @@ INL_DEVICE bool StreamSample(
     float targetPdf,
     float invSourcePdf)
 {
-    // What's the current weight
     float risWeight = targetPdf * invSourcePdf;
 
-    // Add one sample to the counter
     reservoir.M += 1;
 
-    // Update the weight sum
     reservoir.weightSum += risWeight;
 
-    // Decide if we will randomly pick this sample
     bool selectSample = (random * reservoir.weightSum < risWeight);
 
-    // If we did select this sample, update the relevant data.
-    // New samples don't have visibility or age information, we can skip that.
     if (selectSample)
     {
         reservoir.lightData = lightIndex | DIReservoir_LightValidBit;
@@ -111,6 +105,7 @@ INL_DEVICE bool StreamSample(
 
     return selectSample;
 }
+
 
 // Adds `newReservoir` into `reservoir`, returns true if the new reservoir's sample was selected.
 // This is a very general form, allowing input parameters to specfiy normalization and targetPdf
@@ -125,19 +120,14 @@ INL_DEVICE bool InternalSimpleResample(
     float sampleM = 1.0f              // In its most basic form, should be newReservoir.M
 )
 {
-    // What's the current weight (times any prior-step RIS normalization factor)
     float risWeight = targetPdf * sampleNormalization;
 
-    // Our *effective* candidate pool is the sum of our candidates plus those of our neighbors
     reservoir.M += sampleM;
 
-    // Update the weight sum
     reservoir.weightSum += risWeight;
 
-    // Decide if we will randomly pick this sample
     bool selectSample = (random * reservoir.weightSum < risWeight);
 
-    // If we did select this sample, update the relevant data
     if (selectSample)
     {
         reservoir.lightData = newReservoir.lightData;
@@ -150,6 +140,7 @@ INL_DEVICE bool InternalSimpleResample(
 
     return selectSample;
 }
+
 
 // Adds `newReservoir` into `reservoir`, returns true if the new reservoir's sample was selected.
 // Algorithm (4) from the ReSTIR paper, Combining the streams of multiple reservoirs.
@@ -177,8 +168,9 @@ INL_DEVICE void FinalizeResampling(
 {
     float denominator = reservoir.targetPdf * normalizationDenominator;
 
-    reservoir.weightSum = (denominator == 0.0) ? 0.0 : (reservoir.weightSum * normalizationNumerator) / denominator;
+    reservoir.weightSum = (denominator == 0.0f) ? 0.0f : (reservoir.weightSum * normalizationNumerator) / denominator;
 }
+
 
 INL_DEVICE float GetSurfaceBrdfPdf(Surface surface, Float3 wi)
 {

@@ -99,6 +99,7 @@ struct DenoisingParams
             {&enableHistoryFix, "Enable History Fix"},
             {&enableHistoryClamping, "Enable History Clamping"},
             {&enableSpatialFiltering, "Enable Spatial Filtering (A-trous)"},
+            {&enableFireflyFilter, "Enable Firefly Filter"},
         };
     }
 
@@ -130,6 +131,7 @@ struct DenoisingParams
     bool enableHistoryFix = true;
     bool enableHistoryClamping = true;
     bool enableSpatialFiltering = true;
+    bool enableFireflyFilter = true;
 
     float maxAccumulatedFrameNum = 30.0f;
     float maxFastAccumulatedFrameNum = 6.0f;
@@ -391,4 +393,7 @@ private:
     void parseCameraMovementSettings(const std::string &key, const std::string &value);
     void parseRenderingSettings(const std::string &key, const std::string &value);
 };
+
+
+
 

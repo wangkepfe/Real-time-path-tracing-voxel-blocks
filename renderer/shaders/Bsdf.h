@@ -5,6 +5,22 @@
 static constexpr float roughnessThreshold = 0.00001f;
 static constexpr float translucencyThreshold = 0.001f;
 
+static constexpr float disneyMinPdf = 1e-5f;
+static constexpr float disneyMaxThroughput = 32.0f;
+static constexpr float disneyMinLobeProbability = 0.05f;
+
+INL_DEVICE Float3 ClampDisneyThroughput(const Float3 &value)
+{
+    float luminanceValue = luminance(value);
+    float absLuminance = fabsf(luminanceValue);
+    if (absLuminance > disneyMaxThroughput && absLuminance > 0.0f)
+    {
+        float scale = disneyMaxThroughput / absLuminance;
+        return value * scale;
+    }
+    return value;
+}
+
 INL_DEVICE void UnitSquareToCosineHemisphere(Float2 sample, Float3 axis, Float3 &w, float &pdf)
 {
     // Choose a point on the local hemisphere coordinates about +z
@@ -391,10 +407,14 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
         if (translucency < translucencyThreshold)
         {
             SpecularReflectionSample(n, ng, wo, albedo, wi, bsdfOverPdf, pdf);
+            pdf = fmaxf(pdf, disneyMinPdf);
+            bsdfOverPdf = ClampDisneyThroughput(bsdfOverPdf);
         }
         else if (translucency > 1.0f - translucencyThreshold)
         {
             SpecularReflectionTransmissionSample(u.x, n, ng, wo, albedo, wi, bsdfOverPdf, pdf, transmissive);
+            pdf = fmaxf(pdf, disneyMinPdf);
+            bsdfOverPdf = ClampDisneyThroughput(bsdfOverPdf);
         }
         else
         {
@@ -406,34 +426,26 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
 
     transmissive = false; // Disney BSDF doesn't handle transmission in this implementation
 
-    // Disney parameters (simplified version)
     const float specular_param = 0.5f; // Default Disney specular amount for dielectrics
     const float metalness = metallic ? 1.0f : 0.0f;
 
-    // Roughness remapping for Disney model
-    float alpha = roughness * roughness;
+    float alpha = fmaxf(roughness * roughness, roughnessThreshold);
 
-    // Calculate Fresnel reflectance at normal incidence
     float cosThetaWo = fmaxf(SAFE_COSINE_EPSI, dot(n, wo));
 
-    // Luminance for specular tint
     float luminance = 0.299f * albedo.x + 0.587f * albedo.y + 0.114f * albedo.z;
     Float3 tint = luminance > 0.0f ? albedo / luminance : Float3(1.0f);
 
-    // Specular color for dielectrics (with optional tint)
     Float3 specularColor = lerp3f(Float3(1.0f), tint, 0.0f); // specularTint = 0 for now
     Float3 C0 = lerp3f(0.08f * specular_param * specularColor, albedo, metalness);
 
-    // Calculate Fresnel
     Float3 F = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWo);
     float avgF = (F.x + F.y + F.z) / 3.0f;
 
-    // Probability of choosing specular vs diffuse
     float specularWeight = avgF;
     float diffuseWeight = (1.0f - metalness) * (1.0f - avgF);
-
-    // Normalize weights
     float totalWeight = specularWeight + diffuseWeight;
+
     if (totalWeight < SAFE_COSINE_EPSI)
     {
         bsdfOverPdf = Float3(0.0f);
@@ -442,19 +454,23 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
     }
 
     float specularProb = specularWeight / totalWeight;
+    if (diffuseWeight > SAFE_COSINE_EPSI && specularWeight > SAFE_COSINE_EPSI)
+    {
+        specularProb = clampf(specularProb, disneyMinLobeProbability, 1.0f - disneyMinLobeProbability);
+    }
+    specularProb = clampf(specularProb, 0.0f, 1.0f);
+    float diffuseProb = fmaxf(0.0f, 1.0f - specularProb);
 
-    // Sample either diffuse or specular
     if (u.w < specularProb)
     {
-        // Sample microfacet normal using GGX distribution
         float cosTheta = sqrtf((1.0f - u.x) / (1.0f + (alpha * alpha - 1.0f) * u.x));
-        float sinTheta = sqrtf(1.0f - cosTheta * cosTheta);
+        cosTheta = clampf(cosTheta, SAFE_COSINE_EPSI, 1.0f);
+        float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - cosTheta * cosTheta));
         float phi = TWO_PI * u.y;
 
         Float3 wh = Float3(sinTheta * cosf(phi), sinTheta * sinf(phi), cosTheta);
         alignVector(n, wh);
 
-        // Reflect to get wi
         wi = normalize(reflect3f(-wo, wh));
 
         if (dot(wi, n) <= 0.0f || dot(wi, ng) <= 0.0f)
@@ -464,33 +480,31 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
             return;
         }
 
-        // Calculate BSDF and PDF for specular
         float cosThetaWi = dot(wi, n);
-        float cosThetaWh = dot(wh, n);
-        float cosThetaWoWh = dot(wo, wh);
+        float cosThetaWh = fmaxf(SAFE_COSINE_EPSI, fabsf(dot(wh, n)));
+        float cosThetaWoWh = fmaxf(SAFE_COSINE_EPSI, fabsf(dot(wo, wh)));
+        float sinThetaWh = sqrtf(fmaxf(0.0f, 1.0f - cosThetaWh * cosThetaWh));
 
-        // GTR2 distribution
-        float D = GTR2Aniso(cosThetaWh, sinTheta, 0.0f, 1.0f, alpha, alpha);
+        float D = GTR2Aniso(cosThetaWh, sinThetaWh, 0.0f, 1.0f, alpha, alpha);
 
-        // Fresnel
         Float3 F_sample = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWoWh);
-
-        // Masking-shadowing
         float G = SmithGGGX(cosThetaWo, alpha) * SmithGGGX(cosThetaWi, alpha);
 
-        // BRDF
         Float3 brdf = F_sample * D * G / (4.0f * cosThetaWo * cosThetaWi);
 
-        // PDF
-        pdf = D * cosThetaWh / (4.0f * cosThetaWoWh) * specularProb;
+        float microfacetPdf = D * cosThetaWh / (4.0f * cosThetaWoWh);
+        microfacetPdf = fmaxf(microfacetPdf, disneyMinPdf);
+        float weightedSpecProb = fmaxf(specularProb, disneyMinPdf);
+        pdf = microfacetPdf * weightedSpecProb;
+        pdf = fmaxf(pdf, disneyMinPdf);
 
-        bsdfOverPdf = brdf * cosThetaWi / pdf;
+        Float3 throughput = brdf * cosThetaWi / pdf;
+        bsdfOverPdf = ClampDisneyThroughput(throughput);
     }
     else
     {
-        // Sample diffuse using cosine-weighted hemisphere sampling
         float cosTheta = sqrtf(u.x);
-        float sinTheta = sqrtf(1.0f - u.x);
+        float sinTheta = sqrtf(fmaxf(0.0f, 1.0f - cosTheta * cosTheta));
         float phi = TWO_PI * u.y;
 
         wi = Float3(sinTheta * cosf(phi), sinTheta * sinf(phi), cosTheta);
@@ -503,19 +517,22 @@ INL_DEVICE void DisneyBSDFSample(Float4 u, Float3 n, Float3 ng, Float3 wo, Float
             return;
         }
 
-        // Calculate Disney diffuse
-        float cosThetaWi = dot(wi, n);
+        float cosThetaWi = fmaxf(SAFE_COSINE_EPSI, dot(wi, n));
         float fl = DisneyDiffuseFresnel(cosThetaWo, cosThetaWi, roughness);
 
-        // Disney diffuse BRDF
         Float3 diffuseBrdf = albedo * (1.0f - metalness) * fl / M_PI;
 
-        // PDF for cosine-weighted sampling
-        pdf = cosThetaWi / M_PI * (1.0f - specularProb);
+        float diffusePdf = cosThetaWi / M_PI;
+        diffusePdf = fmaxf(diffusePdf, disneyMinPdf);
+        float weightedDiffuseProb = fmaxf(diffuseProb, disneyMinPdf);
+        pdf = diffusePdf * weightedDiffuseProb;
+        pdf = fmaxf(pdf, disneyMinPdf);
 
-        bsdfOverPdf = diffuseBrdf * cosThetaWi / pdf;
+        Float3 throughput = diffuseBrdf * cosThetaWi / pdf;
+        bsdfOverPdf = ClampDisneyThroughput(throughput);
     }
 }
+
 
 
 // Disney BSDF evaluate returning combined BSDF
@@ -535,51 +552,40 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
         return;
     }
 
-    // Disney parameters
     const float specular_param = 0.5f;
     const float metalness = metallic ? 1.0f : 0.0f;
 
-    // Roughness remapping
-    float alpha = roughness * roughness;
+    float alpha = fmaxf(roughness * roughness, roughnessThreshold);
 
-    // Calculate angles
     float cosThetaWo = dot(wo, n);
     float cosThetaWi = dot(wi, n);
 
-    // Half vector
     Float3 wh = normalize(wi + wo);
-    float cosThetaWh = dot(wh, n);
-    float cosThetaWoWh = dot(wo, wh);
+    float cosThetaWh = fmaxf(SAFE_COSINE_EPSI, fabsf(dot(wh, n)));
+    float cosThetaWoWh = fmaxf(SAFE_COSINE_EPSI, fabsf(dot(wo, wh)));
 
-    // Luminance and tint
     float luminance = 0.299f * albedo.x + 0.587f * albedo.y + 0.114f * albedo.z;
     Float3 tint = luminance > 0.0f ? albedo / luminance : Float3(1.0f);
     Float3 specularColor = lerp3f(Float3(1.0f), tint, 0.0f);
     Float3 C0 = lerp3f(0.08f * specular_param * specularColor, albedo, metalness);
 
-    // Fresnel
     Float3 F = C0 + (Float3(1.0f) - C0) * pow5(1.0f - cosThetaWoWh);
 
     Float3 diffuse = Float3(0.0f);
-    Float3 specular = Float3(0.0f);
-
-    // Diffuse component (Disney diffuse) - zero for metals
     if (!metallic)
     {
         float fl = DisneyDiffuseFresnel(cosThetaWo, cosThetaWi, roughness);
         diffuse = albedo * (1.0f - metalness) * fl / M_PI;
     }
 
-    // Specular component (GTR2/GGX)
     float sinThetaWhSq = fmaxf(0.0f, 1.0f - cosThetaWh * cosThetaWh);
     float sinThetaWh = sqrtf(sinThetaWhSq);
     float D = GTR2Aniso(cosThetaWh, sinThetaWh, 0.0f, 1.0f, alpha, alpha);
     float G = SmithGGGX(cosThetaWo, alpha) * SmithGGGX(cosThetaWi, alpha);
-    specular = F * D * G / (4.0f * cosThetaWo * cosThetaWi);
+    Float3 specular = F * D * G / (4.0f * cosThetaWo * cosThetaWi);
 
-    bsdf = diffuse + specular;
+    bsdf = ClampDisneyThroughput(diffuse + specular);
 
-    // PDF calculation
     float avgF = (F.x + F.y + F.z) / 3.0f;
     float specularWeight = avgF;
     float diffuseWeight = (1.0f - metalness) * (1.0f - avgF);
@@ -592,10 +598,21 @@ INL_DEVICE void DisneyBSDFEvaluate(Float3 n, Float3 ng, Float3 wi, Float3 wo, Fl
     }
 
     float specularProb = specularWeight / totalWeight;
+    if (diffuseWeight > SAFE_COSINE_EPSI && specularWeight > SAFE_COSINE_EPSI)
+    {
+        specularProb = clampf(specularProb, disneyMinLobeProbability, 1.0f - disneyMinLobeProbability);
+    }
+    specularProb = clampf(specularProb, 0.0f, 1.0f);
+    float diffuseProb = fmaxf(0.0f, 1.0f - specularProb);
 
-    // Combined PDF
     float diffusePdf = cosThetaWi / M_PI;
+    diffusePdf = fmaxf(diffusePdf, disneyMinPdf);
     float specularPdf = D * cosThetaWh / (4.0f * cosThetaWoWh);
+    specularPdf = fmaxf(specularPdf, disneyMinPdf);
 
-    pdf = diffusePdf * (1.0f - specularProb) + specularPdf * specularProb;
+    float weightedSpecProb = fmaxf(specularProb, disneyMinPdf);
+    float weightedDiffuseProb = fmaxf(diffuseProb, disneyMinPdf);
+    pdf = diffusePdf * weightedDiffuseProb + specularPdf * weightedSpecProb;
+    pdf = fmaxf(pdf, disneyMinPdf);
 }
+

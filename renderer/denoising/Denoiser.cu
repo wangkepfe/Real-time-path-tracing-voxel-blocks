@@ -1,5 +1,6 @@
 #include "denoising/Denoiser.h"
 
+#include "denoising/FireflyFilter.h"
 #include "denoising/BufferCopy.h"
 
 #include "denoising/HitDistReconstruction.h"
@@ -36,6 +37,31 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
     int &iterationIndex = GlobalSettings::Get().iterationIndex;
 
     auto &bufferManager = BufferManager::Get();
+
+    const int usedIterationIndex = iterationIndex > 0 ? iterationIndex - 1 : 0;
+    const int reservoirParity = usedIterationIndex & 1;
+    const int reservoirStride = bufferDim.x * bufferDim.y;
+
+    if (denoisingParams.enableFireflyFilter && bufferManager.reservoirBuffer != nullptr)
+    {
+        const dim3 gridDim = GetGridDim(bufferDim.x, bufferDim.y, BLOCK_DIM_8x4x1);
+        const dim3 blockDim = GetBlockDim(BLOCK_DIM_8x4x1);
+        FireflyBoilingFilter KERNEL_ARGS2(gridDim, blockDim)(
+            bufferDim,
+            bufferManager.GetBuffer2D(IlluminationBuffer),
+            bufferManager.GetBuffer2D(NormalRoughnessBuffer),
+            bufferManager.GetBuffer2D(DepthBuffer),
+            bufferManager.GetBuffer2D(MaterialBuffer),
+            bufferManager.reservoirBuffer,
+            reservoirStride,
+            reservoirParity,
+            80.0f,
+            5.0f,
+            0.8f,
+            0.02f,
+            denoisingParams.phiLuminance,
+            camera);
+    }
 
     int frameNum;
     if (GlobalSettings::IsOfflineMode())
@@ -155,7 +181,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
             finalResultBuffer = 1; // Temporal accumulation outputs to IlluminationPingBuffer
 
             // Optional buffer copy (controlled by parameter - currently disabled)
-            if (false)  // This was originally if (0), keeping disabled for now
+            if (false) // This was originally if (0), keeping disabled for now
             {
                 BufferCopyFloat4(
                     bufferDim,
