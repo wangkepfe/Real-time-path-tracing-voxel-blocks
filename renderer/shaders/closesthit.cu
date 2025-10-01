@@ -72,6 +72,27 @@ extern "C" __global__ void __closesthit__radiance()
         geoNormal = Float3(safeNorm);
     }
 
+    Float3 prevSurfacePos = frontPos;
+    if (instanceData->isAnimated)
+    {
+        const VertexAttributes *prevAttributes = instanceData->prevAttributes ? instanceData->prevAttributes : instanceData->attributes;
+
+        float b1 = bary.x;
+        float b2 = bary.y;
+        float b0 = 1.0f - b1 - b2;
+
+        Float3 prevP0 = prevAttributes[tri.x].vertex;
+        Float3 prevP1 = prevAttributes[tri.y].vertex;
+        Float3 prevP2 = prevAttributes[tri.z].vertex;
+        prevSurfacePos = prevP0 * b0 + prevP1 * b1 + prevP2 * b2;
+    }
+
+    Float3 motionWS = prevSurfacePos - frontPos;
+    if (rayData->depth == 0)
+    {
+        Store2DFloat4(Float4(motionWS, 0.0f), sysParam.motionVectorBuffer, pixelPosition);
+    }
+
     // Default pos
     rayData->pos = frontPos;
 
@@ -618,7 +639,7 @@ extern "C" __global__ void __closesthit__radiance()
         CombineDIReservoirs(restirReservoir, risReservoir, 0.5f, risReservoir.targetPdf);
 
         Float3 currentWorldPos = surface.pos;
-        Float3 prevWorldPos = currentWorldPos; // TODO: movement of the world
+        Float3 prevWorldPos = currentWorldPos + motionWS;
         Float2 prevUV = sysParam.prevCamera.worldDirectionToUV(normalize(prevWorldPos - sysParam.prevCamera.pos));
 
         Int2 prevPixelPos = Int2(prevUV.x * sysParam.prevCamera.resolution.x, prevUV.y * sysParam.prevCamera.resolution.y);

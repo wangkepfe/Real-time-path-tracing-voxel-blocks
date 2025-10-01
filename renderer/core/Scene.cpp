@@ -166,8 +166,10 @@ OptixTraversableHandle Scene::CreateGeometry(
     // Track the GeometryData to be able to set them in the SBT record GeometryInstanceData and free them on exit.
     geometry.indices = d_indices;
     geometry.attributes = d_attributes;
+    geometry.prevAttributes = d_attributes;
     geometry.numAttributes = attributeSize;
     geometry.numIndices = indicesSize;
+    geometry.isAnimated = allowUpdate;
     geometry.gas = d_gas;
 
     return traversableHandle;

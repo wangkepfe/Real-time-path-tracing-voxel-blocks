@@ -28,9 +28,11 @@ struct GeometryData
 {
     unsigned int *indices;
     VertexAttributes *attributes;
+    VertexAttributes *prevAttributes;
     size_t numIndices;    // Count of unsigned ints, not triplets.
     size_t numAttributes; // Count of VertexAttributes structs.
     CUdeviceptr gas;
+    bool isAnimated;
 };
 
 class Scene

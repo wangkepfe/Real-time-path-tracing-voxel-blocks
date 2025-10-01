@@ -521,6 +521,10 @@ void OptixRenderer::updateAnimatedEntities(CUstream cudaStream, float currentTim
                         entity->getAttributeSize(),
                         entity->getIndicesSize());
 
+                    geometry.attributes = entity->getAttributes();
+                    geometry.prevAttributes = entity->getPrevAttributes();
+                    geometry.isAnimated = entity->isAnimated();
+
                     // Update the instance with the new BLAS handle
                     unsigned int targetInstanceId = EntityConstants::ENTITY_INSTANCE_ID_OFFSET + static_cast<unsigned int>(entityIndex);
                     for (auto &instance : m_instances)
@@ -756,6 +760,9 @@ void OptixRenderer::createBlasForEntities()
                 entity->getAttributeSize(),
                 entity->getIndicesSize(),
                 true); // Allow updates for animated entities
+
+            geometry.prevAttributes = entity->isAnimated() ? entity->getPrevAttributes() : entity->getAttributes();
+            geometry.isAnimated = entity->isAnimated();
 
             m_geometries.push_back(geometry);
         }

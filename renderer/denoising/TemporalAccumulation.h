@@ -236,6 +236,7 @@ __global__ void TemporalAccumulation(
     SurfObj prevFastIllumBuffer,
     SurfObj prevHistoryLengthBuffer,
     SurfObj prevNormalRoughnessBuffer,
+    SurfObj motionVectorBuffer,
 
     SurfObj illuBuffer,
     SurfObj depthBuffer,
@@ -304,7 +305,7 @@ __global__ void TemporalAccumulation(
     float currentMaterialID = Load2DFloat1(materialBuffer, pixelPos);
     Float4 currentNormalRoughness = Load2DFloat4(normalRoughnessBuffer, pixelPos);
     Float3 currentNormal = currentNormalRoughness.xyz;
-    //float currentRoughness = currentNormalRoughness.w;
+    // float currentRoughness = currentNormalRoughness.w;
 
     // Getting current position and view vector for current pixel
     Float2 currentUV = (Float2(pixelPos.x, pixelPos.y) + 0.5f) * camera.inversedResolution;
@@ -313,16 +314,12 @@ __global__ void TemporalAccumulation(
     Float3 V = -normalize(currentViewVector);
     float NoV = abs(dot(currentNormal, V));
 
-    // Getting previous position
-    Float3 prevWorldPos = currentWorldPos; // TODO: movement of the world
-    Float2 prevUVSMB = prevCamera.worldDirectionToUV(normalize(prevWorldPos - prevCamera.pos));
+    // Reproject using world-space motion vectors
+    Float4 motionSample = Load2DFloat4(motionVectorBuffer, pixelPos);
+    Float3 motionWS = motionSample.xyz;
 
-    // if (CUDA_PIXEL(0.5f, 0.75f))
-    // {
-    //     DEBUG_PRINT(currentUV);
-    //     DEBUG_PRINT(prevUVSMB);
-    //     DEBUG_PRINT(pixelPos);
-    // }
+    Float3 prevWorldPos = currentWorldPos + motionWS;
+    Float2 prevUVSMB = prevCamera.worldDirectionToUV(normalize(prevWorldPos - prevCamera.pos));
 
     // Input noisy data
     Float3 diffuseIllumination = Load2DFloat4(illuBuffer, pixelPos).xyz;

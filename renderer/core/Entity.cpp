@@ -133,6 +133,7 @@ bool Entity::loadGeometry()
     // Handle animation if present
     if (geometry->hasAnimation)
     {
+        m_isAnimated = true;
         std::cout << "Setting up animation for entity with " << geometry->animationClips.size() << " animations" << std::endl;
 
         // Copy skeleton and animation clips
@@ -143,6 +144,8 @@ bool Entity::loadGeometry()
         const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
         CUDA_CHECK(cudaMalloc((void **)&m_d_originalAttributes, vertexBufferSize));
         CUDA_CHECK(cudaMemcpy(m_d_originalAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
+        CUDA_CHECK(cudaMalloc((void **)&m_d_prevAttributes, vertexBufferSize));
+        CUDA_CHECK(cudaMemcpy(m_d_prevAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
 
         // Copy skinning data from the geometry if available
         if (geometry->d_skinningData)
@@ -179,28 +182,33 @@ bool Entity::loadGeometry()
 
         std::cout << "Successfully set up animated entity with " << m_animationClips.size() << " animations" << std::endl;
     }
+    else
+    {
+        m_isAnimated = false;
+        m_d_prevAttributes = nullptr;
+    }
 
     return true;
 }
 
 void Entity::update(float deltaTime)
 {
+    if (!hasAnimation())
+    {
+        return;
+    }
+
     static int updateCount = 0;
     updateCount++;
-
-    assert(m_animationManager != nullptr);
 
     // Update animation
     m_animationManager->update(deltaTime);
 
     // Apply vertex skinning if we have original vertices
-    if (m_d_originalAttributes && m_d_attributes && m_attributeSize > 0)
+    if (m_d_originalAttributes && m_d_attributes && m_d_prevAttributes && m_attributeSize > 0)
     {
-        // Validate pointers
-        if (!m_d_originalAttributes || !m_d_attributes)
-        {
-            return;
-        }
+        const size_t vertexBufferSize = m_attributeSize * sizeof(VertexAttributes);
+        CUDA_CHECK(cudaMemcpy(m_d_prevAttributes, m_d_attributes, vertexBufferSize, cudaMemcpyDeviceToDevice));
 
         // Get skinning data from animation manager's skeleton (which has the GPU memory)
         SkinningData skinningData;

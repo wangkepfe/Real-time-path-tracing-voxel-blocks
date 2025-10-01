@@ -119,8 +119,10 @@ struct GeometryInstanceData
 {
     Int3 *indices;
     VertexAttributes *attributes;
+    VertexAttributes *prevAttributes;
 
     int materialIndex;
+    int isAnimated;
 };
 
 struct SbtRecordHeader

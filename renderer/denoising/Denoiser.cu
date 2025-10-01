@@ -156,6 +156,7 @@ void Denoiser::run(int width, int height, int historyWidth, int historyHeight)
                 bufferManager.GetBuffer2D(PrevFastIlluminationBuffer),
                 bufferManager.GetBuffer2D(PrevHistoryLengthBuffer),
                 bufferManager.GetBuffer2D(PrevNormalRoughnessBuffer),
+                bufferManager.GetBuffer2D(MotionVectorBuffer),
 
                 bufferManager.GetBuffer2D(IlluminationBuffer),
                 bufferManager.GetBuffer2D(DepthBuffer),

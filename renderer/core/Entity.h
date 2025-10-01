@@ -46,9 +46,11 @@ public:
     EntityType getType() const { return m_type; }
     const EntityTransform& getTransform() const { return m_transform; }
     VertexAttributes* getAttributes() const { return m_d_attributes; }
+    VertexAttributes* getPrevAttributes() const { return m_d_prevAttributes ? m_d_prevAttributes : m_d_attributes; }
     unsigned int* getIndices() const { return m_d_indices; }
     unsigned int getAttributeSize() const { return m_attributeSize; }
     unsigned int getIndicesSize() const { return m_indicesSize; }
+    bool isAnimated() const { return m_isAnimated; }
 
     // Setters
     void setTransform(const EntityTransform& transform) { m_transform = transform; }
@@ -73,6 +75,7 @@ private:
     // GPU geometry data
     VertexAttributes* m_d_attributes = nullptr;           // Current (possibly skinned) vertices
     VertexAttributes* m_d_originalAttributes = nullptr;   // Original unskinned vertices for animation
+    VertexAttributes* m_d_prevAttributes = nullptr;        // Previous frame skinned vertices
     VertexSkinningData* m_d_skinningData = nullptr;       // Joint indices and weights for animation
     unsigned int* m_d_indices = nullptr;
     unsigned int m_attributeSize = 0;
@@ -82,5 +85,6 @@ private:
     std::unique_ptr<AnimationManager> m_animationManager;
     std::vector<AnimationClip> m_animationClips;
     Skeleton m_skeleton;
+    bool m_isAnimated = false;
 
 };
