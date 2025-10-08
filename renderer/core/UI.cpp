@@ -5,6 +5,7 @@
 #include "core/GlobalSettings.h"
 #include "core/RenderCamera.h"
 #include "core/SceneConfig.h"
+#include "core/Scene.h"
 #include "core/CameraController.h"
 #include "core/Character.h"
 #include "voxelengine/VoxelEngine.h"
@@ -596,6 +597,15 @@ void UI::update()
             currentScene.camera.up = Float3(0.0f, 1.0f, 0.0f); // Standard up vector
             currentScene.camera.fov = 90.0f;                   // Default FOV, should match camera default
 
+            // Persist character transform if available
+            if (auto *character = inputHandler.getCharacter())
+            {
+                const EntityTransform &characterTransform = character->getTransform();
+                currentScene.character.position = characterTransform.position;
+                currentScene.character.rotation = characterTransform.rotation;
+                currentScene.character.scale = characterTransform.scale;
+            }
+
             // Save to file
             SceneConfigParser::SaveToFile(std::string(sceneFileName), currentScene);
         }
@@ -621,6 +631,22 @@ void UI::update()
                 currentCamera.pitch = yawPitch.y;
 
                 currentCamera.update();
+
+                // Apply loaded transform to character if present
+                if (auto *character = inputHandler.getCharacter())
+                {
+                    EntityTransform transform = character->getTransform();
+                    transform.position = loadedScene.character.position;
+                    transform.rotation = loadedScene.character.rotation;
+                    transform.scale = loadedScene.character.scale;
+                    character->setTransform(transform);
+                    character->setYaw(loadedScene.character.rotation.y);
+                    character->checkGroundCollision();
+
+                    auto &scene = Scene::Get();
+                    scene.needSceneUpdate = true;
+                    scene.needSceneReloadUpdate = true;
+                }
             }
         }
 
