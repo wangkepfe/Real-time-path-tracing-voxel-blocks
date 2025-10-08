@@ -82,6 +82,7 @@ public:
 
     Int2 GetBufferDim(Buffer2DName name) const { return m_buffers[(unsigned int)name].bufferDim; }
     SurfObj GetBuffer2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].buffer; }
+    cudaArray_t GetBufferArray(Buffer2DName name) const { return m_buffers[(unsigned int)name].bufferArray; }
     TexObj GetTexture2D(Buffer2DName name) const { return m_buffers[(unsigned int)name].tex; }
     uint32_t reservoirBlockRowPitch;
     uint32_t reservoirArrayPitch;

@@ -33,16 +33,12 @@ struct PostProcessingPipelineParams
 
     // Lens flare parameters
     bool enableLensFlare = false;
-    float lensFlareIntensity = 0.0100f;
-    float lensFlareThreshold = 4.0f;
-    float lensFlareGhostSpacing = 0.0800f;
+    float lensFlareIntensity = 0.00001f;
+    float lensFlareGhostSpacing = 0.1500f;
     int lensFlareGhostCount = 4;
     float lensFlareHaloRadius = 0.1000f;
     float lensFlareSunSize = 0.0060f;
-    float lensFlareDistortion = 0.0015f;
-    bool lensFlareHalfRes = true;
-    bool lensFlareNeighborFilter = true;
-    int lensFlareMaxSpots = 16;
+    float lensFlareDistortion = 0.0150f;
 
     std::vector<std::tuple<float *, std::string, float, float, bool>> GetValueList()
     {
@@ -61,8 +57,7 @@ struct PostProcessingPipelineParams
             {&vignetteRadius, "Vignette Radius", 0.1f, 1.5f, false},
             {&vignetteSmoothness, "Vignette Smoothness", 0.1f, 1.0f, false},
             {&lensFlareIntensity, "Lens Flare Intensity", 0.0f, 1.0f, false},
-            {&lensFlareThreshold, "Lens Flare Threshold", 1.0f, 10.0f, false},
-            {&lensFlareGhostSpacing, "Ghost Spacing", 0.1f, 1.0f, false},
+            {&lensFlareGhostSpacing, "Ghost Spacing", 0.15f, 1.0f, false},
             {&lensFlareHaloRadius, "Halo Radius", 0.1f, 0.8f, false},
             {&lensFlareSunSize, "Sun Size", 0.005f, 0.05f, false},
             {&lensFlareDistortion, "Chromatic Aberration", 0.0f, 0.2f, false}};
@@ -74,17 +69,13 @@ struct PostProcessingPipelineParams
             {&enableBloom, "Enable Bloom"},
             {&enableAutoExposure, "Enable Auto Exposure"},
             {&enableVignette, "Enable Vignette"},
-            {&enableLensFlare, "Enable Lens Flare"},
-            {&lensFlareHalfRes, "Lens Flare Half Resolution"},
-            {&lensFlareNeighborFilter, "Lens Flare Neighbor Filter"}};
+            {&enableLensFlare, "Enable Lens Flare"}};
     }
 
     std::vector<std::pair<int *, std::string>> GetIntValueList()
     {
         return {
-            {&lensFlareGhostCount, "Lens Flare Ghost Count"},
-            {&lensFlareMaxSpots, "Max Lens Flare Spots"}
-        };
+            {&lensFlareGhostCount, "Lens Flare Ghost Count"}};
     }
 };
 
@@ -393,7 +384,3 @@ private:
     void parseCameraMovementSettings(const std::string &key, const std::string &value);
     void parseRenderingSettings(const std::string &key, const std::string &value);
 };
-
-
-
-

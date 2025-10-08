@@ -182,14 +182,14 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  gain: " << toneMappingParams.gain << "\n";
     file << "  lift: " << toneMappingParams.lift << "\n";
     file << "  enableChromaticAdaptation: " << (toneMappingParams.enableChromaticAdaptation ? "true" : "false") << "\n";
-    
+
     // Post processing pipeline parameters
     // Bloom parameters
     file << "  enableBloom: " << (postProcessingPipelineParams.enableBloom ? "true" : "false") << "\n";
     file << "  bloomThreshold: " << postProcessingPipelineParams.bloomThreshold << "\n";
     file << "  bloomIntensity: " << postProcessingPipelineParams.bloomIntensity << "\n";
     file << "  bloomRadius: " << postProcessingPipelineParams.bloomRadius << "\n";
-    
+
     // Auto-exposure parameters
     file << "  enableAutoExposure: " << (postProcessingPipelineParams.enableAutoExposure ? "true" : "false") << "\n";
     file << "  exposureSpeed: " << postProcessingPipelineParams.exposureSpeed << "\n";
@@ -199,26 +199,21 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
     file << "  histogramMinPercent: " << postProcessingPipelineParams.histogramMinPercent << "\n";
     file << "  histogramMaxPercent: " << postProcessingPipelineParams.histogramMaxPercent << "\n";
     file << "  targetLuminance: " << postProcessingPipelineParams.targetLuminance << "\n";
-    
+
     // Vignette parameters
     file << "  enableVignette: " << (postProcessingPipelineParams.enableVignette ? "true" : "false") << "\n";
     file << "  vignetteStrength: " << postProcessingPipelineParams.vignetteStrength << "\n";
     file << "  vignetteRadius: " << postProcessingPipelineParams.vignetteRadius << "\n";
     file << "  vignetteSmoothness: " << postProcessingPipelineParams.vignetteSmoothness << "\n";
-    
+
     // Lens Flare parameters
     file << "  enableLensFlare: " << (postProcessingPipelineParams.enableLensFlare ? "true" : "false") << "\n";
     file << "  lensFlareIntensity: " << postProcessingPipelineParams.lensFlareIntensity << "\n";
-    file << "  lensFlareThreshold: " << postProcessingPipelineParams.lensFlareThreshold << "\n";
     file << "  lensFlareGhostSpacing: " << postProcessingPipelineParams.lensFlareGhostSpacing << "\n";
     file << "  lensFlareGhostCount: " << postProcessingPipelineParams.lensFlareGhostCount << "\n";
     file << "  lensFlareHaloRadius: " << postProcessingPipelineParams.lensFlareHaloRadius << "\n";
     file << "  lensFlareSunSize: " << postProcessingPipelineParams.lensFlareSunSize << "\n";
-    file << "  lensFlareDistortion: " << postProcessingPipelineParams.lensFlareDistortion << "\n";
-    file << "  lensFlareHalfRes: " << (postProcessingPipelineParams.lensFlareHalfRes ? "true" : "false") << "\n";
-    file << "  lensFlareNeighborFilter: " << (postProcessingPipelineParams.lensFlareNeighborFilter ? "true" : "false") << "\n";
-    file << "  lensFlareMaxSpots: " << postProcessingPipelineParams.lensFlareMaxSpots << "\n\n";
-
+    file << "  lensFlareDistortion: " << postProcessingPipelineParams.lensFlareDistortion << "\n\n";
     // Save Sky Parameters
     file << "sky:\n";
     file << "  timeOfDay: " << skyParams.timeOfDay << "\n";
@@ -277,7 +272,6 @@ void GlobalSettings::SaveToYAML(const std::string &filepath) const
 
 // Private helper methods for parsing specific sections
 
-
 void GlobalSettings::parseToneMappingSettings(const std::string &key, const std::string &value)
 {
     if (key == "manualExposure")
@@ -315,7 +309,7 @@ void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key,
         parseFloat(value, postProcessingPipelineParams.bloomIntensity);
     else if (key == "bloomRadius")
         parseFloat(value, postProcessingPipelineParams.bloomRadius);
-    
+
     // Auto-exposure parameters
     else if (key == "enableAutoExposure")
         postProcessingPipelineParams.enableAutoExposure = (value == "true");
@@ -333,7 +327,7 @@ void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key,
         parseFloat(value, postProcessingPipelineParams.histogramMaxPercent);
     else if (key == "targetLuminance")
         parseFloat(value, postProcessingPipelineParams.targetLuminance);
-    
+
     // Vignette parameters
     else if (key == "enableVignette")
         postProcessingPipelineParams.enableVignette = (value == "true");
@@ -343,14 +337,12 @@ void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key,
         parseFloat(value, postProcessingPipelineParams.vignetteRadius);
     else if (key == "vignetteSmoothness")
         parseFloat(value, postProcessingPipelineParams.vignetteSmoothness);
-    
+
     // Lens Flare parameters
     else if (key == "enableLensFlare")
         postProcessingPipelineParams.enableLensFlare = (value == "true");
     else if (key == "lensFlareIntensity")
         parseFloat(value, postProcessingPipelineParams.lensFlareIntensity);
-    else if (key == "lensFlareThreshold")
-        parseFloat(value, postProcessingPipelineParams.lensFlareThreshold);
     else if (key == "lensFlareGhostSpacing")
         parseFloat(value, postProcessingPipelineParams.lensFlareGhostSpacing);
     else if (key == "lensFlareGhostCount")
@@ -361,12 +353,6 @@ void GlobalSettings::parsePostProcessingPipelineSettings(const std::string &key,
         parseFloat(value, postProcessingPipelineParams.lensFlareSunSize);
     else if (key == "lensFlareDistortion")
         parseFloat(value, postProcessingPipelineParams.lensFlareDistortion);
-    else if (key == "lensFlareHalfRes")
-        postProcessingPipelineParams.lensFlareHalfRes = (value == "true");
-    else if (key == "lensFlareNeighborFilter")
-        postProcessingPipelineParams.lensFlareNeighborFilter = (value == "true");
-    else if (key == "lensFlareMaxSpots")
-        parseInt(value, postProcessingPipelineParams.lensFlareMaxSpots);
 }
 
 void GlobalSettings::parseSkySettings(const std::string &key, const std::string &value)
@@ -467,31 +453,40 @@ void GlobalSettings::parseRenderingSettings(const std::string &key, const std::s
 
 // Time management is now handled by Backend's Timer.h
 
-
-
-
-void GlobalSettings::parseDenosingSettings(const std::string& key, const std::string& value)
+void GlobalSettings::parseDenosingSettings(const std::string &key, const std::string &value)
 {
-    if (key == "enableHitDistanceReconstruction") parseBool(value, denoisingParams.enableHitDistanceReconstruction);
-    else if (key == "enablePrePass") parseBool(value, denoisingParams.enablePrePass);
-    else if (key == "enableTemporalAccumulation") parseBool(value, denoisingParams.enableTemporalAccumulation);
-    else if (key == "enableHistoryFix") parseBool(value, denoisingParams.enableHistoryFix);
-    else if (key == "enableHistoryClamping") parseBool(value, denoisingParams.enableHistoryClamping);
-    else if (key == "enableSpatialFiltering") parseBool(value, denoisingParams.enableSpatialFiltering);
-    else if (key == "enableFireflyFilter") parseBool(value, denoisingParams.enableFireflyFilter);
-    else if (key == "maxAccumulatedFrameNum") parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
-    else if (key == "maxFastAccumulatedFrameNum") parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
-    else if (key == "phiLuminance") parseFloat(value, denoisingParams.phiLuminance);
-    else if (key == "lobeAngleFraction") parseFloat(value, denoisingParams.lobeAngleFraction);
-    else if (key == "roughnessFraction") parseFloat(value, denoisingParams.roughnessFraction);
-    else if (key == "depthThreshold") parseFloat(value, denoisingParams.depthThreshold);
-    else if (key == "atrousIterationNum") parseInt(value, denoisingParams.atrousIterationNum);
-    else if (key == "disocclusionThreshold") parseFloat(value, denoisingParams.disocclusionThreshold);
-    else if (key == "disocclusionThresholdAlternate") parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
-    else if (key == "denoisingRange") parseFloat(value, denoisingParams.denoisingRange);
+    if (key == "enableHitDistanceReconstruction")
+        parseBool(value, denoisingParams.enableHitDistanceReconstruction);
+    else if (key == "enablePrePass")
+        parseBool(value, denoisingParams.enablePrePass);
+    else if (key == "enableTemporalAccumulation")
+        parseBool(value, denoisingParams.enableTemporalAccumulation);
+    else if (key == "enableHistoryFix")
+        parseBool(value, denoisingParams.enableHistoryFix);
+    else if (key == "enableHistoryClamping")
+        parseBool(value, denoisingParams.enableHistoryClamping);
+    else if (key == "enableSpatialFiltering")
+        parseBool(value, denoisingParams.enableSpatialFiltering);
+    else if (key == "enableFireflyFilter")
+        parseBool(value, denoisingParams.enableFireflyFilter);
+    else if (key == "maxAccumulatedFrameNum")
+        parseFloat(value, denoisingParams.maxAccumulatedFrameNum);
+    else if (key == "maxFastAccumulatedFrameNum")
+        parseFloat(value, denoisingParams.maxFastAccumulatedFrameNum);
+    else if (key == "phiLuminance")
+        parseFloat(value, denoisingParams.phiLuminance);
+    else if (key == "lobeAngleFraction")
+        parseFloat(value, denoisingParams.lobeAngleFraction);
+    else if (key == "roughnessFraction")
+        parseFloat(value, denoisingParams.roughnessFraction);
+    else if (key == "depthThreshold")
+        parseFloat(value, denoisingParams.depthThreshold);
+    else if (key == "atrousIterationNum")
+        parseInt(value, denoisingParams.atrousIterationNum);
+    else if (key == "disocclusionThreshold")
+        parseFloat(value, denoisingParams.disocclusionThreshold);
+    else if (key == "disocclusionThresholdAlternate")
+        parseFloat(value, denoisingParams.disocclusionThresholdAlternate);
+    else if (key == "denoisingRange")
+        parseFloat(value, denoisingParams.denoisingRange);
 }
-
-
-
-
-

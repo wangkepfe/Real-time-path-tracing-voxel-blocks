@@ -46,18 +46,13 @@ postprocess:
   vignetteStrength: 0.42
   vignetteRadius: 0.8
   vignetteSmoothness: 0.56
-  enableLensFlare: false
-  lensFlareIntensity: 0.01
-  lensFlareThreshold: 4
-  lensFlareGhostSpacing: 0.08
+  enableLensFlare: true
+  lensFlareIntensity: 0.00001
+  lensFlareGhostSpacing: 0.15
   lensFlareGhostCount: 4
   lensFlareHaloRadius: 0.1
   lensFlareSunSize: 0.006
-  lensFlareDistortion: 0.0015
-  lensFlareHalfRes: true
-  lensFlareNeighborFilter: true
-  lensFlareMaxSpots: 16
-
+  lensFlareDistortion: 0.015
 sky:
   timeOfDay: 0.25
   sunAxisAngle: 45
@@ -105,4 +100,6 @@ rendering:
   maxRenderHeight: 1440
   minRenderWidth: 480
   minRenderHeight: 270
+
+
 

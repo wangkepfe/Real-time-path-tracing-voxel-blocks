@@ -48,7 +48,7 @@ void UI::update()
     auto &camera = RenderCamera::Get().camera;
 
     // Get current camera mode name
-    const char* currentCameraMode = "Unknown";
+    const char *currentCameraMode = "Unknown";
     if (inputHandler.getCurrentCameraController())
     {
         if (inputHandler.getCurrentMode() == AppMode::GUI)
@@ -69,47 +69,49 @@ void UI::update()
     ImGui::Text("Scale: %.1f %%", backend.getCurrentRenderWidth() / (float)backend.getWidth() * 100.0f);
     ImGui::Text("Camera pos=(%.2f, %.2f, %.2f)", camera.pos.x, camera.pos.y, camera.pos.z);
     ImGui::Text("Camera dir=(%.2f, %.2f, %.2f)", camera.dir.x, camera.dir.y, camera.dir.z);
-    
+
     // Show character movement info if character exists
     if (inputHandler.getCharacter())
     {
         auto character = inputHandler.getCharacter();
-        auto& movement = character->getMovement();
-        auto& physics = character->getPhysics();
-        
+        auto &movement = character->getMovement();
+        auto &physics = character->getPhysics();
+
         ImGui::Separator();
         ImGui::Text("Character Speed: %.2f", movement.currentSpeed);
         ImGui::Text("Character Move Dir: (%.2f, %.2f, %.2f)", movement.moveDirection.x, movement.moveDirection.y, movement.moveDirection.z);
         ImGui::Text("Character Velocity: (%.2f, %.2f, %.2f)", physics.velocity.x, physics.velocity.y, physics.velocity.z);
         ImGui::Text("Character Grounded: %s", physics.isGrounded ? "Yes" : "No");
     }
-    
+
     ImGui::Text("Current selected block ID = %d", inputHandler.currentSelectedBlockId);
-    
+
     // Display center block information
     ImGui::Separator();
     ImGui::Text("Center Block Info:");
-    auto& voxelEngine = VoxelEngine::Get();
-    if (voxelEngine.centerBlockInfo.hasValidBlock) {
+    auto &voxelEngine = VoxelEngine::Get();
+    if (voxelEngine.centerBlockInfo.hasValidBlock)
+    {
         ImGui::Text("Block ID: %d", voxelEngine.centerBlockInfo.blockId);
         ImGui::Text("Block Name: %s", voxelEngine.centerBlockInfo.blockName.c_str());
-        ImGui::Text("Position: (%d, %d, %d)", 
-                   voxelEngine.centerBlockInfo.position.x,
-                   voxelEngine.centerBlockInfo.position.y,
-                   voxelEngine.centerBlockInfo.position.z);
-    } else {
+        ImGui::Text("Position: (%d, %d, %d)",
+                    voxelEngine.centerBlockInfo.position.x,
+                    voxelEngine.centerBlockInfo.position.y,
+                    voxelEngine.centerBlockInfo.position.z);
+    }
+    else
+    {
         ImGui::Text("No block in center crosshair");
     }
 
     if (ImGui::CollapsingHeader("Temporal Denoising", 0))
     {
-        DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams();// Boolean parameters (pass controls)
+        DenoisingParams &denoisingParams = GlobalSettings::GetDenoisingParams(); // Boolean parameters (pass controls)
         if (ImGui::TreeNode("Pass Controls"))
         {
             for (auto &itempair : denoisingParams.GetBooleanValueList())
             {
                 ImGui::Checkbox(itempair.second.c_str(), itempair.first);
-
             }
             ImGui::TreePop();
         }
@@ -139,18 +141,16 @@ void UI::update()
         }
     }
 
-
-
     if (ImGui::CollapsingHeader("Post Processing", ImGuiTreeNodeFlags_None))
     {
         ToneMappingParams &toneMappingParams = GlobalSettings::GetToneMappingParams();
         PostProcessingPipelineParams &pipelineParams = GlobalSettings::GetPostProcessingPipelineParams();
-        
+
         // Exposure Control Section
         if (ImGui::TreeNode("Exposure Control"))
         {
             ImGui::Checkbox("Enable Auto Exposure", &pipelineParams.enableAutoExposure);
-            
+
             // Real-time computed exposure display
             auto &postProcessor = PostProcessor::Get();
             float computedExposure = postProcessor.GetComputedExposure();
@@ -158,38 +158,46 @@ void UI::update()
             ImGui::Text("Real-time Exposure: %.4f", computedExposure);
             ImGui::Text("Real-time Exposure (EV): %.2f", log2f(computedExposure));
             ImGui::Separator();
-            
+
             if (!pipelineParams.enableAutoExposure)
             {
                 ImGui::SliderFloat("Manual Exposure", &toneMappingParams.manualExposure, 0.1f, 20.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
-                ImGui::SameLine(); ImGui::InputFloat("##manual_exposure_input", &toneMappingParams.manualExposure, 0.1f, 1.0f, "%.2f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##manual_exposure_input", &toneMappingParams.manualExposure, 0.1f, 1.0f, "%.2f");
             }
             else
             {
                 ImGui::SliderFloat("Exposure Compensation (EV)", &pipelineParams.exposureCompensation, -5.0f, 5.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##exp_comp_input", &pipelineParams.exposureCompensation, 0.1f, 1.0f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##exp_comp_input", &pipelineParams.exposureCompensation, 0.1f, 1.0f, "%.2f");
+
                 ImGui::SliderFloat("Auto Exposure Speed", &pipelineParams.exposureSpeed, 0.1f, 5.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##exp_speed_input", &pipelineParams.exposureSpeed, 0.1f, 0.5f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##exp_speed_input", &pipelineParams.exposureSpeed, 0.1f, 0.5f, "%.2f");
+
                 ImGui::SliderFloat("Auto Exposure Min (EV)", &pipelineParams.exposureMin, -12.0f, 0.0f, "%.1f");
-                ImGui::SameLine(); ImGui::InputFloat("##exp_min_input", &pipelineParams.exposureMin, 0.5f, 1.0f, "%.1f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##exp_min_input", &pipelineParams.exposureMin, 0.5f, 1.0f, "%.1f");
+
                 ImGui::SliderFloat("Auto Exposure Max (EV)", &pipelineParams.exposureMax, 0.0f, 12.0f, "%.1f");
-                ImGui::SameLine(); ImGui::InputFloat("##exp_max_input", &pipelineParams.exposureMax, 0.5f, 1.0f, "%.1f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##exp_max_input", &pipelineParams.exposureMax, 0.5f, 1.0f, "%.1f");
+
                 ImGui::SliderFloat("Histogram Min %", &pipelineParams.histogramMinPercent, 0.0f, 50.0f, "%.1f");
-                ImGui::SameLine(); ImGui::InputFloat("##hist_min_input", &pipelineParams.histogramMinPercent, 1.0f, 5.0f, "%.1f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##hist_min_input", &pipelineParams.histogramMinPercent, 1.0f, 5.0f, "%.1f");
+
                 ImGui::SliderFloat("Histogram Max %", &pipelineParams.histogramMaxPercent, 50.0f, 100.0f, "%.1f");
-                ImGui::SameLine(); ImGui::InputFloat("##hist_max_input", &pipelineParams.histogramMaxPercent, 1.0f, 5.0f, "%.1f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##hist_max_input", &pipelineParams.histogramMaxPercent, 1.0f, 5.0f, "%.1f");
+
                 ImGui::SliderFloat("Target Luminance", &pipelineParams.targetLuminance, 0.05f, 0.5f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##target_lum_input", &pipelineParams.targetLuminance, 0.01f, 0.05f, "%.2f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##target_lum_input", &pipelineParams.targetLuminance, 0.01f, 0.05f, "%.2f");
             }
             ImGui::TreePop();
         }
-        
+
         // Bloom Section
         if (ImGui::TreeNode("Bloom Effects"))
         {
@@ -197,18 +205,20 @@ void UI::update()
             if (pipelineParams.enableBloom)
             {
                 ImGui::SliderFloat("Bloom Threshold", &pipelineParams.bloomThreshold, 0.0f, 5.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##bloom_thresh_input", &pipelineParams.bloomThreshold, 0.1f, 0.5f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##bloom_thresh_input", &pipelineParams.bloomThreshold, 0.1f, 0.5f, "%.2f");
+
                 ImGui::SliderFloat("Bloom Intensity", &pipelineParams.bloomIntensity, 0.0f, 2.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##bloom_intensity_input", &pipelineParams.bloomIntensity, 0.01f, 0.1f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##bloom_intensity_input", &pipelineParams.bloomIntensity, 0.01f, 0.1f, "%.2f");
+
                 ImGui::SliderFloat("Bloom Radius", &pipelineParams.bloomRadius, 0.5f, 5.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##bloom_radius_input", &pipelineParams.bloomRadius, 0.1f, 0.5f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##bloom_radius_input", &pipelineParams.bloomRadius, 0.1f, 0.5f, "%.2f");
             }
             ImGui::TreePop();
         }
-        
+
         // Vignette Section
         if (ImGui::TreeNode("Vignette Effects"))
         {
@@ -216,17 +226,20 @@ void UI::update()
             if (pipelineParams.enableVignette)
             {
                 ImGui::SliderFloat("Vignette Strength", &pipelineParams.vignetteStrength, 0.0f, 2.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##vignette_str_input", &pipelineParams.vignetteStrength, 0.01f, 0.1f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##vignette_str_input", &pipelineParams.vignetteStrength, 0.01f, 0.1f, "%.2f");
+
                 ImGui::SliderFloat("Vignette Radius", &pipelineParams.vignetteRadius, 0.1f, 1.5f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##vignette_rad_input", &pipelineParams.vignetteRadius, 0.01f, 0.1f, "%.2f");
-                
+                ImGui::SameLine();
+                ImGui::InputFloat("##vignette_rad_input", &pipelineParams.vignetteRadius, 0.01f, 0.1f, "%.2f");
+
                 ImGui::SliderFloat("Vignette Smoothness", &pipelineParams.vignetteSmoothness, 0.1f, 1.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##vignette_smooth_input", &pipelineParams.vignetteSmoothness, 0.01f, 0.1f, "%.2f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##vignette_smooth_input", &pipelineParams.vignetteSmoothness, 0.01f, 0.1f, "%.2f");
             }
             ImGui::TreePop();
         }
-        
+
         // Lens Flare Section
         if (ImGui::TreeNode("Lens Flare Effects"))
         {
@@ -236,75 +249,76 @@ void UI::update()
                 // Use DragFloat for precise control with small values
                 // Tip: Hold Ctrl while dragging for slower, more precise control
                 ImGui::DragFloat("Lens Flare Intensity", &pipelineParams.lensFlareIntensity, 0.001f, 0.0f, 1.0f, "%.4f");
-                ImGui::SameLine(); ImGui::InputFloat("##intensity_input", &pipelineParams.lensFlareIntensity, 0.001f, 0.01f, "%.4f");
-                
-                ImGui::DragFloat("Brightness Threshold", &pipelineParams.lensFlareThreshold, 0.1f, 0.5f, 20.0f, "%.2f");
-                ImGui::SameLine(); ImGui::InputFloat("##threshold_input", &pipelineParams.lensFlareThreshold, 0.1f, 1.0f, "%.2f");
-                
-                ImGui::DragFloat("Ghost Spacing", &pipelineParams.lensFlareGhostSpacing, 0.001f, 0.01f, 2.0f, "%.4f");
-                ImGui::SameLine(); ImGui::InputFloat("##spacing_input", &pipelineParams.lensFlareGhostSpacing, 0.001f, 0.01f, "%.4f");
-                
-                ImGui::SliderInt("Ghost Count", &pipelineParams.lensFlareGhostCount, 1, 8);
-                
-                ImGui::DragFloat("Halo Radius", &pipelineParams.lensFlareHaloRadius, 0.001f, 0.01f, 2.0f, "%.4f");
-                ImGui::SameLine(); ImGui::InputFloat("##halo_input", &pipelineParams.lensFlareHaloRadius, 0.001f, 0.01f, "%.4f");
-                
-                ImGui::DragFloat("Sun Size", &pipelineParams.lensFlareSunSize, 0.0001f, 0.0001f, 0.1f, "%.5f");
-                ImGui::SameLine(); ImGui::InputFloat("##sun_input", &pipelineParams.lensFlareSunSize, 0.0001f, 0.001f, "%.5f");
-                
-                ImGui::DragFloat("Chromatic Aberration", &pipelineParams.lensFlareDistortion, 0.0001f, 0.0f, 0.5f, "%.5f");
-                ImGui::SameLine(); ImGui::InputFloat("##aberration_input", &pipelineParams.lensFlareDistortion, 0.0001f, 0.001f, "%.5f");
-                
-                ImGui::Separator();
-                ImGui::Text("Performance Settings:");
-                ImGui::Checkbox("Half Resolution", &pipelineParams.lensFlareHalfRes);
                 ImGui::SameLine();
-                ImGui::Checkbox("Neighbor Filter", &pipelineParams.lensFlareNeighborFilter);
-                ImGui::SliderInt("Max Light Sources", &pipelineParams.lensFlareMaxSpots, 4, 32);
+                ImGui::InputFloat("##intensity_input", &pipelineParams.lensFlareIntensity, 0.001f, 0.01f, "%.4f");
+
+                ImGui::DragFloat("Ghost Spacing", &pipelineParams.lensFlareGhostSpacing, 0.001f, 0.01f, 2.0f, "%.4f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##spacing_input", &pipelineParams.lensFlareGhostSpacing, 0.001f, 0.01f, "%.4f");
+
+                ImGui::SliderInt("Ghost Count", &pipelineParams.lensFlareGhostCount, 1, 8);
+
+                ImGui::DragFloat("Halo Radius", &pipelineParams.lensFlareHaloRadius, 0.001f, 0.01f, 2.0f, "%.4f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##halo_input", &pipelineParams.lensFlareHaloRadius, 0.001f, 0.01f, "%.4f");
+
+                ImGui::DragFloat("Sun Size", &pipelineParams.lensFlareSunSize, 0.0001f, 0.0001f, 0.1f, "%.5f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##sun_input", &pipelineParams.lensFlareSunSize, 0.0001f, 0.001f, "%.5f");
+
+                ImGui::DragFloat("Chromatic Aberration", &pipelineParams.lensFlareDistortion, 0.0001f, 0.0f, 0.5f, "%.5f");
+                ImGui::SameLine();
+                ImGui::InputFloat("##aberration_input", &pipelineParams.lensFlareDistortion, 0.0001f, 0.001f, "%.5f");
+
             }
             ImGui::TreePop();
         }
-        
+
         // Tone Mapping Section
         if (ImGui::TreeNode("Tone Mapping"))
         {
-            const char* curveNames[] = {
+            const char *curveNames[] = {
                 "Narkowicz ACES (Fast)",
                 "Uncharted 2 Filmic",
-                "Reinhard"
-            };
+                "Reinhard"};
             int curveIndex = static_cast<int>(toneMappingParams.curve);
             if (ImGui::Combo("Tone Mapping Curve", &curveIndex, curveNames, 3))
             {
                 toneMappingParams.curve = static_cast<ToneMappingParams::ToneMappingCurve>(curveIndex);
             }
-            
+
             ImGui::SliderFloat("Highlight Desaturation", &toneMappingParams.highlightDesaturation, 0.0f, 1.0f, "%.2f");
-            ImGui::SameLine(); ImGui::InputFloat("##highlight_desat_input", &toneMappingParams.highlightDesaturation, 0.01f, 0.1f, "%.2f");
-            
+            ImGui::SameLine();
+            ImGui::InputFloat("##highlight_desat_input", &toneMappingParams.highlightDesaturation, 0.01f, 0.1f, "%.2f");
+
             ImGui::SliderFloat("White Point", &toneMappingParams.whitePoint, 1.0f, 20.0f, "%.1f");
-            ImGui::SameLine(); ImGui::InputFloat("##white_point_input", &toneMappingParams.whitePoint, 0.1f, 1.0f, "%.1f");
+            ImGui::SameLine();
+            ImGui::InputFloat("##white_point_input", &toneMappingParams.whitePoint, 0.1f, 1.0f, "%.1f");
             ImGui::TreePop();
         }
-        
-        // Color Grading Section  
+
+        // Color Grading Section
         if (ImGui::TreeNode("Color Grading"))
         {
             ImGui::SliderFloat("Contrast", &toneMappingParams.contrast, 0.5f, 2.0f, "%.2f");
-            ImGui::SameLine(); ImGui::InputFloat("##contrast_input", &toneMappingParams.contrast, 0.01f, 0.1f, "%.2f");
-            
+            ImGui::SameLine();
+            ImGui::InputFloat("##contrast_input", &toneMappingParams.contrast, 0.01f, 0.1f, "%.2f");
+
             ImGui::SliderFloat("Saturation", &toneMappingParams.saturation, 0.0f, 2.0f, "%.2f");
-            ImGui::SameLine(); ImGui::InputFloat("##saturation_input", &toneMappingParams.saturation, 0.01f, 0.1f, "%.2f");
-            
+            ImGui::SameLine();
+            ImGui::InputFloat("##saturation_input", &toneMappingParams.saturation, 0.01f, 0.1f, "%.2f");
+
             ImGui::SliderFloat("Lift (Shadows)", &toneMappingParams.lift, -0.5f, 0.5f, "%.3f");
-            ImGui::SameLine(); ImGui::InputFloat("##lift_input", &toneMappingParams.lift, 0.001f, 0.01f, "%.3f");
-            
+            ImGui::SameLine();
+            ImGui::InputFloat("##lift_input", &toneMappingParams.lift, 0.001f, 0.01f, "%.3f");
+
             ImGui::SliderFloat("Gain (Highlights)", &toneMappingParams.gain, 0.5f, 2.0f, "%.2f");
-            ImGui::SameLine(); ImGui::InputFloat("##gain_input", &toneMappingParams.gain, 0.01f, 0.1f, "%.2f");
-            
+            ImGui::SameLine();
+            ImGui::InputFloat("##gain_input", &toneMappingParams.gain, 0.01f, 0.1f, "%.2f");
+
             ImGui::TreePop();
         }
-        
+
         // Output Section
         if (ImGui::TreeNode("Output"))
         {
@@ -312,7 +326,7 @@ void UI::update()
             ImGui::Checkbox("Enable Chromatic Adaptation", &toneMappingParams.enableChromaticAdaptation);
             ImGui::TreePop();
         }
-        
+
         // Presets Section
         if (ImGui::TreeNode("Presets"))
         {
@@ -340,13 +354,11 @@ void UI::update()
                 // Lens Flare - Cinematic preset with subtle effects
                 pipelineParams.enableLensFlare = true;
                 pipelineParams.lensFlareIntensity = 0.0150f;
-                pipelineParams.lensFlareThreshold = 3.0f;
                 pipelineParams.lensFlareGhostSpacing = 0.0800f;
                 pipelineParams.lensFlareGhostCount = 4;
                 pipelineParams.lensFlareHaloRadius = 0.1200f;
                 pipelineParams.lensFlareSunSize = 0.0080f;
                 pipelineParams.lensFlareDistortion = 0.0020f;
-                pipelineParams.lensFlareMaxSpots = 12;
             }
             ImGui::SameLine();
             if (ImGui::Button("Vibrant"))
@@ -373,13 +385,11 @@ void UI::update()
                 // Lens Flare - Vibrant preset with stronger effects
                 pipelineParams.enableLensFlare = true;
                 pipelineParams.lensFlareIntensity = 0.0250f;
-                pipelineParams.lensFlareThreshold = 2.5f;
                 pipelineParams.lensFlareGhostSpacing = 0.1200f;
                 pipelineParams.lensFlareGhostCount = 5;
                 pipelineParams.lensFlareHaloRadius = 0.1800f;
                 pipelineParams.lensFlareSunSize = 0.0120f;
                 pipelineParams.lensFlareDistortion = 0.0040f;
-                pipelineParams.lensFlareMaxSpots = 16;
             }
             if (ImGui::Button("Realistic"))
             {
@@ -405,16 +415,14 @@ void UI::update()
                 // Lens Flare - Realistic preset with very subtle effects
                 pipelineParams.enableLensFlare = true;
                 pipelineParams.lensFlareIntensity = 0.0080f;
-                pipelineParams.lensFlareThreshold = 4.0f;
                 pipelineParams.lensFlareGhostSpacing = 0.0600f;
                 pipelineParams.lensFlareGhostCount = 3;
                 pipelineParams.lensFlareHaloRadius = 0.0800f;
                 pipelineParams.lensFlareSunSize = 0.0050f;
                 pipelineParams.lensFlareDistortion = 0.0010f;
-                pipelineParams.lensFlareMaxSpots = 8;
             }
             ImGui::SameLine();
-            
+
             if (ImGui::Button("Reset All"))
             {
                 toneMappingParams = ToneMappingParams{};
@@ -423,7 +431,6 @@ void UI::update()
             ImGui::TreePop();
         }
     }
-
 
     if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_None))
     {
@@ -509,7 +516,7 @@ void UI::update()
     if (ImGui::CollapsingHeader("Rendering Settings", ImGuiTreeNodeFlags_None))
     {
         RenderingParams &renderingParams = GlobalSettings::GetRenderingParams();
-        
+
         // Float parameters
         int render_idx = 0;
         for (auto &item : renderingParams.GetValueList())
@@ -525,13 +532,13 @@ void UI::update()
             std::string input_id = "##render_input_" + std::to_string(render_idx++);
             ImGui::InputFloat(input_id.c_str(), std::get<0>(item), 0.1f, 1.0f, "%.1f");
         }
-        
+
         // Boolean parameters
         for (auto &item : renderingParams.GetBooleanValueList())
         {
             ImGui::Checkbox(item.second.c_str(), item.first);
         }
-        
+
         // Integer parameters
         for (auto &item : renderingParams.GetIntValueList())
         {
@@ -550,16 +557,16 @@ void UI::update()
         {
             GlobalSettings::Get().SaveToYAML(std::string(globalSettingsFileName));
         }
-        
+
         ImGui::SameLine();
-        
+
         if (ImGui::Button("Load Global Settings"))
         {
             GlobalSettings::Get().LoadFromYAML(std::string(globalSettingsFileName));
         }
 
         ImGui::Separator();
-        
+
         if (ImGui::Button("Reset to Defaults"))
         {
             // Reset all settings to default values
@@ -587,7 +594,7 @@ void UI::update()
             currentScene.camera.position = camera.pos;
             currentScene.camera.direction = camera.dir;
             currentScene.camera.up = Float3(0.0f, 1.0f, 0.0f); // Standard up vector
-            currentScene.camera.fov = 90.0f; // Default FOV, should match camera default
+            currentScene.camera.fov = 90.0f;                   // Default FOV, should match camera default
 
             // Save to file
             SceneConfigParser::SaveToFile(std::string(sceneFileName), currentScene);
@@ -599,7 +606,7 @@ void UI::update()
         ImGui::Text("Load YAML Scene");
         ImGui::InputText("Load File", loadFileName, sizeof(loadFileName));
 
-                if (ImGui::Button("Load Scene"))
+        if (ImGui::Button("Load Scene"))
         {
             SceneConfig loadedScene;
             if (SceneConfigParser::LoadFromFile(std::string(loadFileName), loadedScene))
@@ -634,4 +641,3 @@ void UI::render()
     glViewport(0, 0, backend.getWidth(), backend.getHeight());
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
-

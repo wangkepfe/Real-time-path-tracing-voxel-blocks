@@ -31,9 +31,6 @@ private:
     // Frame timing
     float m_lastFrameTime;
     
-    // Lens flare detection
-    float* d_brightSpots;  // Device memory for bright spot data
-    int* d_spotCount;      // Device memory for spot count
     
     // Helper functions
     void ComputeLuminanceHistogram(SurfObj colorBuffer, Int2 size);
