@@ -15,6 +15,9 @@ bool SceneConfigParser::LoadFromFile(const std::string &filepath, SceneConfig &c
     std::string line;
     std::string currentSection;
 
+    config.chunkRecords.clear();
+    config.chunkConfig = ChunkConfigData{};
+
     while (std::getline(file, line))
     {
         line = trim(line);
@@ -74,6 +77,32 @@ bool SceneConfigParser::LoadFromFile(const std::string &filepath, SceneConfig &c
                 parseFloat3(value, config.character.scale);
             }
         }
+        else if (currentSection == "chunk_config")
+        {
+            if (key == "chunksX")
+            {
+                parseUnsignedInt(value, config.chunkConfig.chunksX);
+            }
+            else if (key == "chunksY")
+            {
+                parseUnsignedInt(value, config.chunkConfig.chunksY);
+            }
+            else if (key == "chunksZ")
+            {
+                parseUnsignedInt(value, config.chunkConfig.chunksZ);
+            }
+        }
+        else if (currentSection == "chunks")
+        {
+            unsigned int chunkIndex = 0;
+            if (parseUnsignedInt(key, chunkIndex))
+            {
+                ChunkRecord record;
+                record.index = chunkIndex;
+                record.hash = value;
+                config.chunkRecords.push_back(record);
+            }
+        }
     }
 
     // Normalize camera direction
@@ -107,6 +136,17 @@ void SceneConfigParser::SaveToFile(const std::string &filepath, const SceneConfi
     file << "  rotation: " << float3ToString(config.character.rotation) << "\n";
     file << "  scale: " << float3ToString(config.character.scale) << "\n";
 
+    file << "\nchunk_config:\n";
+    file << "  chunksX: " << config.chunkConfig.chunksX << "\n";
+    file << "  chunksY: " << config.chunkConfig.chunksY << "\n";
+    file << "  chunksZ: " << config.chunkConfig.chunksZ << "\n";
+
+    file << "\nchunks:\n";
+    for (const auto &record : config.chunkRecords)
+    {
+        file << "  " << record.index << ": " << record.hash << "\n";
+    }
+
     std::cout << "Saved scene config to: " << filepath << std::endl;
 }
 
@@ -122,6 +162,11 @@ SceneConfig SceneConfigParser::CreateDefault()
     config.character.position = Float3(16.0f, 10.0f, 16.0f);
     config.character.rotation = Float3(0.0f, 0.0f, 0.0f);
     config.character.scale = Float3(1.0f, 1.0f, 1.0f);
+
+    config.chunkConfig.chunksX = 2;
+    config.chunkConfig.chunksY = 1;
+    config.chunkConfig.chunksZ = 2;
+    config.chunkRecords.clear();
 
     return config;
 }
@@ -180,6 +225,19 @@ bool SceneConfigParser::parseFloat(const std::string &value, float &result)
     try
     {
         result = std::stof(trim(value));
+        return true;
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+}
+
+bool SceneConfigParser::parseUnsignedInt(const std::string &value, unsigned int &result)
+{
+    try
+    {
+        result = static_cast<unsigned int>(std::stoul(trim(value)));
         return true;
     }
     catch (const std::exception &)

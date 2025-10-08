@@ -334,6 +334,18 @@ void VoxelEngine::collectInstanceTransforms()
     for (unsigned int objectId = Assets::BlockManager::Get().getInstancedObjectIdBegin(); objectId < Assets::BlockManager::Get().getInstancedObjectIdEnd(); ++objectId)
     {
         unsigned int blockId = Assets::BlockManager::Get().objectIdToBlockId(objectId);
+        const bool hasLightBase = Assets::BlockManager::Get().hasLightBase(blockId);
+        unsigned int baseBlockId = 0;
+        unsigned int baseObjectId = 0;
+
+        if (hasLightBase)
+        {
+            baseBlockId = Assets::BlockManager::Get().getLightBaseBlockId(blockId);
+            if (baseBlockId != 0)
+            {
+                baseObjectId = Assets::BlockManager::Get().blockIdToObjectId(baseBlockId);
+            }
+        }
 
         for (unsigned int globalX = 0; globalX < chunkConfig.getGlobalWidth(); ++globalX)
         {
@@ -355,6 +367,15 @@ void VoxelEngine::collectInstanceTransforms()
                                                            0.0f, 0.0f, 1.0f, (float)globalZ};
 
                         instanceTransformMatrices[instanceId] = transform;
+
+                        // When a block has a paired light base mesh, ensure the base instance is registered too.
+                        if (hasLightBase && baseObjectId != 0 && val.id == blockId)
+                        {
+                            unsigned int baseInstanceId = PositionToInstanceId(Assets::BlockManager::Get().getNumUninstancedBlockTypes(),
+                                                                               baseObjectId, globalX, globalY, globalZ, globalWidth);
+                            geometryInstanceIdMap[baseObjectId].insert(baseInstanceId);
+                            instanceTransformMatrices[baseInstanceId] = transform;
+                        }
                     }
                 }
             }

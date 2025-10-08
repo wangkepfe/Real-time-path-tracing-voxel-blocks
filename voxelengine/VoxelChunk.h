@@ -31,7 +31,7 @@ struct VoxelChunk
         memset(data, 0, width * width * width * sizeof(Voxel));
     }
 
-    unsigned int size()
+    unsigned int size() const
     {
         return width * width * width * sizeof(Voxel);
     }
