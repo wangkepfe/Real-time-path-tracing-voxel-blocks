@@ -9,6 +9,7 @@
 #include "core/RenderCamera.h"
 #include "core/GlobalSettings.h"
 #include "voxelengine/VoxelEngine.h"
+#include "ui/GameUIManager.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -60,6 +61,11 @@ void Backend::init()
     glfwSetKeyCallback(m_window, InputHandler::KeyCallback);
     glfwSetCursorPosCallback(m_window, InputHandler::CursorPosCallback);
     glfwSetMouseButtonCallback(m_window, InputHandler::MouseButtonCallback);
+    glfwSetScrollCallback(m_window, GameUIManager::ScrollCallback);
+    glfwSetCharCallback(m_window, GameUIManager::CharCallback);
+    glfwSetCursorEnterCallback(m_window, GameUIManager::CursorEnterCallback);
+    glfwSetFramebufferSizeCallback(m_window, GameUIManager::FramebufferSizeCallback);
+    glfwSetWindowContentScaleCallback(m_window, GameUIManager::WindowContentScaleCallback);
 
     glfwMakeContextCurrent(m_window);
     if (glewInit() != GL_NO_ERROR)
@@ -68,6 +74,12 @@ void Backend::init()
     }
 
     initOpenGL();
+
+    if (!GameUIManager::Get().Initialize(m_window, m_width, m_height))
+    {
+        throw std::runtime_error("Failed to initialize RmlUi GameUIManager.");
+    }
+
     initInterop();
 
     dumpSystemInformation();
@@ -101,56 +113,68 @@ void Backend::mainloop()
     {
         glfwPollEvents();
 
-        SkyModel::Get().update();
-
         float minFrameTimeAllowed = 1000.0f / m_maxFpsAllowed;
         m_timer.updateWithLimiter(minFrameTimeAllowed);
-
-        // Time management is now handled by Backend's Timer
-
-        dynamicResolution();
 
         // CAMERA HISTORY: Save current camera as history BEFORE InputHandler updates it
         RenderCamera::Get().historyCamera = RenderCamera::Get().camera;
 
-        inputHandler.update();
+        auto &gameUI = GameUIManager::Get();
+        const bool isGameplay = (gameUI.GetState() == GameUIState::Gameplay);
 
-        renderer.update();
-
-        // HARDCODED TEST: Disabled for production
-        // Uncomment to test dynamic block placement and removal
-        /*
-        static int testFrameCount = 0;
-        static int testClickCount = 0;
-        testFrameCount++;
-
-        // Place 4 light blocks, then remove 2 of them
-        if (testClickCount < 4 && testFrameCount == (120 + testClickCount * 120))
-        { // Every 2 seconds starting at 2 seconds
-            testClickCount++;
-            std::cout << "TEST: Placing light block #" << testClickCount << " (ID=16)..." << std::endl;
-            inputHandler.currentSelectedBlockId = 16; // BlockTypeTestLight (instanced, emissive)
-            voxelengine.leftMouseButtonClicked = true;
-        }
-        // After placing 4 blocks, start removing them
-        else if (testClickCount >= 4 && testClickCount < 6 && testFrameCount == (120 + testClickCount * 120))
+        if (isGameplay)
         {
-            testClickCount++;
-            std::cout << "TEST: Removing block #" << (testClickCount - 4) << "..." << std::endl;
-            inputHandler.currentSelectedBlockId = 0; // BlockTypeEmpty for deletion
-            voxelengine.leftMouseButtonClicked = true; // Simulate click to delete
+            SkyModel::Get().update();
+
+            // Time management is now handled by Backend's Timer
+            dynamicResolution();
+
+            inputHandler.update();
+
+            renderer.update();
+
+            // HARDCODED TEST: Disabled for production
+            // Uncomment to test dynamic block placement and removal
+            /*
+            static int testFrameCount = 0;
+            static int testClickCount = 0;
+            testFrameCount++;
+
+            // Place 4 light blocks, then remove 2 of them
+            if (testClickCount < 4 && testFrameCount == (120 + testClickCount * 120))
+            { // Every 2 seconds starting at 2 seconds
+                testClickCount++;
+                std::cout << "TEST: Placing light block #" << testClickCount << " (ID=16)..." << std::endl;
+                inputHandler.currentSelectedBlockId = 16; // BlockTypeTestLight (instanced, emissive)
+                voxelengine.leftMouseButtonClicked = true;
+            }
+            // After placing 4 blocks, start removing them
+            else if (testClickCount >= 4 && testClickCount < 6 && testFrameCount == (120 + testClickCount * 120))
+            {
+                testClickCount++;
+                std::cout << "TEST: Removing block #" << (testClickCount - 4) << "..." << std::endl;
+                inputHandler.currentSelectedBlockId = 0; // BlockTypeEmpty for deletion
+                voxelengine.leftMouseButtonClicked = true; // Simulate click to delete
+            }
+            */
+
+            voxelengine.update(m_timer.getDeltaTime());
+
+            renderer.render();
+
+            denoiser.run(renderer.getWidth(), renderer.getHeight(), m_historyRenderWidth, m_historyRenderHeight);
+
+            mapInteropBuffer();
+            postProcessor.run(m_interopBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height, m_timer.getDeltaTime());
+            unmapInteropBuffer();
         }
-        */
+        else
+        {
+            m_currentFPS = static_cast<float>(m_timer.fps);
+            m_currentRenderWidth = renderer.getWidth();
+        }
 
-        voxelengine.update(m_timer.getDeltaTime());
-
-        renderer.render();
-
-        denoiser.run(renderer.getWidth(), renderer.getHeight(), m_historyRenderWidth, m_historyRenderHeight);
-
-        mapInteropBuffer();
-        postProcessor.run(m_interopBuffer, renderer.getWidth(), renderer.getHeight(), m_width, m_height, m_timer.getDeltaTime());
-        unmapInteropBuffer();
+        gameUI.Update(m_timer.getDeltaTime());
 
         ui.update();
 
@@ -209,6 +233,8 @@ void Backend::dynamicResolution()
 
 void Backend::clear()
 {
+    GameUIManager::Get().Shutdown();
+
     CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
     CUDA_CHECK(cudaStreamDestroy(m_cudaStream));
 
@@ -375,6 +401,30 @@ void Backend::initOpenGL()
 
 void Backend::display()
 {
+    auto &gameUI = GameUIManager::Get();
+    gameUI.OnViewportChanged(m_width, m_height);
+    const bool isGameplay = (gameUI.GetState() == GameUIState::Gameplay);
+
+    if (!isGameplay)
+    {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDisableVertexAttribArray(m_positionLocation);
+        glDisableVertexAttribArray(m_texCoordLocation);
+        glUseProgram(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        gameUI.Render();
+        glDisable(GL_BLEND);
+        return;
+    }
+
     // Bind texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
@@ -395,6 +445,8 @@ void Backend::display()
 
     glDisableVertexAttribArray(m_positionLocation);
     glDisableVertexAttribArray(m_texCoordLocation);
+
+    gameUI.Render();
 }
 
 void Backend::initInterop()

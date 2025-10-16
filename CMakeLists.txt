@@ -29,6 +29,39 @@ find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 12.6 REQUIRED)
 find_package(NVTT REQUIRED)
 
+include(FetchContent)
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+set(RMLUI_TESTS OFF CACHE BOOL "" FORCE)
+set(RMLUI_LUA_BINDINGS OFF CACHE BOOL "" FORCE)
+set(RMLUI_INSTALL_LICENSES_AND_BUILD_INFO OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://gitlab.freedesktop.org/freetype/freetype.git
+    GIT_TAG VER-2-13-3
+)
+
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(freetype)
+
+if(NOT TARGET Freetype::Freetype)
+    add_library(Freetype::Freetype ALIAS freetype)
+endif()
+
+FetchContent_Declare(
+    RmlUi
+    GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
+    GIT_TAG 6.1
+)
+
+FetchContent_MakeAvailable(RmlUi)
+
 # tinygltf library
 set(TINYGLTF_INCLUDE_DIR "${LOCAL_3RDPARTY}/tinygltf")
 add_definitions(-DTINYGLTF_IMPLEMENTATION)
@@ -131,6 +164,10 @@ set( HEADERS
     voxelengine/VoxelMath.h
     voxelengine/Noise.h
     voxelengine/ext/PerlinNoise.hpp
+    ui/GameUIActionHandler.h
+    ui/GameUIManager.h
+    ui/MainMenuController.h
+    ui/GameUIState.h
 )
 
 set( SOURCES
@@ -171,6 +208,11 @@ set( SOURCES
     voxelengine/VoxelSceneGen.cu
     voxelengine/Noise.cpp
     renderer/shaders/AliasTable.cu
+    ui/GameUIActionHandler.cpp
+    ui/GameUIManager.cpp
+    ui/MainMenuController.cpp
+    ${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp
+    ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_GLFW.cpp
 )
 
 set( OPTIX_SHADERS
@@ -227,6 +269,9 @@ target_include_directories( voxelgame PUBLIC
     "renderer/ext"
     "renderer/ext/imgui"
     "renderer/ext/imgui/backends"
+    "ui"
+    "${rmlui_SOURCE_DIR}/Include"
+    "${rmlui_SOURCE_DIR}/Backends"
     "voxelengine"
     ${GENERATED_INCLUDE_DIR}
     ${GLEW_INCLUDE_DIRS}
@@ -243,9 +288,15 @@ target_link_libraries( voxelgame
     ${GLEW_LIBRARIES}
     ${GLFW_LIBRARIES}
     ${NVTT_LIBRARIES}
+    RmlUi::RmlUi
     CUDA::cudart
     CUDA::cuda_driver
     cudadevrt.lib
+)
+
+target_compile_definitions( voxelgame PRIVATE
+    RMLUI_STATIC_DEFINE
+    RMLUI_GL3_CUSTOM_LOADER=<GL/glew.h>
 )
 
 set_property(TARGET voxelgame PROPERTY CUDA_ARCHITECTURES 89)
@@ -265,6 +316,7 @@ function(copy_game_data TARGET_NAME COPY_GLFW_GLEW)
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/settings
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/assets
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/data/ui
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
         # Copy directories only if files are different
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/models $<TARGET_FILE_DIR:${TARGET_NAME}>/data/models
@@ -272,6 +324,7 @@ function(copy_game_data TARGET_NAME COPY_GLFW_GLEW)
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/scene $<TARGET_FILE_DIR:${TARGET_NAME}>/data/scene
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/settings $<TARGET_FILE_DIR:${TARGET_NAME}>/data/settings
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/assets $<TARGET_FILE_DIR:${TARGET_NAME}>/data/assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/data/ui $<TARGET_FILE_DIR:${TARGET_NAME}>/data/ui
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${PTX_DIR} $<TARGET_FILE_DIR:${TARGET_NAME}>/ptx
         # Copy NVTT DLL (needed by both targets)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/nvtt/nvtt30200.dll $<TARGET_FILE_DIR:${TARGET_NAME}>/nvtt30200.dll
@@ -340,6 +393,7 @@ target_include_directories( voxelgame_offline PUBLIC
     "."
     "renderer"
     "voxelengine"
+    "ui"
     ${GENERATED_INCLUDE_DIR}
     ${OPTIX_INCLUDE_DIR}
     ${CUDAToolkit_INCLUDE_DIRS}

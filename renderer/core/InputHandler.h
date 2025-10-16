@@ -40,6 +40,8 @@ public:
         mouseButtonCallbackFunc = mouseButtonCallbackFuncIn;
     }
 
+    void setAppMode(AppMode newMode);
+
     int currentSelectedBlockId = 1;
     
     // Character control

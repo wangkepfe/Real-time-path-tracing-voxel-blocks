@@ -11,6 +11,7 @@
 #include "core/CharacterFollowCameraController.h"
 #include "voxelengine/VoxelEngine.h"
 #include "voxelengine/BlockType.h"
+#include "ui/GameUIManager.h"
 
 #include <fstream>
 
@@ -96,13 +97,46 @@ void InputHandler::setCharacter(Character* character)
     }
 }
 
+void InputHandler::setAppMode(AppMode newMode)
+{
+    if (appmode == newMode)
+    {
+        return;
+    }
+
+    if (newMode != AppMode::GUI)
+    {
+        cursorReset = 1;
+    }
+
+    switchCameraController(newMode);
+}
+
 void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
-    auto &inputHandler = InputHandler::Get();
+    auto &uiManager = GameUIManager::Get();
 
+    bool handledEscape = false;
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
-        glfwSetWindowShouldClose(window, 1);
+        handledEscape = uiManager.HandleEscapePressed();
+    }
+
+    if (uiManager.OnKeyEvent(key, scancode, action, mods))
+    {
+        return;
+    }
+
+    auto &inputHandler = InputHandler::Get();
+
+    if (handledEscape)
+    {
+        return;
+    }
+
+    if (uiManager.IsMainMenuVisible())
+    {
+        return;
     }
 
     if (key == GLFW_KEY_M && action == GLFW_PRESS)
@@ -230,6 +264,12 @@ void InputHandler::KeyCallback(GLFWwindow *window, int key, int scancode, int ac
 
 void InputHandler::CursorPosCallback(GLFWwindow *window, double xpos, double ypos)
 {
+    auto &uiManager = GameUIManager::Get();
+    if (uiManager.OnCursorPosEvent(xpos, ypos) || uiManager.IsMainMenuVisible())
+    {
+        return;
+    }
+
     auto &inputHandler = InputHandler::Get();
     Backend &backend = Backend::Get();
     if (inputHandler.appmode != AppMode::GUI)
@@ -259,6 +299,12 @@ void InputHandler::CursorPosCallback(GLFWwindow *window, double xpos, double ypo
 
 void InputHandler::MouseButtonCallback(GLFWwindow *window, int button, int action, int mods)
 {
+    auto &uiManager = GameUIManager::Get();
+    if (uiManager.OnMouseButtonEvent(button, action, mods) || uiManager.IsMainMenuVisible())
+    {
+        return;
+    }
+
     auto &inputHandler = InputHandler::Get();
     Backend &backend = Backend::Get();
     if (inputHandler.appmode == AppMode::FreeMove || inputHandler.appmode == AppMode::CharacterFollow)
