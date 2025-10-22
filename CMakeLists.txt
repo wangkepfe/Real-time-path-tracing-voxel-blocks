@@ -122,6 +122,7 @@ set( HEADERS
     renderer/core/BufferManager.h
     renderer/core/RenderCamera.h
     renderer/core/SceneConfig.h
+    renderer/core/WorldSceneManager.h
     renderer/assets/AssetRegistry.h
     renderer/assets/MaterialDefinition.h
     renderer/assets/MaterialManager.h
@@ -184,6 +185,7 @@ set( SOURCES
     renderer/core/CharacterFollowCameraController.cpp
     renderer/core/BufferManager.cpp
     renderer/core/SceneConfig.cpp
+    renderer/core/WorldSceneManager.cpp
     renderer/core/GlobalSettings.cpp
     renderer/assets/AssetRegistry.cpp
     renderer/assets/MaterialManager.cpp
@@ -347,6 +349,7 @@ set( OFFLINE_SOURCES
     mainOffline.cpp
     renderer/core/OfflineBackend.cpp
     renderer/core/SceneConfig.cpp
+    renderer/core/WorldSceneManager.cpp
     renderer/core/OptixRenderer.cpp
     renderer/core/Scene.cpp
     renderer/core/Entity.cpp
