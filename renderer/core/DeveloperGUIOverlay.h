@@ -19,17 +19,17 @@
 
 #include <GLFW/glfw3.h>
 
-class UI
+class DeveloperGUIOverlay
 {
 public:
-    static UI &Get()
+    static DeveloperGUIOverlay &Get()
     {
-        static UI instance;
+        static DeveloperGUIOverlay instance;
         return instance;
     }
-    UI(UI const &) = delete;
-    void operator=(UI const &) = delete;
-    ~UI();
+    DeveloperGUIOverlay(DeveloperGUIOverlay const &) = delete;
+    void operator=(DeveloperGUIOverlay const &) = delete;
+    ~DeveloperGUIOverlay();
 
     void init();
     void clear();
@@ -38,5 +38,5 @@ public:
     void eventHandler();
 
 private:
-    UI() {}
+    DeveloperGUIOverlay() {}
 };

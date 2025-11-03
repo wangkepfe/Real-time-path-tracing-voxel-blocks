@@ -1,5 +1,5 @@
 #include "core/InputHandler.h"
-#include "core/UI.h"
+#include "core/DeveloperGUIOverlay.h"
 #include "core/OptixRenderer.h"
 #include "core/Backend.h"
 #include "shaders/LinearMath.h"

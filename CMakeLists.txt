@@ -113,7 +113,7 @@ set( HEADERS
     renderer/core/Scene.h
     renderer/core/Entity.h
     renderer/core/Character.h
-    renderer/core/UI.h
+    renderer/core/DeveloperGUIOverlay.h
     renderer/core/InputHandler.h
     renderer/core/CameraController.h
     renderer/core/FreeCameraController.h
@@ -178,7 +178,7 @@ set( SOURCES
     renderer/core/Scene.cpp
     renderer/core/Entity.cpp
     renderer/core/Character.cpp
-    renderer/core/UI.cpp
+    renderer/core/DeveloperGUIOverlay.cpp
     renderer/core/InputHandler.cpp
     renderer/core/CameraController.cpp
     renderer/core/FreeCameraController.cpp

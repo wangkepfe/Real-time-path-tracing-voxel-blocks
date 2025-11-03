@@ -1,4 +1,4 @@
-#include "core/UI.h"
+#include "core/DeveloperGUIOverlay.h"
 #include "core/OptixRenderer.h"
 #include "core/Backend.h"
 #include "core/InputHandler.h"
@@ -11,7 +11,7 @@
 #include "voxelengine/VoxelEngine.h"
 #include "postprocessing/PostProcessor.h"
 
-void UI::init()
+void DeveloperGUIOverlay::init()
 {
     auto &backend = Backend::Get();
 
@@ -23,14 +23,14 @@ void UI::init()
     ImGui_ImplOpenGL3_Init(backend.GlslVersion.c_str());
 }
 
-UI::~UI()
+DeveloperGUIOverlay::~DeveloperGUIOverlay()
 {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 }
 
-void UI::update()
+void DeveloperGUIOverlay::update()
 {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -613,7 +613,7 @@ void UI::update()
     ImGui::End();
 }
 
-void UI::render()
+void DeveloperGUIOverlay::render()
 {
     auto &backend = Backend::Get();
 

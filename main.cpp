@@ -2,7 +2,7 @@
 
 #include "shaders/LinearMath.h"
 
-#include "core/UI.h"
+#include "core/DeveloperGUIOverlay.h"
 #include "core/Backend.h"
 #include "core/OptixRenderer.h"
 #include "core/BufferManager.h"
@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     try
     {
         auto &globalSettings = GlobalSettings::Get();
-        auto &ui = UI::Get();
+        auto &ui = DeveloperGUIOverlay::Get();
         auto &bufferManager = BufferManager::Get();
 
         auto &voxelengine = VoxelEngine::Get();

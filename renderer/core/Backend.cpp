@@ -1,7 +1,7 @@
 #include "core/Backend.h"
 #include "util/DebugUtils.h"
 #include "core/OptixRenderer.h"
-#include "core/UI.h"
+#include "core/DeveloperGUIOverlay.h"
 #include "postprocessing/PostProcessor.h"
 #include "denoising/Denoiser.h"
 #include "core/InputHandler.h"
@@ -100,7 +100,7 @@ void Backend::init()
 
 void Backend::mainloop()
 {
-    auto &ui = UI::Get();
+    auto &ui = DeveloperGUIOverlay::Get();
     auto &renderer = OptixRenderer::Get();
     auto &postProcessor = PostProcessor::Get();
     auto &denoiser = Denoiser::Get();
