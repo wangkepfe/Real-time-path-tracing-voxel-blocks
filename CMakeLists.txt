@@ -168,6 +168,8 @@ set( HEADERS
     ui/GameUIActionHandler.h
     ui/GameUIManager.h
     ui/MainMenuController.h
+    ui/NewGameController.h
+    ui/LoadGameController.h
     ui/GameUIState.h
 )
 
@@ -213,6 +215,8 @@ set( SOURCES
     ui/GameUIActionHandler.cpp
     ui/GameUIManager.cpp
     ui/MainMenuController.cpp
+    ui/NewGameController.cpp
+    ui/LoadGameController.cpp
     ${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp
     ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_GLFW.cpp
 )

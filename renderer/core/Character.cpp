@@ -650,10 +650,50 @@ void Character::resolveCollisions(Float3 &newPosition)
     }
 }
 
+bool Character::ensureStandingClearance(Float3 &position)
+{
+    if (!checkCylinderCollision(position))
+    {
+        return false;
+    }
+
+    const float kStep = 0.25f;
+    const float kMaxLift = 32.0f;
+    const float maxWorldHeight = static_cast<float>(VoxelEngine::Get().chunkConfig.getGlobalHeight());
+
+    Float3 candidate = position;
+    const float baseY = position.y;
+
+    for (float offset = kStep; offset <= kMaxLift; offset += kStep)
+    {
+        candidate.y = baseY + offset;
+        if (candidate.y + m_physics.height >= maxWorldHeight)
+        {
+            break;
+        }
+
+        if (!checkCylinderCollision(candidate))
+        {
+            position = candidate;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void Character::checkGroundCollision()
 {
     EntityTransform transform = getTransform();
     Float3 position = transform.position;
+
+    if (ensureStandingClearance(position))
+    {
+        transform.position = position;
+        setTransform(transform);
+        m_physics.velocity.y = std::max(0.0f, m_physics.velocity.y);
+        m_groundHeightValid = false;
+    }
 
     // Use cached ground height if available to ensure consistency with resolveCollisions
     float groundHeight;

@@ -4,6 +4,8 @@
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 struct GLFWwindow;
 
@@ -17,6 +19,8 @@ class SystemInterface_GLFW;
 
 class GameUIActionHandler;
 class MainMenuController;
+class NewGameController;
+class LoadGameController;
 
 enum class AppMode;
 
@@ -50,6 +54,13 @@ public:
 
     void SetActionHandler(std::shared_ptr<GameUIActionHandler> handler);
 
+    void OnNewGameConfirmed(const std::string& worldName);
+    void OnNewGameCancelled();
+    void OnLoadGameSelectionChanged(const std::string& worldName);
+    void OnLoadGameConfirmed(const std::string& worldName);
+    void OnLoadGameCancelled();
+    void SaveActiveWorldToDisk();
+
     static void CharCallback(GLFWwindow* window, unsigned int codepoint);
     static void ScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
     static void CursorEnterCallback(GLFWwindow* window, int entered);
@@ -66,6 +77,12 @@ private:
     void ApplyState(GameUIState state);
     void BindDefaultFonts();
     void EnsureContextDimensions();
+    void InitializeWorldState();
+    void RefreshWorldList();
+    void UpdateContinueButton();
+    bool SaveActiveWorld();
+    bool LoadWorldInternal(const std::string& worldName);
+    std::string SuggestWorldName() const;
 
     void HandleContinueRequest();
     void HandleNewGameRequest();
@@ -79,6 +96,8 @@ private:
     std::unique_ptr<RenderInterface_GL3> m_renderInterface;
     Rml::Context* m_context = nullptr;
     std::unique_ptr<MainMenuController> m_mainMenu;
+    std::unique_ptr<NewGameController> m_newGame;
+    std::unique_ptr<LoadGameController> m_loadGame;
     std::shared_ptr<GameUIActionHandler> m_actionHandler;
     GameUIState m_state = GameUIState::MainMenu;
     std::optional<AppMode> m_previousAppMode;
@@ -87,6 +106,10 @@ private:
     int m_activeModifiers = 0;
     float m_contentScale = 1.0f;
     bool m_gl3Initialized = false;
+    std::vector<std::string> m_availableWorlds;
+    std::string m_currentWorldName;
+    std::string m_pendingLoadSelection;
+    bool m_hasLoadedWorld = false;
 
     friend class MainMenuController;
 };

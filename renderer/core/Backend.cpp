@@ -233,7 +233,9 @@ void Backend::dynamicResolution()
 
 void Backend::clear()
 {
-    GameUIManager::Get().Shutdown();
+    auto &uiManager = GameUIManager::Get();
+    uiManager.SaveActiveWorldToDisk();
+    uiManager.Shutdown();
 
     CUDA_CHECK(cudaStreamSynchronize(m_cudaStream));
     CUDA_CHECK(cudaStreamDestroy(m_cudaStream));

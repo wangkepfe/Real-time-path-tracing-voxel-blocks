@@ -140,4 +140,5 @@ private:
     float getTerrainHeightAt(const Float3 &worldPos);
     bool isPositionValid(const Float3 &position);
     bool hasGroundSupport(const Float3 &position, float groundHeight);
+    bool ensureStandingClearance(Float3 &position);
 };

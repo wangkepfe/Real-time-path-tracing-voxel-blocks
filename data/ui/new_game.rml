@@ -1,0 +1,23 @@
+<rml>
+    <head>
+        <title>New Game</title>
+        <link type="text/rcss" href="main_menu.rcss" />
+    </head>
+    <body>
+        <div class="menu-container">
+            <div class="menu-card">
+                <h1 class="menu-title">New Game</h1>
+                <p class="menu-description">Choose a world name. We'll save your current progress before creating the new world.</p>
+                <div class="form-group">
+                    <label for="new-game-name">World Name</label>
+                    <input id="new-game-name" type="text" />
+                </div>
+                <div id="new-game-error" class="form-error"></div>
+                <div class="menu-buttons horizontal">
+                    <button id="new-game-create">Create</button>
+                    <button id="new-game-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </body>
+</rml>

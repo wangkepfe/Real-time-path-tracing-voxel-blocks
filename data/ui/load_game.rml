@@ -1,0 +1,20 @@
+<rml>
+    <head>
+        <title>Load Game</title>
+        <link type="text/rcss" href="main_menu.rcss" />
+    </head>
+    <body>
+        <div class="menu-container">
+            <div class="menu-card">
+                <h1 class="menu-title">Load Game</h1>
+                <p class="menu-description">Choose a saved world. We'll save your current world before switching.</p>
+                <div id="load-game-list" class="world-list"></div>
+                <div id="load-game-error" class="form-error"></div>
+                <div class="menu-buttons horizontal">
+                    <button id="load-game-load">Load</button>
+                    <button id="load-game-cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </body>
+</rml>

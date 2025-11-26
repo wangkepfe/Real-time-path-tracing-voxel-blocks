@@ -5,15 +5,17 @@
     </head>
     <body>
         <div class="menu-container">
-            <h1 class="menu-title">JazzFusion</h1>
-            <div class="menu-buttons">
-                <button id="menu-continue">Continue</button>
-                <button id="menu-new">New Game</button>
-                <button id="menu-load">Load Game</button>
-                <button id="menu-settings">Settings</button>
-                <button id="menu-quit">Quit</button>
+            <div class="menu-card">
+                <h1 class="menu-title">JazzFusion</h1>
+                <div class="menu-buttons">
+                    <button id="menu-continue">Continue</button>
+                    <button id="menu-new">New Game</button>
+                    <button id="menu-load">Load Game</button>
+                    <button id="menu-settings">Settings</button>
+                    <button id="menu-quit">Quit</button>
+                </div>
+                <div class="menu-hint">Press Esc to resume</div>
             </div>
-            <div class="menu-hint">Press Esc to resume</div>
         </div>
     </body>
 </rml>

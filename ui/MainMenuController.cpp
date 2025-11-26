@@ -36,6 +36,7 @@ MainMenuController::~MainMenuController()
         m_document->Close();
         m_document = nullptr;
     }
+    m_continueButton = nullptr;
 }
 
 bool MainMenuController::LoadDocument(const std::string& path)
@@ -52,6 +53,7 @@ bool MainMenuController::LoadDocument(const std::string& path)
         return false;
     }
 
+    m_continueButton = m_document->GetElementById("menu-continue");
     BindInteractions();
     return true;
 }
@@ -76,6 +78,23 @@ void MainMenuController::Hide()
 bool MainMenuController::IsVisible() const
 {
     return m_document && m_document->IsVisible();
+}
+
+void MainMenuController::SetContinueEnabled(bool enabled)
+{
+    if (!m_continueButton)
+    {
+        return;
+    }
+
+    if (enabled)
+    {
+        m_continueButton->RemoveAttribute("disabled");
+    }
+    else
+    {
+        m_continueButton->SetAttribute("disabled", true);
+    }
 }
 
 void MainMenuController::ProcessEvent(Rml::Event& event)

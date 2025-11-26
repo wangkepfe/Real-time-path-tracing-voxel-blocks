@@ -1,9 +1,13 @@
 #include "ui/GameUIManager.h"
 
 #include "ui/GameUIActionHandler.h"
+#include "ui/LoadGameController.h"
 #include "ui/MainMenuController.h"
+#include "ui/NewGameController.h"
 
 #include "renderer/core/InputHandler.h"
+#include "renderer/core/RenderCamera.h"
+#include "core/WorldSceneManager.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
@@ -17,6 +21,7 @@
 
 #include <GLFW/glfw3.h>
 #include <filesystem>
+#include <algorithm>
 
 namespace
 {
@@ -101,11 +106,38 @@ bool GameUIManager::Initialize(GLFWwindow* window, int width, int height)
         Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to load main menu document.");
     }
 
+    m_newGame = std::make_unique<NewGameController>(*m_context, *this);
+    if (!m_newGame->LoadDocument("data/ui/new_game.rml"))
+    {
+        Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to load new game document.");
+        m_newGame.reset();
+    }
+    else
+    {
+        m_newGame->Hide();
+    }
+
+    m_loadGame = std::make_unique<LoadGameController>(*m_context, *this);
+    if (!m_loadGame->LoadDocument("data/ui/load_game.rml"))
+    {
+        Rml::Log::Message(Rml::Log::LT_ERROR, "Failed to load load-game document.");
+        m_loadGame.reset();
+    }
+    else
+    {
+        m_loadGame->Hide();
+    }
+
     SetActionHandler(std::make_shared<DefaultGameUIActionHandler>(m_window));
 
     glfwSetInputMode(window, GLFW_LOCK_KEY_MODS, GLFW_TRUE);
 
-    ApplyState(GameUIState::MainMenu);
+    InitializeWorldState();
+    RefreshWorldList();
+    UpdateContinueButton();
+
+    m_state = GameUIState::MainMenu;
+    ApplyState(m_state);
 
     m_initialized = true;
     return true;
@@ -119,6 +151,8 @@ void GameUIManager::Shutdown()
     }
 
     m_mainMenu.reset();
+    m_newGame.reset();
+    m_loadGame.reset();
 
     if (m_context)
     {
@@ -287,37 +321,34 @@ bool GameUIManager::HandleEscapePressed()
         return true;
     }
 
+    if (m_state == GameUIState::NewGame || m_state == GameUIState::LoadGame)
+    {
+        RequestState(GameUIState::MainMenu);
+        return true;
+    }
+
     return false;
 }
 
 void GameUIManager::ToggleMainMenu()
 {
-    if (m_state == GameUIState::MainMenu)
-    {
-        RequestState(GameUIState::Gameplay);
-    }
-    else
+    if (m_state == GameUIState::Gameplay)
     {
         RequestState(GameUIState::MainMenu);
+        return;
     }
+
+    RequestState(GameUIState::Gameplay);
 }
 
 void GameUIManager::RequestState(GameUIState state)
 {
-    if (state == m_state && state == GameUIState::MainMenu)
-    {
-        if (m_mainMenu)
-        {
-            m_mainMenu->Show();
-        }
-        return;
-    }
-
     if (state == m_state)
     {
         return;
     }
 
+    m_state = state;
     ApplyState(state);
 }
 
@@ -328,7 +359,7 @@ GameUIState GameUIManager::GetState() const
 
 bool GameUIManager::IsMainMenuVisible() const
 {
-    return m_state == GameUIState::MainMenu && m_mainMenu && m_mainMenu->IsVisible();
+    return m_state != GameUIState::Gameplay;
 }
 
 void GameUIManager::SetActionHandler(std::shared_ptr<GameUIActionHandler> handler)
@@ -382,16 +413,15 @@ void GameUIManager::WindowContentScaleCallback(GLFWwindow*, float xscale, float 
 
 void GameUIManager::ApplyState(GameUIState state)
 {
-    m_state = state;
-
     if (!m_context)
     {
         return;
     }
 
-    auto& inputHandler = InputHandler::Get();
+    auto &inputHandler = InputHandler::Get();
+    const bool menuState = (state == GameUIState::MainMenu || state == GameUIState::NewGame || state == GameUIState::LoadGame);
 
-    if (state == GameUIState::MainMenu)
+    if (menuState)
     {
         if (!m_previousAppMode.has_value())
         {
@@ -406,7 +436,38 @@ void GameUIManager::ApplyState(GameUIState state)
 
         if (m_mainMenu)
         {
-            m_mainMenu->Show();
+            if (state == GameUIState::MainMenu)
+            {
+                m_mainMenu->Show();
+            }
+            else
+            {
+                m_mainMenu->Hide();
+            }
+        }
+
+        if (m_newGame)
+        {
+            if (state == GameUIState::NewGame)
+            {
+                m_newGame->Show();
+            }
+            else
+            {
+                m_newGame->Hide();
+            }
+        }
+
+        if (m_loadGame)
+        {
+            if (state == GameUIState::LoadGame)
+            {
+                m_loadGame->Show();
+            }
+            else
+            {
+                m_loadGame->Hide();
+            }
         }
 
         if (m_window)
@@ -424,6 +485,16 @@ void GameUIManager::ApplyState(GameUIState state)
         if (m_mainMenu)
         {
             m_mainMenu->Hide();
+        }
+
+        if (m_newGame)
+        {
+            m_newGame->Hide();
+        }
+
+        if (m_loadGame)
+        {
+            m_loadGame->Hide();
         }
 
         if (m_window)
@@ -479,6 +550,11 @@ void GameUIManager::EnsureContextDimensions()
 
 void GameUIManager::HandleContinueRequest()
 {
+    if (!m_hasLoadedWorld)
+    {
+        return;
+    }
+
     if (m_actionHandler)
     {
         m_actionHandler->OnContinueRequested();
@@ -492,6 +568,15 @@ void GameUIManager::HandleNewGameRequest()
     {
         m_actionHandler->OnNewGameRequested();
     }
+
+    if (m_newGame)
+    {
+        m_newGame->SetDefaultName(SuggestWorldName());
+        m_newGame->FocusNameField();
+        m_newGame->ClearError();
+    }
+
+    RequestState(GameUIState::NewGame);
 }
 
 void GameUIManager::HandleLoadGameRequest()
@@ -500,6 +585,19 @@ void GameUIManager::HandleLoadGameRequest()
     {
         m_actionHandler->OnLoadGameRequested();
     }
+
+    RefreshWorldList();
+    if (m_loadGame)
+    {
+        m_loadGame->ClearError();
+        const std::string selection = !m_pendingLoadSelection.empty() ? m_pendingLoadSelection : m_currentWorldName;
+        if (!selection.empty())
+        {
+            m_loadGame->SetSelectedWorld(selection);
+        }
+    }
+
+    RequestState(GameUIState::LoadGame);
 }
 
 void GameUIManager::HandleSettingsRequest()
@@ -512,8 +610,194 @@ void GameUIManager::HandleSettingsRequest()
 
 void GameUIManager::HandleQuitRequest()
 {
+    SaveActiveWorld();
+
     if (m_actionHandler)
     {
         m_actionHandler->OnQuitRequested();
     }
+}
+
+void GameUIManager::OnNewGameConfirmed(const std::string &worldName)
+{
+    if (!m_newGame)
+    {
+        return;
+    }
+
+    std::string normalized;
+    std::string error;
+    if (!WorldSceneManager::ValidateWorldName(worldName, normalized, error))
+    {
+        m_newGame->ShowError(error);
+        return;
+    }
+
+    if (WorldSceneManager::WorldExists(normalized))
+    {
+        m_newGame->ShowError("A world with that name already exists.");
+        return;
+    }
+
+    if (!SaveActiveWorld())
+    {
+        m_newGame->ShowError("Failed to save the current world.");
+        return;
+    }
+
+    auto &inputHandler = InputHandler::Get();
+    if (!WorldSceneManager::CreateWorld(normalized, inputHandler))
+    {
+        m_newGame->ShowError("Unable to create the new world.");
+        return;
+    }
+
+    m_currentWorldName = normalized;
+    m_hasLoadedWorld = true;
+    m_pendingLoadSelection.clear();
+    RefreshWorldList();
+    UpdateContinueButton();
+    RequestState(GameUIState::Gameplay);
+}
+
+void GameUIManager::OnNewGameCancelled()
+{
+    RequestState(GameUIState::MainMenu);
+}
+
+void GameUIManager::OnLoadGameSelectionChanged(const std::string &worldName)
+{
+    m_pendingLoadSelection = worldName;
+}
+
+void GameUIManager::OnLoadGameConfirmed(const std::string &worldName)
+{
+    if (!m_loadGame)
+    {
+        return;
+    }
+
+    if (worldName.empty())
+    {
+        m_loadGame->ShowError("Select a world to load.");
+        return;
+    }
+
+    if (!WorldSceneManager::WorldExists(worldName))
+    {
+        m_loadGame->ShowError("World not found.");
+        return;
+    }
+
+    if (!SaveActiveWorld())
+    {
+        m_loadGame->ShowError("Failed to save the current world.");
+        return;
+    }
+
+    if (!LoadWorldInternal(worldName))
+    {
+        m_loadGame->ShowError("Failed to load the selected world.");
+        return;
+    }
+
+    RefreshWorldList();
+    RequestState(GameUIState::Gameplay);
+}
+
+void GameUIManager::OnLoadGameCancelled()
+{
+    m_pendingLoadSelection.clear();
+    RequestState(GameUIState::MainMenu);
+}
+
+void GameUIManager::SaveActiveWorldToDisk()
+{
+    SaveActiveWorld();
+}
+
+void GameUIManager::InitializeWorldState()
+{
+    bool loadedExisting = false;
+
+    if (auto lastWorld = WorldSceneManager::GetLastPlayedWorld())
+    {
+        loadedExisting = LoadWorldInternal(*lastWorld);
+    }
+
+    if (!loadedExisting)
+    {
+        auto worlds = WorldSceneManager::ListWorlds();
+        if (!worlds.empty())
+        {
+            loadedExisting = LoadWorldInternal(worlds.front());
+        }
+    }
+
+    if (!loadedExisting)
+    {
+        auto &inputHandler = InputHandler::Get();
+        const std::string newWorld = WorldSceneManager::GenerateDefaultWorldName();
+        if (WorldSceneManager::CreateWorld(newWorld, inputHandler))
+        {
+            LoadWorldInternal(newWorld);
+        }
+    }
+}
+
+void GameUIManager::RefreshWorldList()
+{
+    m_availableWorlds = WorldSceneManager::ListWorlds();
+    if (m_loadGame)
+    {
+        m_loadGame->SetWorldList(m_availableWorlds);
+        if (!m_currentWorldName.empty())
+        {
+            m_loadGame->SetSelectedWorld(m_currentWorldName);
+        }
+    }
+}
+
+void GameUIManager::UpdateContinueButton()
+{
+    if (m_mainMenu)
+    {
+        m_mainMenu->SetContinueEnabled(m_hasLoadedWorld);
+    }
+}
+
+bool GameUIManager::SaveActiveWorld()
+{
+    if (m_currentWorldName.empty())
+    {
+        return true;
+    }
+
+    auto &camera = RenderCamera::Get().camera;
+    return WorldSceneManager::SaveWorld(m_currentWorldName, camera, InputHandler::Get());
+}
+
+bool GameUIManager::LoadWorldInternal(const std::string &worldName)
+{
+    if (worldName.empty())
+    {
+        return false;
+    }
+
+    auto &inputHandler = InputHandler::Get();
+    if (!WorldSceneManager::LoadWorld(worldName, inputHandler))
+    {
+        return false;
+    }
+
+    m_currentWorldName = worldName;
+    m_hasLoadedWorld = true;
+    m_pendingLoadSelection.clear();
+    UpdateContinueButton();
+    return true;
+}
+
+std::string GameUIManager::SuggestWorldName() const
+{
+    return WorldSceneManager::GenerateDefaultWorldName();
 }

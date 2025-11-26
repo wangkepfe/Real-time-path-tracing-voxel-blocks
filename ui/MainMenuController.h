@@ -23,6 +23,7 @@ public:
     void Show();
     void Hide();
     bool IsVisible() const;
+    void SetContinueEnabled(bool enabled);
 
     void ProcessEvent(Rml::Event& event) override;
 
@@ -34,4 +35,5 @@ private:
     Rml::Context& m_context;
     GameUIManager& m_manager;
     Rml::ElementDocument* m_document = nullptr;
+    Rml::Element* m_continueButton = nullptr;
 };
